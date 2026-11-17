@@ -16,7 +16,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const projects = listProjects(db, ownerId), tasks = listTasks(db, ownerId);
   const date = dateOnlySchema.safeParse(query.date).success ? query.date! : dateInTimezone(new Date().toISOString(), preferences.timezone);
   const allProjects = [...projects, ...listProjects(db, ownerId, true)];
-  return <div className="page"><header className="page-heading"><div><h1>Calendar</h1><p>Deadlines and time commitments, together.</p></div><EventForm projects={projects} tasks={tasks} timezone={preferences.timezone} /></header>
+  return <div className="page"><header className="page-heading"><div><h1>Calendar</h1></div><EventForm projects={projects} tasks={tasks} timezone={preferences.timezone} /></header>
     <ManualCalendar projects={projects} tasks={tasks} events={listEvents(db, ownerId)} timezone={preferences.timezone} weekStart={preferences.weekStart} date={date} />
     {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={listTasks(db, ownerId, true)} timezone={preferences.timezone} />
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} projects={allProjects} focus={Boolean(query.focus)} />}

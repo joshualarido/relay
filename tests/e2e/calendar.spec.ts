@@ -56,7 +56,7 @@ test("unified calendar labels/colors and all-day exclusive ranges, owner boundar
   await expect(page.getByRole("link", { name: `Task deadline: ${t.title}`, exact: true }).first()).toBeVisible();
   const event = page.getByRole("link", { name: `Event: ${e.title}`, exact: true }).first();
   await expect(event).toBeVisible();
-  expect(await event.evaluate((el) => getComputedStyle(el).getPropertyValue("--record-color").trim().toUpperCase())).toBe("#3B82F6");
+  expect(await event.evaluate((el) => getComputedStyle(el).getPropertyValue("--record-color").trim().toUpperCase())).toBe("#3B4BDB");
   await page.getByRole("link", { name: `Task deadline: ${t.title}`, exact: true }).first().click();
   await expect(page).toHaveURL(new RegExp(`task=${t.id}`));
   await expect(page.getByRole("dialog", { name: "Task details" })).toBeVisible();

@@ -12,7 +12,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const projects = [...listProjects(db, ownerId), ...listProjects(db, ownerId, true)];
   const query = await searchParams, selection = query.focus ?? query.task;
   const tasks = listTasks(db, ownerId).filter((t) => t.projectId === null);
-  return <div className="page"><header className="page-heading"><div><h1>Inbox</h1><p>A landing place for unassigned tasks.</p></div><TaskForm projects={projects} /></header>
+  return <div className="page"><header className="page-heading"><div><h1>Inbox</h1></div><TaskForm projects={projects} /></header>
     <TaskBoard tasks={tasks} projectId={null} />
     <TaskSelection key={selection} db={db} ownerId={ownerId} id={selection} projects={projects} focus={Boolean(query.focus)} />
   </div>;

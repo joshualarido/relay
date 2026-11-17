@@ -40,7 +40,7 @@ test("an expired signed cookie is denied by the running application's session bo
   } finally { await context.close(); }
 });
 
-test("authenticated shell is dark, navigable, responsive, and shows exactly three screens", async ({ page }, info) => {
+test("authenticated shell follows the system theme, is navigable, responsive, and shows exactly three screens", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
@@ -50,7 +50,7 @@ test("authenticated shell is dark, navigable, responsive, and shows exactly thre
   await expect(nav.getByRole("link")).toHaveText(["Today", "Projects", "Calendar"]);
   await nav.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-  expect(await page.locator("html").evaluate((el) => getComputedStyle(el).colorScheme)).toBe("dark");
+  expect(await page.locator("html").evaluate((el) => getComputedStyle(el).colorScheme)).toBe(await page.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("button", { name: /^Account menu/ }).click();

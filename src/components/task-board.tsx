@@ -94,13 +94,13 @@ export function TaskBoard({ tasks, projectId }: { tasks: Task[]; projectId: stri
     })}</SortableContext>;
   }
   return <div className="stack">
-    <div className="flex flex-wrap gap-3"><Button variant="outline" aria-pressed={view === "board"} onClick={() => setView("board")}>Task board</Button><Button variant="outline" aria-pressed={view === "list"} onClick={() => setView("list")}>Task list</Button></div>
+    <div className="view-switch" role="group" aria-label="Task view"><Button variant="ghost" aria-pressed={view === "board"} onClick={() => setView("board")}>Task board</Button><Button variant="ghost" aria-pressed={view === "list"} onClick={() => setView("list")}>Task list</Button></div>
     <div className="task-filters">
       <div className="field"><label htmlFor="task-search">Search tasks</label><input id="task-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
       <div className="field"><label htmlFor="task-filter-status">Filter task status</label><select id="task-filter-status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option>{statuses.map((s) => <option key={s}>{s}</option>)}</select></div>
       <div className="field"><label htmlFor="task-filter-date">Filter due date</label><input id="task-filter-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
     </div>
-    <p className="muted text-sm">Timed deadlines use each task&apos;s saved timezone.</p>
+    
     {error && <p role="alert" className="error-message">{error}</p>}
     {pending && <p role="status" className="muted">Saving task order...</p>}
     <DndContext id="task-board" sensors={sensors} collisionDetection={(args) => {

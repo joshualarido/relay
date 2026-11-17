@@ -212,10 +212,6 @@ test("Home day capture button selects the capture date by keyboard", async ({ pa
   await expect(button).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`captureDate=${day}`));
-  const help = page.locator(".home-calendar-help");
-  await expect(help).toBeVisible();
-  await expect(help).toContainText("Open an item to change its dates without dragging.");
-  expect(await help.evaluate((el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
 });
 
@@ -328,11 +324,11 @@ test("Today groups overdue and current-day work, completes inline, and updates c
   const overdueGroup = card.getByRole("region", { name: "Overdue", exact: true });
   const todayGroup = card.getByRole("region", { name: "Planned and due today", exact: true });
   const row = (group: Locator, title: string) => group.locator("li").filter({ has: page.getByRole("link", { name: title, exact: true }) });
-  await expect(row(overdueGroup, `Overdue ${s}`)).toContainText("Overdue / Inbox");
+  await expect(row(overdueGroup, `Overdue ${s}`)).toContainText("Inbox");
   await expect(card.getByRole("link", { name: `Past planned ${s}`, exact: true })).toHaveCount(0);
   for (const title of [`Planned today ${s}`, `Due today ${s}`, `Done today ${s}`]) await expect(row(todayGroup, title)).toBeVisible();
   await expect(card.getByRole("link", { name: `Both today ${s}`, exact: true })).toHaveCount(1);
-  await expect(row(todayGroup, `Planned today ${s}`)).toContainText(`Today / Today project ${s}`);
+  await expect(row(todayGroup, `Planned today ${s}`)).toContainText(`Today project ${s}`);
   await expect(row(todayGroup, `Done today ${s}`).getByLabel("Completed")).toBeVisible();
 
   const progress = card.locator(".progress-count");

@@ -68,7 +68,7 @@ test("populated manual workspace stays coherent, accessible and persistent acros
     if (heading === "Calendar") await expect(page.locator("[data-calendar-record]").first()).toBeVisible();
     timings[route] = Math.round(performance.now() - began);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect(await page.locator("html").evaluate((el) => getComputedStyle(el).colorScheme)).toBe("dark");
+    expect(await page.locator("html").evaluate((el) => getComputedStyle(el).colorScheme)).toBe(await page.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
   }
   await page.getByRole("button", { name: "Search and commands" }).click();
   const palette = page.getByRole("dialog", { name: "Search and commands", exact: true });

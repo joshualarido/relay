@@ -8,7 +8,7 @@ import { NavigationPreference } from "@/components/navigation";
 export default async function SettingsPage() {
   const userId = await requireUserId();
   const session = await currentSession();
-  return <div className="page"><header className="page-heading"><div><h1>Settings</h1><p>Make this workspace fit your day.</p></div></header>
+  return <div className="page"><header className="page-heading"><div><h1>Settings</h1></div></header>
     <div className="settings-grid">
     <section className="section"><h2>Calendar preferences</h2><PreferencesForm initial={getPreferences(getDatabase(), userId)} /></section>
     <section className="section"><h2>Navigation</h2><NavigationPreference /></section>

@@ -36,7 +36,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     ("prerequisiteId" in s.record && taskIds.has(s.record.prerequisiteId)))).slice(0, 6);
   return <div className="page">
     <Link className="muted text-sm inline-block mb-6" href="/projects">All projects</Link>
-    <header className="page-heading"><div><h1 className="break-words">{project.name}</h1><p>{project.archivedAt ? "Archived project" : "Project overview"}</p></div><ProjectForm project={project} /></header>
+    <header className="page-heading"><div><h1 className="break-words">{project.name}</h1>{project.archivedAt && <p>Archived project</p>}</div><ProjectForm project={project} /></header>
     <section className="section project-overview">
       <div className="stack"><div className="flex flex-wrap gap-5"><span className="status-label">{project.status}</span><span className="muted">{progress.percent}% complete</span>{project.deadline && <span className="muted">Deadline <time dateTime={project.deadline}>{project.deadline}</time></span>}</div>
       <progress value={progress.done} max={progress.total || 1} aria-label="Project progress" />

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AlertTriangle, CalendarDays, Check } from "lucide-react";
-import { currentSession, requireUserId } from "@/lib/auth";
+import { requireUserId } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
 import { getPreferences } from "@/lib/preferences";
 import { listProjects } from "@/lib/projects";
@@ -26,7 +26,6 @@ export default async function HomePage({ searchParams }: {
   const captureDate = dateOnlySchema.safeParse(query.captureDate).success ? query.captureDate! : "";
   const projects = listProjects(db, ownerId);
   const allProjects = [...projects, ...listProjects(db, ownerId, true)];
-  const session = await currentSession();
   const overdue = new Set(data.overdue.map((task) => task.id));
   const plannedToday = new Set(data.plannedToday.map((task) => task.id));
   const currentDay = data.todayTasks.filter((task) => !overdue.has(task.id));
@@ -37,18 +36,19 @@ export default async function HomePage({ searchParams }: {
     return tasks.length ? <ul className="work-list divided-list">{tasks.map((task) => <li className={`today-task${task.status === "Done" ? " is-done" : ""}`} key={task.id}>
       <div className="today-task-check">{task.status === "Done" ? <span className="complete-mark" aria-label="Completed"><Check size={18} aria-hidden="true" /></span> : <TaskComplete task={task} />}</div>
       <div className="today-task-body"><Link className="task-title" data-task-link={task.id} href={taskHref(task)}>{task.title}</Link>
-        <p className="muted text-sm">{label} / {projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"}</p>
-        <p className="muted text-sm">{plannedToday.has(task.id) ? "Planned today" : ""}{plannedToday.has(task.id) && (task.dueDate || task.dueAt) ? " / " : ""}{task.dueDate || task.dueAt ? `Due ${dateText((task.dueDate ?? task.dueAt)!)}` : ""}</p>
+        <p className="today-meta"><span>{projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"}</span>
+          {plannedToday.has(task.id) && <span>Planned today</span>}
+          {(task.dueDate || task.dueAt) && <span className={label === "Overdue" ? "error-message" : undefined}>Due {dateText((task.dueDate ?? task.dueAt)!)}</span>}</p>
       </div>
     </li>)}</ul> : <p className="muted">Nothing here yet. Capture a task or plan one on the calendar.</p>;
   }
   return <div className="page home-page">
-    <header className="home-heading"><div><h1>Today</h1><p>{session?.user.name.split(" ")[0]}&apos;s daily workspace / {dateText(today)}</p></div><Link className="home-calendar-link" href="/calendar"><CalendarDays size={17} aria-hidden="true" />Detailed calendar</Link></header>
+    <header className="home-heading"><div><h1>Today</h1><p>{new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${today}T12:00:00Z`))}</p></div><Link className="home-calendar-link" href="/calendar"><CalendarDays size={15} aria-hidden="true" />Open calendar</Link></header>
     <div className="home-workbench">
       <div className="home-left">
         <section className="section quick-capture-card"><QuickCapture projects={projects} tasks={data.tasks} timezone={timezone} initialDate={captureDate} /></section>
         <section className="section today-card" aria-labelledby="today-tasks-heading">
-          <div className="card-heading"><h2 id="today-tasks-heading"><CalendarDays size={20} aria-hidden="true" />Today&apos;s tasks</h2><span className="progress-count">{data.todayProgress.done}/{data.todayProgress.total} complete</span></div>
+          <div className="card-heading"><h2 id="today-tasks-heading">Today&apos;s tasks</h2><span className="progress-count">{data.todayProgress.done}/{data.todayProgress.total} complete</span></div>
           {data.overdue.length > 0 && <section className="today-group" aria-labelledby="overdue-heading"><div className="today-group-heading"><h3 id="overdue-heading"><AlertTriangle size={16} aria-hidden="true" />Overdue</h3><span className="badge badge-danger">{data.overdue.length}</span></div>{taskRows(data.todayTasks.filter((task) => overdue.has(task.id)), "Overdue")}</section>}
           <section className="today-group" aria-labelledby="today-heading"><div className="today-group-heading"><h3 id="today-heading">Planned and due today</h3><span className="muted text-sm">{currentDay.length} tasks</span></div>{taskRows(currentDay, "Today")}</section>
         </section>

@@ -1,69 +1,95 @@
 # Relay Design
 
-## Scene and Direction
+## Direction: paper and graphite
 
-The owner is returning to unfinished work at a laptop or checking a commitment
-on a phone. Phase 1.2 uses warm charcoal/brown solids and muted honey, enclosed
-rounded cards, and mostly symmetrical bento layouts. No gradients, glow,
-decorative animation, filler cards, deep nesting, or simulated AI.
+Relay is a quiet desk. The content (your tasks, dates and projects) is the
+interface, and the chrome steps back. The UI follows the system light or dark
+setting and uses neutral surfaces with one ink-blue accent. Hierarchy comes
+from type, weight and space, not from boxes.
 
-## Color Tokens
+Rules:
 
-Warm dark solids with a muted honey accent. Essential control borders must meet
-3:1 contrast; text 4.5:1 (large text 3:1). Subtle card borders are decorative.
+- **No boxes around page sections.** A section is a small heading plus its
+  content. Space separates sections (32-40px); hairline dividers separate rows.
+- **Cards only for things you can move or open.** Project and task cards on a
+  board are the only cards. They are flat (raised surface, 1px hairline,
+  10px corners, no shadow) and never nest.
+- **Floating layers** (menus, dialogs, side panels, toasts) are the only
+  elements with a shadow.
+- **One accent.** Ink blue marks the current place, the primary action and
+  focus. Everything else is neutral. Category colours (project deadline, task
+  deadline, event) appear only as small marks, and every mark is paired with an
+  icon or text.
+- **Controls stay quiet.** On devices that can hover, per-card controls appear
+  on hover or keyboard focus. On touch they stay visible.
+- **No helper paragraphs.** If the UI needs a sentence to explain itself, fix
+  the UI.
+- **One primary button per screen.** Other actions are quiet (ghost/outline).
 
-| Role | Value |
-| --- | --- |
-| Background | `#261F19` |
-| Surface | `#322A23` |
-| Elevated surface | `#3D332A` |
-| Foreground | `#F2E8DC` |
-| Muted foreground | `#C3B5A5` |
-| Border | `#665444` |
-| Primary | `#D8B477` |
-| Primary foreground | `#261F19` |
-| Focus | `#D8B477` |
-| Danger | `#EBA493` |
+## Color tokens
 
-Project deadline: `#8B5CF6`; task deadline: `#F59E0B`; event: `#3B82F6`.
-Pair every category/status color with text or an icon.
+Text meets 4.5:1 and control boundaries meet 3:1 against the canvas.
 
-## Typography and Layout
+| Role | Light | Dark |
+| --- | --- | --- |
+| Canvas `--background` | `#FAFAF9` | `#141519` |
+| Raised `--card` (cards, menus, dialogs) | `#FFFFFF` | `#1B1C21` |
+| Subtle fill `--secondary` (hover, active nav, columns) | `#F0F0EE` | `#23252B` |
+| Hairline `--border` (dividers, card edges) | `#E4E4E1` | `#2B2D34` |
+| Control boundary `--control-border` | `#878A92` | `#686C77` |
+| Ink `--foreground` | `#1A1B1F` | `#E9E9EC` |
+| Muted ink `--muted-foreground` | `#62656D` | `#9DA0AA` |
+| Accent `--primary` | `#3B4BDB` | `#8E9CFF` |
+| On accent `--primary-foreground` | `#FFFFFF` | `#12131A` |
+| Danger `--destructive` | `#C23A2B` | `#F2887B` |
+| Project deadline | `#0E8C7C` | `#4CC2B0` |
+| Task deadline | `#A86A00` | `#E0A84B` |
+| Event | accent | accent |
 
-Locally packaged DM Sans, no network font dependency at runtime/build.
-Body 15-16px; compact labels remain readable. Headings use moderate weight,
-balanced wrapping, and no tighter than -0.03em tracking.
-Desktop uses collapsible navigation with an icon rail; search is inside it.
-Mobile uses a compact accessible drawer. Page shells take full available width
-with 32px desktop, 24px tablet, 16px mobile padding; gaps 16-24px.
-Bound prose to 65-75ch, not the page. Cards have complete 1px borders,
-12-16px corners, and 20-24px padding. Boards/calendar scroll within their region.
-Home uses Create, three actionable metrics, Focus/Upcoming, Projects/Momentum,
-and Overview/Matrix views. Settings uses responsive cards without filler.
+## Typography
 
-## Components and States
+DM Sans (packaged locally). One family; hierarchy from size and weight.
 
-shadcn/ui conventions with Radix primitives, Tailwind, and lucide icons.
-Shared buttons, inputs, labels, alerts, dialogs, and status vocabulary.
-Controls are at least 40px tall, with visible focus and distinct disabled,
-loading, error, and destructive states. Controls use smaller coherent corners;
-cards 12-16px. No decorative shadows or deeply nested cards.
+| Use | Size / line | Weight |
+| --- | --- | --- |
+| Page title (h1) | 26px / 1.2, -0.02em | 600 |
+| Section heading (h2) | 15px / 1.3 | 600 |
+| Body | 14px / 1.55 | 400 |
+| Meta, counts, captions | 12.5px / 1.4 | 400, muted |
 
-Empty states explain a useful next action. Loading skeletons preserve layout.
-Errors preserve entered text. Confirmed deletion lists affected records.
-Dialogs restore focus and support Escape; menus and drag operations have
-keyboard/touch alternatives. No browser alert/confirm/prompt flows. Routine
-success/Undo is nonblocking Sonner feedback with persistent History recovery.
-Deferred Chat says "Coming soon"; no repeated AI warnings on other pages.
+Sentence case everywhere. No all-caps labels.
+
+## Layout
+
+- Pages fill the width beside the sidebar with 40px desktop, 24px tablet and
+  16px mobile padding. Prose is capped at about 70ch.
+- The sidebar shares the canvas colour, separated by one hairline. Navigation
+  is Today, Projects and Calendar; the active item gets a subtle fill and the
+  accent icon.
+- Boards: columns are unboxed (heading row plus a list); cards sit on the
+  canvas.
+- Calendar: hairline grid, today marked with a subtle fill, items rendered as
+  tinted chips with a colour mark and an icon.
+
+## Components and states
+
+- Radius: controls 8px, cards 10px, floating layers 12px.
+- Controls are at least 40px tall (44px touch targets for navigation).
+- Buttons: primary (accent fill), outline (control boundary), ghost (text
+  only), destructive (danger text and boundary).
+- Inputs: canvas fill, control boundary, 2px accent focus ring.
+- Visible focus everywhere (2px accent outline, 2px offset).
+- Dialogs and menus: raised surface, hairline, soft shadow, Escape closes.
+- Routine success and Undo are non-blocking notifications; failures are
+  inline errors next to the input.
+- Empty states are one line naming the next action.
 
 ## Motion
 
-Motion is reserved for feedback/state transitions, 150-200ms ease-out.
-Respect reduced motion. Content is visible by default; no page-load choreography.
+Only in answer to an action (open, close, complete, drag), 150-200ms
+ease-out. No page-load choreography. Reduced motion turns it off.
 
 ## Review
 
-Verify desktop 1440x900, short laptop 1366x768, touch mobile 390x844, zoom,
-keyboard navigation, labels, accessible native SVG/progress summaries,
-focus, contrast, dark states, overflow, and reduced motion. Apply Impeccable
-critique/audit and its mechanical detector to changed UI before acceptance.
+Check 1440x900, 1366x768 and 390x844 in both light and dark, plus keyboard
+navigation, focus, contrast, zoom and reduced motion.

@@ -13,7 +13,7 @@ import classic from "@fullcalendar/react/themes/classic";
 import "@fullcalendar/react/skeleton.css";
 import "@fullcalendar/react/themes/classic/theme.css";
 import type { Event, Project, Task } from "@/lib/db/schema";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleCheck, Clock, Flag } from "lucide-react";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useConfirmation } from "./confirm-dialog";
@@ -22,6 +22,7 @@ import { captureKindEvent } from "./quick-capture";
 type Kind = "project" | "task" | "event";
 const labels = { project: "Project deadline", task: "Task deadline", event: "Event" };
 const colors = { project: "var(--project-deadline)", task: "var(--task-deadline)", event: "var(--event)" };
+const icons = { project: Flag, task: CircleCheck, event: Clock };
 const views = { Month: "dayGridMonth", Week: "timeGridWeek", Day: "timeGridDay", Agenda: "listMonth" };
 
 export function ManualCalendar({ projects, tasks, events, timezone, weekStart, date, home = false }: {
@@ -80,15 +81,13 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
     <fieldset className="calendar-legend"><legend className="sr-only">Calendar filters and legend</legend>
       {(["project", "task", "event"] as const).map((kind) => <label key={kind} className="checkbox-label"><input type="checkbox" checked={enabled[kind]} onChange={(e) => setEnabled({ ...enabled, [kind]: e.target.checked })} aria-label={`Show ${labels[kind].toLowerCase()}`} /><span style={{ background: colors[kind] }} className="status-dot" aria-hidden="true" />{labels[kind]}</label>)}
     </fieldset>
-    {!home && <div className="calendar-controls"><div className="flex flex-wrap gap-2">{Object.keys(views).map((name) => <Button key={name} variant="outline" aria-pressed={view === name} onClick={() => { setView(name); ref.current?.getApi().changeView(views[name as keyof typeof views]); }}>{name}</Button>)}</div>
+    {!home && <div className="calendar-controls"><div className="view-switch" role="group" aria-label="Calendar view">{Object.keys(views).map((name) => <Button key={name} variant="ghost" aria-pressed={view === name} onClick={() => { setView(name); ref.current?.getApi().changeView(views[name as keyof typeof views]); }}>{name}</Button>)}</div>
       <form className="calendar-date" onSubmit={(e) => {
         e.preventDefault(); const value = String(new FormData(e.currentTarget).get("date"));
         ref.current?.getApi().gotoDate(value);
         const query = new URLSearchParams(params); query.set("date", value); router.replace(`/calendar?${query}`, { scroll: false });
       }}><label className="sr-only" htmlFor="calendar-date">Go to date</label><input id="calendar-date" name="date" type="date" defaultValue={date} required /><Button type="submit" variant="outline">Go</Button></form>
     </div>}
-    {home ? <p className="muted text-sm home-calendar-help">Displayed in {timezone}. Open an item to change its dates without dragging.</p>
-      : <p className="muted text-sm">Displayed in {timezone}. Deadlines are not time blocks. Edit any item for a keyboard/touch alternative to dragging.</p>}
     <div className="calendar-controls items-center"><h2 aria-live="polite">{title}</h2><div className="flex gap-2">
       <Button variant="outline" aria-label="Previous period" onClick={() => ref.current?.getApi().prev()}><ChevronLeft size={18} /></Button>
       <Button variant="outline" aria-label="Next period" onClick={() => ref.current?.getApi().next()}><ChevronRight size={18} /></Button>
@@ -102,14 +101,14 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
         eventAllow={(span, moving) => span.allDay === moving?.allDay}
         events={records.filter((r) => enabled[r.kind]).map((r) => ({
           id: `${r.kind}:${r.id}`, title: r.title, start: r.start, end: r.end, allDay: r.allDay,
-           color: colors[r.kind], contrastColor: r.kind === "task" ? "var(--background)" : "#ffffff", extendedProps: { kind: r.kind, id: r.id, done: r.done },
+           color: "transparent", contrastColor: "var(--foreground)", extendedProps: { kind: r.kind, id: r.id, done: r.done },
         }))}
         eventDrop={(info) => { void reschedule(info); }}
         eventContent={(info) => {
-          const kind = info.event.extendedProps.kind as Kind, id = info.event.extendedProps.id as string;
+          const kind = info.event.extendedProps.kind as Kind, id = info.event.extendedProps.id as string, Icon = icons[kind];
           return <Link href={href(kind, id)} scroll={false} className="calendar-record" data-calendar-record={`${kind}:${id}`} data-task-link={kind === "task" ? id : undefined}
             style={{ "--record-color": colors[kind], opacity: info.event.extendedProps.done ? .6 : 1 } as React.CSSProperties}
-            aria-label={`${labels[kind]}: ${info.event.title}`}><span aria-hidden="true">{info.timeText && `${info.timeText} `}{labels[kind]}: {info.event.title}</span></Link>;
+            aria-label={`${labels[kind]}: ${info.event.title}`}><Icon size={12} aria-hidden="true" /><span aria-hidden="true">{info.timeText && <time>{info.timeText}</time>}{info.event.title}</span></Link>;
         }}
         dayCellClass={(info) => info.isToday ? "calendar-today" : ""}
         navLinks={home} navLinkClass="calendar-day-capture" navLinkHint={(_text, day) => `${captureKind === "task" ? "Go to" : "Capture on"} ${captureLabel.format(day)}`}

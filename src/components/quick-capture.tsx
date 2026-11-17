@@ -52,13 +52,12 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save. Your input is preserved."); }
     finally { setPending(false); onPendingChange?.(false); }
   }
+  const kindSelect = <><label className="sr-only" htmlFor={`${id}-kind`}>Capture type</label>
+    <select id={`${id}-kind`} value={kind} onChange={(e) => { setKind(e.target.value as CaptureKind); setError(""); setSaved(false); }}>
+      <option value="task">Task</option><option value="project">Project</option>{eventAvailable && <option value="event">Event</option>}
+    </select></>;
   return <div className="quick-capture stack">
-    <div className="card-heading"><div><h2>Quick capture</h2><p className="muted text-sm">Write it down first. Add detail when it helps.</p></div>
-      <label className="sr-only" htmlFor={`${id}-kind`}>Capture type</label>
-      <select id={`${id}-kind`} value={kind} onChange={(e) => { setKind(e.target.value as CaptureKind); setError(""); setSaved(false); }}>
-        <option value="task">Task</option><option value="project">Project</option>{eventAvailable && <option value="event">Event</option>}
-      </select>
-    </div>
+    <h2 className="sr-only">Quick capture</h2>
     {eventDraft && timezone ? <EventForm initialOpen initialTitle={eventDraft.title} initialDate={eventDraft.date} projects={projects} tasks={tasks} timezone={timezone} onClose={() => setEventDraft(null)} />
       : <form className="quick-capture-form" onSubmit={async (e) => {
         e.preventDefault();
@@ -66,6 +65,7 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
         if (kind === "event") { setEventDraft({ title, date: initialDate }); return; }
         await save(form, title, String(data.get("date") || "") || null);
       }}>
+        <div className="field">{kindSelect}</div>
         <div className="field"><label className="sr-only" htmlFor={`${id}-title`}>{kind === "project" ? "Project name" : kind === "event" ? "Event title" : "Quick capture"}</label>
           <input id={`${id}-title`} name="title" maxLength={500} required disabled={pending} placeholder={kind === "project" ? "Name a project" : kind === "event" ? "Name an event" : "Capture a task"} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} /></div>
         {kind === "project" && <div className="field"><label htmlFor={`${id}-date`}>Deadline</label><input id={`${id}-date`} name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={pending} /></div>}
