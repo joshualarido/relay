@@ -22,8 +22,13 @@ test("Home date click pre-fills capture and unified capture creates project, tas
   const captureDate = info.project.name === "mobile" ? "2027-03-25" : "2027-03-18";
   await page.goto(`/?date=${monthDate}`);
   if (info.project.name === "mobile") await page.locator(".home-calendar .calendar-frame").evaluate((el) => { el.scrollLeft = el.scrollWidth; });
-  await page.locator(`[data-date="${captureDate}"]`).click();
-  await expect(page.locator(".quick-capture-card").getByLabel("Planned work date", { exact: true })).toHaveValue(captureDate);
+  // The title is set by datesSet on the client, so a non-empty title proves the calendar is mounted.
+  await expect(page.locator(".home-calendar .calendar-controls h2")).not.toBeEmpty();
+  const dateInput = page.locator(".quick-capture-card").getByLabel("Planned work date", { exact: true });
+  await expect(async () => {
+    await page.locator(`.home-calendar [data-date="${captureDate}"] .calendar-day-capture`).click();
+    await expect(dateInput).toHaveValue(captureDate, { timeout: 2_000 });
+  }).toPass();
 
   const capture = page.locator(".quick-capture-card input[name=title]");
   await page.getByLabel("Capture type", { exact: true }).selectOption("project");
@@ -312,6 +317,7 @@ test("Today groups overdue and current-day work, completes inline, and updates c
   const progress = card.locator(".progress-count");
   const [doneBefore, total] = (await progress.textContent())!.match(/^(\d+)\/(\d+) complete$/)!.slice(1).map(Number);
   expect(doneBefore).toBeGreaterThanOrEqual(1); expect(total).toBeGreaterThanOrEqual(4);
+  expect(total).toBe(await todayGroup.locator("li").count());
   const overdueCount = Number(await overdueGroup.locator(".badge").textContent());
   expect(overdueCount).toBeGreaterThanOrEqual(1);
 
@@ -433,4 +439,87 @@ test("Home renders and captures with reduced motion", async ({ page, request }, 
   await page.getByRole("button", { name: "Capture task", exact: true }).click();
   await expect(page.getByText("Task captured.", { exact: true })).toBeVisible();
   expect((await (await request.get("/api/tasks")).json()).some((t: { title: string }) => t.title === title)).toBe(true);
+});
+
+test("Home collapses by available width with the sidebar: no cramped columns at 1280 and 1180", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop viewports with the sidebar.");
+  for (const size of [{ width: 1280, height: 800 }, { width: 1180, height: 800 }, { width: 1366, height: 700 }]) {
+    await page.setViewportSize(size);
+    await page.goto(`/?date=${monthDate}`);
+    await expect(page.locator(".home-calendar .calendar-controls h2")).not.toBeEmpty();
+    const today = (await page.locator(".today-card").boundingBox())!, calendar = (await page.locator(".home-calendar").boundingBox())!;
+    const singleColumn = calendar.y >= today.y + today.height - 1;
+    if (!singleColumn) {
+      expect((await page.locator(".quick-capture-card input[name=title]").boundingBox())!.width).toBeGreaterThanOrEqual(220);
+      expect((await page.locator(`.home-calendar [data-date="${monthDate}"]`).boundingBox())!.width).toBeGreaterThanOrEqual(70);
+    } else expect(size.width).toBeLessThan(1366);
+    expect(await noPageScroll(page)).toEqual({ horizontal: true, vertical: true });
+  }
+});
+
+test("Today focus rings stay inside the scrolling group", async ({ page, request, baseURL }) => {
+  const { today } = await todayInWorkspace(request);
+  await request.post("/api/tasks", { headers: headers(baseURL!), data: { title: `Focus ring ${crypto.randomUUID().slice(0, 6)}`, plannedDate: today, mutationId: crypto.randomUUID() } });
+  await page.goto("/");
+  const group = page.locator(".today-card").getByRole("region", { name: "Planned and due today", exact: true });
+  const button = group.locator(".complete-task").first();
+  await expect(button).toBeVisible();
+  await button.focus();
+  await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab");
+  const fits = async (target: Locator) => target.evaluate((el) => {
+    const style = getComputedStyle(el), ring = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
+    let scroller = el.parentElement!;
+    while (getComputedStyle(scroller).overflowY === "visible") scroller = scroller.parentElement!;
+    const r = el.getBoundingClientRect(), c = scroller.getBoundingClientRect();
+    const left = c.left + scroller.clientLeft, top = c.top + scroller.clientTop;
+    return { visible: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0,
+      inside: r.left - ring >= left - 0.5 && r.top - ring >= top - 0.5 && r.right + ring <= left + scroller.clientWidth + 0.5 && r.bottom + ring <= top + scroller.clientHeight + 0.5 };
+  });
+  await expect(button).toBeFocused();
+  expect(await fits(button)).toEqual({ visible: true, inside: true });
+  const lastLink = group.locator(".task-title").last();
+  await lastLink.focus();
+  await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab");
+  await expect(lastLink).toBeFocused();
+  expect(await fits(lastLink)).toEqual({ visible: true, inside: true });
+});
+
+test("Today inline completion failure shows a full-width error that does not overlap the title", async ({ page, request, baseURL }) => {
+  const { today } = await todayInWorkspace(request);
+  const title = `Fail complete ${crypto.randomUUID().slice(0, 6)}`;
+  const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: today, mutationId: crypto.randomUUID() } })).json();
+  await page.goto("/");
+  let failed = false;
+  await page.route(`**/api/tasks/${task.id}`, async (route) => {
+    if (!failed && route.request().method() === "PATCH") {
+      failed = true;
+      await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Task changed. Review the latest version and try again." }) });
+    } else await route.continue();
+  });
+  const row = page.locator(".today-card li").filter({ has: page.getByRole("link", { name: title, exact: true }) });
+  await row.getByRole("button", { name: `Complete ${title}`, exact: true }).click();
+  const alert = row.getByRole("alert");
+  await expect(alert).toHaveText("Task changed. Review the latest version and try again.");
+  const a = (await alert.boundingBox())!, t = (await row.getByRole("link", { name: title, exact: true }).boundingBox())!, r = (await row.boundingBox())!;
+  expect(a.y).toBeGreaterThanOrEqual(t.y + t.height - 1);
+  expect(a.width).toBeGreaterThan(r.width * 0.9);
+  expect((await (await request.get(`/api/tasks/${task.id}`)).json()).status).not.toBe("Done");
+});
+
+test("Short or zoomed Home (1440x450) scrolls the page instead of clipping the calendar", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop zoom equivalent.");
+  await page.setViewportSize({ width: 1440, height: 450 });
+  await page.goto(`/?date=${monthDate}`);
+  const controls = page.locator(".home-calendar .calendar-controls");
+  await expect(page.locator(".home-calendar .calendar-controls h2")).not.toBeEmpty();
+  expect(await page.evaluate(() => document.scrollingElement!.scrollHeight > innerHeight)).toBe(true);
+  for (const target of [controls, page.locator(`.home-calendar [data-date="${monthDate}"]`), page.locator(".home-calendar [data-date]").last()]) {
+    await target.scrollIntoViewIfNeeded();
+    await expect(target).toBeInViewport();
+  }
+  const calendarHeight = (await page.locator(".home-calendar").boundingBox())!.height;
+  expect(calendarHeight).toBeGreaterThanOrEqual(400);
+  const clipped = await page.evaluate(() => [...document.querySelectorAll(".home-page, .home-workbench, .home-left, .today-card, .home-calendar")]
+    .filter((el) => getComputedStyle(el).overflowY === "hidden" && el.scrollHeight > el.clientHeight + 1).map((el) => el.className));
+  expect(clipped).toEqual([]);
 });
