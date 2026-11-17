@@ -4,6 +4,7 @@ import { listProjects, getProjectProgress, projectStatuses } from "./projects";
 import { listTasks, taskStatuses } from "./tasks";
 import { dateInTimezone, dateOnlySchema } from "./dates";
 import { listEvents } from "./events";
+import { taskHref } from "./links";
 
 // Planned work is a non-deleted event linked to the task: an all-day event's date, or a timed event's start day in `timezone`
 // (the event's own zone when omitted). Returns each task's planned dates in ascending order.
@@ -21,8 +22,9 @@ export const searchSchema = z.object({
   projectId: z.string().min(1).optional(), date: dateOnlySchema.optional(), important: z.enum(["true", "false", "unset"]).optional(),
 }).strict();
 
-export function searchWorkspace(db: Pick<AppDatabase, "select">, ownerId: string, input: unknown) {
-  const data = searchSchema.parse(input), q = data.q.toLowerCase(), planned = plannedDates(db, ownerId);
+// `timezone` is the owner's preference zone, so planned dates match Today (homeData).
+export function searchWorkspace(db: Pick<AppDatabase, "select">, ownerId: string, input: unknown, timezone?: string) {
+  const data = searchSchema.parse(input), q = data.q.toLowerCase(), planned = plannedDates(db, ownerId, timezone);
   const items: WorkItem[] = [
     ...listProjects(db, ownerId).filter((p) => `${p.name} ${p.description}`.toLowerCase().includes(q) &&
       (!data.status || p.status === data.status) && !data.important && (!data.projectId || p.id === data.projectId) &&
@@ -34,7 +36,7 @@ export function searchWorkspace(db: Pick<AppDatabase, "select">, ownerId: string
       (!data.important || t.important === (data.important === "unset" ? null : data.important === "true")) &&
       (!data.projectId || (data.projectId === "inbox" ? !t.projectId : t.projectId === data.projectId)) &&
        (!data.date || planned.get(t.id)?.includes(data.date) || t.dueDate === data.date || (t.dueAt && dateInTimezone(t.dueAt, t.timezone!) === data.date))).map((t) => ({
-      kind: "task" as const, id: t.id, title: t.title, href: `${t.projectId ? `/projects/${t.projectId}` : "/inbox"}?task=${t.id}`,
+      kind: "task" as const, id: t.id, title: t.title, href: taskHref(t),
       date: t.dueDate ?? t.dueAt ?? planned.get(t.id)?.[0] ?? null, dateKind: t.dueDate || t.dueAt ? "deadline" as const : planned.has(t.id) ? "planned" as const : null,
       updatedAt: t.updatedAt,
     })),

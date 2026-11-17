@@ -49,6 +49,14 @@ describe("phase 1.3 planned dates", () => {
     expect(searchWorkspace(w.db, w.bob.id, { q: title }).items).toEqual([]);
   });
 
+  it("search matches planned dates on the owner's local day, like Today", () => {
+    const title = `Zoned search ${crypto.randomUUID()}`, t = task({ title });
+    // 12:30Z on 2027-06-01 is 2027-06-02 00:30 in Pacific/Auckland (NZST, UTC+12).
+    createEvent(w.db, w.alice.id, { title: "Plan", taskId: t.id, start: "2027-06-01T12:30:00Z", end: "2027-06-01T13:30:00Z", timezone: "UTC", mutationId: crypto.randomUUID() });
+    expect(searchWorkspace(w.db, w.alice.id, { q: title, date: "2027-06-02" }, "Pacific/Auckland").items.map((i) => i.id)).toEqual([t.id]);
+    expect(searchWorkspace(w.db, w.alice.id, { q: title, date: "2027-06-02" }, "UTC").items).toEqual([]);
+  });
+
   it("another owner cannot change a task", () => {
     const t = task({ title: "Alice only" });
     expect(() => updateTask(w.db, w.bob.id, t.id, t.revision, { title: "Bob was here", mutationId: crypto.randomUUID() })).toThrow(/not found/i);

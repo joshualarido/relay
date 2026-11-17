@@ -2,13 +2,13 @@ import Link from "next/link";
 import { AlertTriangle, CalendarDays, Check } from "lucide-react";
 import { currentSession, requireUserId } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
-import type { Task } from "@/lib/db/schema";
 import { getPreferences } from "@/lib/preferences";
 import { listProjects } from "@/lib/projects";
 import { listTasks } from "@/lib/tasks";
 import { listEvents } from "@/lib/events";
 import { dateInTimezone, dateOnlySchema } from "@/lib/dates";
 import { homeData } from "@/lib/workbench";
+import { taskHref } from "@/lib/links";
 import { QuickCapture } from "@/components/quick-capture";
 import { ManualCalendar } from "@/components/manual-calendar";
 import { TaskComplete } from "@/components/task-complete";
@@ -30,7 +30,6 @@ export default async function HomePage({ searchParams }: {
   const overdue = new Set(data.overdue.map((task) => task.id));
   const plannedToday = new Set(data.plannedToday.map((task) => task.id));
   const currentDay = data.todayTasks.filter((task) => !overdue.has(task.id));
-  const taskHref = (task: Task) => `${task.projectId ? `/projects/${task.projectId}` : "/inbox"}?task=${task.id}`;
   const dateText = (value: string) => value.length === 10
     ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`))
     : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: timezone }).format(new Date(value));

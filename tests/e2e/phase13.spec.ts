@@ -202,6 +202,10 @@ test("Home crowded date shows a keyboard-reachable +N more popover", async ({ pa
 test("Home day capture button selects the capture date by keyboard", async ({ page }, info) => {
   const day = info.project.name === "mobile" ? "2027-09-23" : "2027-09-22";
   await page.goto(`/?date=${day}`);
+  const label = `${Number(day.slice(8))} September 2027`;
+  // Tasks take no date, so the hint offers a capture date only for types that use one.
+  await expect(page.getByRole("link", { name: `Go to ${label}`, exact: true })).toBeAttached();
+  await page.getByLabel("Capture type", { exact: true }).selectOption("project");
   const button = page.getByRole("link", { name: `Capture on ${Number(day.slice(8))} September 2027`, exact: true });
   await page.locator(".home-calendar").getByRole("button", { name: "Today", exact: true }).focus();
   await tabTo(page, button);

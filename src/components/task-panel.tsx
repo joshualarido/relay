@@ -32,7 +32,7 @@ export function TaskPanel({ task, projects, focus }: { task: Task | null; projec
         (trigger || document.getElementById("main"))?.focus();
       }}>
       <Dialog.Title className={focus ? "text-2xl font-semibold mb-4" : "sr-only"}>{focus ? "Focus mode" : "Task details"}</Dialog.Title>
-      <Dialog.Description className="muted mb-5">Saved task details. Changes are manual and recorded in history.</Dialog.Description>
+      <Dialog.Description className="muted mb-5">Saved task details. You can undo changes from the notification.</Dialog.Description>
       <Button variant="ghost" className="dialog-close" aria-label="Close task details" disabled={pending} onClick={close}><X size={20} /></Button>
       {!task ? <p>Task not found.</p> : <div className="stack">
         <h2 className="text-xl break-words">{task.title}</h2>
@@ -75,7 +75,7 @@ export function TaskPanel({ task, projects, focus }: { task: Task | null; projec
       <Dialog.Root open={Boolean(preview)} onOpenChange={(open) => { if (!open && !pending) setPreview(null); }}>
         <Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="form-dialog">
           <Dialog.Title className="text-xl font-semibold">Delete task?</Dialog.Title>
-          <Dialog.Description className="muted mt-3">These records will be soft-deleted together and remain recoverable.</Dialog.Description>
+          <Dialog.Description className="muted mt-3">These records will be deleted together. You can undo this from the notification.</Dialog.Description>
           <ul className="preview-list">{preview?.records.map((r) => <li key={r.id}>{r.label}<span className="muted">{r.entityType}</span></li>)}</ul>
           {error && <p role="alert" className="error-message">{error}</p>}
           <div className="form-actions"><Button variant="outline" disabled={pending} onClick={() => setPreview(null)}>Cancel</Button>

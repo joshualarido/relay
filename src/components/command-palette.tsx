@@ -57,7 +57,7 @@ export function CommandPalette({ projects, open, onOpenChange, returnFocus }: {
       {result && <div className="stack" aria-live="polite"><p className="muted">{result.total} matches{result.total > result.items.length ? "; showing the first 100. Refine your filters to find the rest." : "."}</p>
         <ul className="work-list">{result.items.map((r) => <li key={`${r.kind}-${r.id}`}><Link className="text-primary" href={r.href} onClick={(e) => { if (capturing) e.preventDefault(); else { clearSearch(); setOpen(false); } }}>{r.title}</Link><p className="muted text-sm">{r.kind}{r.date ? ` / ${r.dateKind === "planned" ? "Planned" : "Deadline"} ${r.date}` : ""}</p></li>)}</ul>
       </div>}
-      <section className="section stack"><h2>Capture to Inbox</h2><QuickCapture onSaved={() => setResult(null)} onPendingChange={setCapturing} /></section>
+      <section className="section stack"><h2>Capture to Inbox</h2><QuickCapture onSaved={() => setResult(null)} onPendingChange={setCapturing} onOpen={() => { clearSearch(); setOpen(false); }} /></section>
       <nav aria-label="Quick navigation" className="flex flex-wrap gap-4">{[["/", "Today"], ["/projects", "Projects"], ["/calendar", "Calendar"], ["/settings", "Settings"]].map(([href, name]) => <Link className="text-primary" key={href} href={href} onClick={(e) => { if (capturing) e.preventDefault(); else { clearSearch(); setOpen(false); } }}>{name}</Link>)}</nav>
       </div>
     </Dialog.Content></Dialog.Portal>

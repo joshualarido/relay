@@ -1,7 +1,7 @@
 "use client";
 
 import "temporal-polyfill/global";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import FullCalendar, { type CalendarRef, type EventDropInfo } from "@fullcalendar/react";
@@ -17,6 +17,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useConfirmation } from "./confirm-dialog";
+import { captureKindEvent } from "./quick-capture";
 
 type Kind = "project" | "task" | "event";
 const labels = { project: "Project deadline", task: "Task deadline", event: "Event" };
@@ -34,6 +35,12 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  // Tasks are captured without a date, so the day hint promises a capture date only for Project and Event.
+  const [captureKind, setCaptureKind] = useState("task");
+  useEffect(() => {
+    const listen = (e: globalThis.Event) => setCaptureKind(String((e as CustomEvent).detail));
+    window.addEventListener(captureKindEvent, listen); return () => window.removeEventListener(captureKindEvent, listen);
+  }, []);
   const { confirm, confirmation } = useConfirmation();
   const captureLabel = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: timezone });
   const records = [
@@ -105,7 +112,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
             aria-label={`${labels[kind]}: ${info.event.title}`}><span aria-hidden="true">{info.timeText && `${info.timeText} `}{labels[kind]}: {info.event.title}</span></Link>;
         }}
         dayCellClass={(info) => info.isToday ? "calendar-today" : ""}
-        navLinks={home} navLinkClass="calendar-day-capture" navLinkHint={(_text, day) => `Capture on ${captureLabel.format(day)}`}
+        navLinks={home} navLinkClass="calendar-day-capture" navLinkHint={(_text, day) => `${captureKind === "task" ? "Go to" : "Capture on"} ${captureLabel.format(day)}`}
         navLinkDayClick={(_day, jsEvent) => {
           const value = (jsEvent.target as HTMLElement | null)?.closest("[data-date]")?.getAttribute("data-date");
           if (value) chooseDate(value.slice(0, 10));
