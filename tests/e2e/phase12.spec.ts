@@ -80,8 +80,9 @@ test("event rescheduling is an app decision and Cancel preserves saved dates and
 test("Home creates all three types and detailed Inbox retains matrix classification", async ({ page, request }, info) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   await page.goto("/");
-  const capture = page.getByLabel("Quick capture", { exact: true });
-  await expect(capture).toBeVisible();
+  await expect(page.getByLabel("Quick capture", { exact: true })).toBeVisible();
+  // The title label follows the capture type ("Project name", "Event title"), so target the field itself.
+  const capture = page.locator(".quick-capture-card input[name=title]");
   await page.getByLabel("Capture type", { exact: true }).selectOption("project");
   await capture.fill(`Home project ${suffix}`);
   await page.getByLabel("Deadline", { exact: true }).fill("2027-04-01");

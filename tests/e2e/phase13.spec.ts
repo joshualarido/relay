@@ -1,4 +1,5 @@
-import { test, expect, type Locator, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { join } from "node:path";
 
 const headers = (origin: string) => ({ origin });
 const monthDate = "2027-03-15";
@@ -209,4 +210,227 @@ test("Home month navigation changes the title and highlights today", async ({ pa
   await expect(title).toHaveText(next!);
   await page.getByRole("button", { name: "Today", exact: true }).click();
   await expect(title).toHaveText(current!);
+});
+
+async function todayInWorkspace(request: APIRequestContext) {
+  const { timezone } = await (await request.get("/api/preferences")).json();
+  const ymd = (offset: number) => new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(Date.now() + offset * 86_400_000));
+  return { today: ymd(0), yesterday: ymd(-1) };
+}
+
+async function openPalette(page: Page, mobile: boolean) {
+  if (mobile) {
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await page.getByRole("dialog", { name: "Workspace navigation" }).getByRole("button", { name: "Search and commands" }).click();
+  } else await page.getByRole("button", { name: "Search and commands" }).click();
+  return page.getByRole("dialog", { name: "Search and commands", exact: true });
+}
+
+const noPageScroll = (page: Page) => page.evaluate(() => ({
+  horizontal: document.documentElement.scrollWidth <= innerWidth,
+  vertical: document.scrollingElement!.scrollHeight <= innerHeight,
+}));
+
+test("Home desktop and tablet geometry: 45/55 columns, single column below 1100px, no page scroll", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop and tablet viewports; mobile is covered separately.");
+  for (const size of [{ width: 1440, height: 900 }, { width: 1366, height: 700 }]) {
+    await page.setViewportSize(size);
+    await page.goto(`/?date=${monthDate}`);
+    await expect(page.locator(`.home-calendar [data-date="${monthDate}"]`)).toBeVisible();
+    const workbench = (await page.locator(".home-workbench").boundingBox())!;
+    const left = (await page.locator(".today-card").boundingBox())!;
+    const calendar = (await page.locator(".home-calendar").boundingBox())!;
+    expect(Math.abs((await page.locator(".quick-capture-card").boundingBox())!.y - calendar.y)).toBeLessThan(2);
+    const ratio = left.width / workbench.width;
+    expect(ratio).toBeGreaterThan(0.4); expect(ratio).toBeLessThan(0.5);
+    expect(calendar.x).toBeGreaterThan(left.x + left.width);
+    expect(await noPageScroll(page)).toEqual({ horizontal: true, vertical: true });
+  }
+  for (const size of [{ width: 1024, height: 768 }, { width: 820, height: 1180 }]) {
+    await page.setViewportSize(size);
+    await page.goto(`/?date=${monthDate}`);
+    await expect(page.locator(`.home-calendar [data-date="${monthDate}"]`)).toBeVisible();
+    const capture = (await page.locator(".quick-capture-card").boundingBox())!;
+    const today = (await page.locator(".today-card").boundingBox())!;
+    const calendar = (await page.locator(".home-calendar").boundingBox())!;
+    expect(today.y).toBeGreaterThan(capture.y + capture.height - 1);
+    expect(calendar.y).toBeGreaterThan(today.y + today.height - 1);
+    expect(Math.abs(calendar.width - today.width)).toBeLessThan(2);
+    await expect(page.getByRole("heading", { name: "Today's tasks", exact: true })).toBeInViewport();
+    await expect(page.locator(".home-calendar .calendar-controls")).toBeInViewport();
+    const cell = (await page.locator(`.home-calendar [data-date="${monthDate}"]`).boundingBox())!;
+    expect(cell.width).toBeGreaterThan(60); expect(cell.height).toBeGreaterThan(20);
+    expect(await noPageScroll(page)).toEqual({ horizontal: true, vertical: true });
+  }
+});
+
+test("Home mobile stacks Capture, Today, Calendar without overflow", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "390x844 mobile layout.");
+  await page.goto(`/?date=${monthDate}`);
+  await expect(page.locator(`.home-calendar [data-date="${monthDate}"]`)).toBeAttached();
+  const ys = await Promise.all([".quick-capture-card", ".today-card", ".home-calendar"].map(async (s) => (await page.locator(s).boundingBox())!.y));
+  expect(ys[0]).toBeLessThan(ys[1]); expect(ys[1]).toBeLessThan(ys[2]);
+  expect(await noPageScroll(page)).toEqual({ horizontal: true, vertical: true });
+});
+
+test("Other routes still scroll when content is taller than the viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 400 });
+  await page.goto("/settings");
+  const scrolled = await page.evaluate(() => {
+    for (const el of [document.scrollingElement!, document.querySelector(".workspace-main")!]) { el.scrollTop = 200; if (el.scrollTop > 0) return true; }
+    return false;
+  });
+  expect(scrolled).toBe(true);
+});
+
+test("Today groups overdue and current-day work, completes inline, and updates connected views", async ({ page, request, baseURL }, info) => {
+  const s = `${info.project.name.slice(0, 1)}${crypto.randomUUID().slice(0, 6)}`, h = headers(baseURL!);
+  const { today, yesterday } = await todayInWorkspace(request);
+  const make = async (data: Record<string, unknown>) => (await request.post("/api/tasks", { headers: h, data: { ...data, mutationId: crypto.randomUUID() } })).json();
+  const project = await (await request.post("/api/projects", { headers: h, data: { name: `Today project ${s}`, mutationId: crypto.randomUUID() } })).json();
+  await make({ title: `Overdue ${s}`, dueDate: yesterday, important: true, urgent: false });
+  const planned = await make({ title: `Planned today ${s}`, plannedDate: today, projectId: project.id });
+  await make({ title: `Due today ${s}`, dueDate: today, projectId: project.id });
+  await make({ title: `Both today ${s}`, plannedDate: today, dueDate: today });
+  const done = await make({ title: `Done today ${s}`, plannedDate: today });
+  await request.patch(`/api/tasks/${done.id}`, { headers: h, data: { status: "Done", expectedRevision: done.revision, mutationId: crypto.randomUUID() } });
+  await make({ title: `Past planned ${s}`, plannedDate: yesterday });
+
+  await page.goto("/");
+  const card = page.locator(".today-card");
+  const overdueGroup = card.getByRole("region", { name: "Overdue", exact: true });
+  const todayGroup = card.getByRole("region", { name: "Planned and due today", exact: true });
+  const row = (group: Locator, title: string) => group.locator("li").filter({ has: page.getByRole("link", { name: title, exact: true }) });
+  await expect(row(overdueGroup, `Overdue ${s}`)).toContainText("Overdue / Inbox / Schedule");
+  await expect(card.getByRole("link", { name: `Past planned ${s}`, exact: true })).toHaveCount(0);
+  for (const title of [`Planned today ${s}`, `Due today ${s}`, `Done today ${s}`]) await expect(row(todayGroup, title)).toBeVisible();
+  await expect(card.getByRole("link", { name: `Both today ${s}`, exact: true })).toHaveCount(1);
+  await expect(row(todayGroup, `Planned today ${s}`)).toContainText(`Today / Today project ${s} / Unclassified`);
+  await expect(row(todayGroup, `Done today ${s}`).getByLabel("Completed")).toBeVisible();
+
+  const progress = card.locator(".progress-count");
+  const [doneBefore, total] = (await progress.textContent())!.match(/^(\d+)\/(\d+) complete$/)!.slice(1).map(Number);
+  expect(doneBefore).toBeGreaterThanOrEqual(1); expect(total).toBeGreaterThanOrEqual(4);
+  const overdueCount = Number(await overdueGroup.locator(".badge").textContent());
+  expect(overdueCount).toBeGreaterThanOrEqual(1);
+
+  await row(todayGroup, `Planned today ${s}`).getByRole("button", { name: `Complete Planned today ${s}`, exact: true }).click();
+  await expect(progress).toHaveText(`${doneBefore + 1}/${total} complete`);
+  await expect(row(todayGroup, `Planned today ${s}`).getByLabel("Completed")).toBeVisible();
+  expect(Number(await overdueGroup.locator(".badge").textContent())).toBe(overdueCount);
+  const record = page.locator(`[data-calendar-record="planned:${planned.id}"]`);
+  if (await record.isVisible()) await expect(record).toHaveCSS("opacity", "0.6");
+  expect((await (await request.get(`/api/tasks/${planned.id}`)).json()).status).toBe("Done");
+
+  const palette = await openPalette(page, info.project.name === "mobile");
+  await palette.getByLabel("Search workspace").fill(`Planned today ${s}`);
+  await palette.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(palette.getByRole("link", { name: `Planned today ${s}`, exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.goto("/projects");
+  await expect(page.getByLabel(`Today project ${s} progress`)).toHaveAttribute("value", "50");
+});
+
+test("Today shows empty-state copy when nothing is planned, due, or overdue", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, storageState: join(process.env.RELAY_TEST_DIR!, "bob.json") });
+  try {
+    const page = await context.newPage();
+    const { today } = await todayInWorkspace(context.request);
+    const tasks = await (await context.request.get("/api/tasks")).json() as { dueDate: string | null; plannedDate: string | null; dueAt: string | null }[];
+    test.skip(tasks.some((t) => t.plannedDate === today || (t.dueDate ?? t.dueAt ?? "9999") <= `${today}T23:59`), "Bob already has Today work.");
+    await page.goto("/");
+    const group = page.locator(".today-card").getByRole("region", { name: "Planned and due today", exact: true });
+    await expect(group.getByText("Nothing here yet. Capture a task or plan one on the calendar.", { exact: true })).toBeVisible();
+    await expect(page.locator(".today-card .progress-count")).toHaveText("0/0 complete");
+  } finally { await context.close(); }
+});
+
+test("Quick Capture failure keeps input, shows an inline error, and retries without duplicates", async ({ page, request }, info) => {
+  const title = `Retry capture ${info.project.name} ${crypto.randomUUID().slice(0, 6)}`, date = "2027-10-14";
+  await page.goto("/");
+  let failed = false;
+  await page.route("**/api/tasks", async (route) => {
+    if (!failed && route.request().method() === "POST") {
+      failed = true;
+      await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Could not save the task. Try again." }) });
+    } else await route.continue();
+  });
+  const card = page.locator(".quick-capture-card");
+  await card.locator("input[name=title]").fill(title);
+  await card.getByLabel("Planned work date", { exact: true }).fill(date);
+  await card.getByRole("button", { name: "Capture task", exact: true }).click();
+  await expect(card.getByRole("alert")).toHaveText("Could not save the task. Try again.");
+  await expect(card.locator("input[name=title]")).toHaveValue(title);
+  await expect(card.getByLabel("Planned work date", { exact: true })).toHaveValue(date);
+  await card.getByRole("button", { name: "Capture task", exact: true }).click();
+  await expect(page.getByText("Task captured.", { exact: true })).toBeVisible();
+  const tasks = await (await request.get("/api/tasks")).json() as { title: string; plannedDate: string }[];
+  expect(tasks.filter((t) => t.title === title)).toEqual([expect.objectContaining({ plannedDate: date })]);
+});
+
+test("Home calendar items open the task panel, project page, and event panel", async ({ page, request, baseURL }, info) => {
+  const s = crypto.randomUUID().slice(0, 6), h = headers(baseURL!);
+  const month = info.project.name === "mobile" ? "2027-12" : "2027-11";
+  const project = await (await request.post("/api/projects", { headers: h, data: { name: `Click project ${s}`, deadline: `${month}-10`, mutationId: crypto.randomUUID() } })).json();
+  const task = await (await request.post("/api/tasks", { headers: h, data: { title: `Click task ${s}`, dueDate: `${month}-11`, mutationId: crypto.randomUUID() } })).json();
+  const event = await (await request.post("/api/events", { headers: h, data: { title: `Click event ${s}`, allDay: true, start: `${month}-12`, end: `${month}-13`, timezone: "UTC", mutationId: crypto.randomUUID() } })).json();
+  const open = async (record: string) => {
+    await page.goto(`/?date=${month}-11`);
+    const link = page.locator(`[data-calendar-record="${record}"]`);
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+  };
+  await open(`task:${task.id}`);
+  await expect(page.getByRole("dialog", { name: "Task details", exact: true })).toBeVisible();
+  await open(`event:${event.id}`);
+  await expect(page.getByRole("dialog", { name: "Event details", exact: true })).toBeVisible();
+  await open(`project:${project.id}`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${project.id}`));
+  await expect(page.getByRole("heading", { level: 1, name: `Click project ${s}` })).toBeVisible();
+});
+
+test("Palette labels a planned-only task date as Planned", async ({ page, request, baseURL }, info) => {
+  const title = `Palette planned ${crypto.randomUUID().slice(0, 6)}`;
+  await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: "2027-10-20", mutationId: crypto.randomUUID() } });
+  await page.goto("/");
+  const palette = await openPalette(page, info.project.name === "mobile");
+  await palette.getByLabel("Search workspace").fill(title);
+  await palette.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(palette.locator("li").filter({ has: page.getByRole("link", { name: title, exact: true }) })).toContainText("task / Planned 2027-10-20");
+});
+
+test("Long titles wrap in Today and the calendar without horizontal overflow", async ({ page, request, baseURL }, info) => {
+  const { today } = await todayInWorkspace(request);
+  const title = `${info.project.name}${"Longwordwithoutbreaks".repeat(10)} ${"wrapped words ".repeat(5)}`.slice(0, 200);
+  const day = info.project.name === "mobile" ? "2027-10-27" : "2027-10-26";
+  const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: today, mutationId: crypto.randomUUID() } })).json();
+  const later = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: day, mutationId: crypto.randomUUID() } })).json();
+  expect(task.title).toHaveLength(200);
+  await page.goto(`/?date=${day}`);
+  await expect(page.locator(`.home-calendar [data-date="${day}"]`)).toBeAttached();
+  const row = page.locator(".today-card li").filter({ has: page.locator(`[data-task-link="${task.id}"]`) });
+  await expect(row).toBeAttached();
+  expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await page.locator(".today-card").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const record = page.locator(`[data-calendar-record="planned:${later.id}"]`);
+  await record.scrollIntoViewIfNeeded();
+  await expect(record).toBeVisible();
+  await expect.poll(async () => {
+    const recordBox = await record.boundingBox(), cellBox = await page.locator(`.home-calendar [data-date="${day}"]`).boundingBox();
+    return Boolean(recordBox && cellBox && recordBox.x + recordBox.width <= cellBox.x + cellBox.width + 1);
+  }).toBe(true);
+  expect(await noPageScroll(page)).toEqual({ horizontal: true, vertical: true });
+});
+
+test("Home renders and captures with reduced motion", async ({ page, request }, info) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Today's tasks", exact: true })).toBeVisible();
+  const title = `Reduced motion ${info.project.name} ${crypto.randomUUID().slice(0, 6)}`;
+  await page.locator(".quick-capture-card input[name=title]").fill(title);
+  await page.getByRole("button", { name: "Capture task", exact: true }).click();
+  await expect(page.getByText("Task captured.", { exact: true })).toBeVisible();
+  expect((await (await request.get("/api/tasks")).json()).some((t: { title: string }) => t.title === title)).toBe(true);
 });

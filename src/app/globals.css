@@ -169,7 +169,7 @@ html:has(.home-page), body:has(.home-page) { overflow: hidden; }
 .home-heading p { margin-top: 5px; color: var(--muted-foreground); }
 .home-calendar-link { display: inline-flex; align-items: center; gap: 8px; color: var(--primary); white-space: nowrap; }
 .home-page { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
-.home-workbench { display: grid; grid-template-columns: minmax(300px, .82fr) minmax(0, 1.18fr); gap: 16px; flex: 1; height: auto; min-height: 0; overflow: hidden; }
+.home-workbench { display: grid; grid-template-columns: minmax(0, 45fr) minmax(0, 55fr); gap: 16px; flex: 1; height: auto; min-height: 0; overflow: hidden; }
 .home-left { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
 .quick-capture-card { flex: 0 0 auto; padding: 18px; }
 .quick-capture-card .card-heading { margin-bottom: 0; }
@@ -179,7 +179,7 @@ html:has(.home-page), body:has(.home-page) { overflow: hidden; }
 .today-card > .card-heading { flex: 0 0 auto; }
 .today-card > .card-heading h2 { font-size: 1rem; }
 .progress-count { color: var(--muted-foreground); font-size: .8rem; white-space: nowrap; }
-.today-group { min-height: 0; overflow: auto; }
+.today-group { min-height: 0; overflow: auto; padding: 3px; margin: -3px; }
 .today-group + .today-group { margin-top: 16px; }
 .today-group-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .today-group-heading h3 { display: flex; align-items: center; gap: 7px; font-size: .85rem; font-weight: 600; }
@@ -270,6 +270,10 @@ progress::-moz-progress-bar { background: var(--primary); }
   .focus-row > .badge { grid-column: 2; justify-self: start; }
 }
 @media (min-width: 761px) and (max-width: 1100px) { .page { padding: 24px; } }
+@media (max-width: 1100px) {
+  .home-workbench { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, .8fr) minmax(0, 1.4fr); }
+  .home-left { display: contents; }
+}
 
 @media (max-width: 760px) {
   .desktop-sidebar { display: none; }

@@ -9,6 +9,7 @@ import { listTasks } from "@/lib/tasks";
 import { listEvents } from "@/lib/events";
 import { dateInTimezone, dateOnlySchema } from "@/lib/dates";
 import { homeData } from "@/lib/workbench";
+import { priorityLabel } from "@/lib/priority";
 import { QuickCapture } from "@/components/quick-capture";
 import { ManualCalendar } from "@/components/manual-calendar";
 import { TaskComplete } from "@/components/task-complete";
@@ -37,7 +38,7 @@ export default async function HomePage({ searchParams }: {
     return tasks.length ? <ul className="work-list divided-list">{tasks.map((task) => <li className={`today-task${task.status === "Done" ? " is-done" : ""}`} key={task.id}>
       <div className="today-task-check">{task.status === "Done" ? <span className="complete-mark" aria-label="Completed"><Check size={18} aria-hidden="true" /></span> : <TaskComplete task={task} />}</div>
       <div className="today-task-body"><Link className="task-title" data-task-link={task.id} href={taskHref(task)}>{task.title}</Link>
-        <p className="muted text-sm">{label} / {projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"}</p>
+        <p className="muted text-sm">{label} / {projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"} / {priorityLabel(task)}</p>
         <p className="muted text-sm">{task.plannedDate ? `Planned ${dateText(task.plannedDate)}` : ""}{task.plannedDate && (task.dueDate || task.dueAt) ? " / " : ""}{task.dueDate || task.dueAt ? `Due ${dateText((task.dueDate ?? task.dueAt)!)}` : ""}</p>
         {(task.status === "Blocked" || task.blockerReason || task.warnings.length > 0) && <p className="error-message text-sm">{task.status === "Blocked" ? "Blocked. " : ""}{task.blockerReason} {task.warnings.join(" ")}</p>}
       </div>
@@ -51,7 +52,7 @@ export default async function HomePage({ searchParams }: {
         <section className="section today-card" aria-labelledby="today-tasks-heading">
           <div className="card-heading"><h2 id="today-tasks-heading"><CalendarDays size={20} aria-hidden="true" />Today&apos;s tasks</h2><span className="progress-count">{data.todayProgress.done}/{data.todayProgress.total} complete</span></div>
           {data.overdue.length > 0 && <section className="today-group" aria-labelledby="overdue-heading"><div className="today-group-heading"><h3 id="overdue-heading"><AlertTriangle size={16} aria-hidden="true" />Overdue</h3><span className="badge badge-danger">{data.overdue.length}</span></div>{taskRows(data.todayTasks.filter((task) => overdue.has(task.id)), "Overdue")}</section>}
-          <section className="today-group" aria-labelledby="today-heading"><div className="today-group-heading"><h3 id="today-heading">Today</h3><span className="muted text-sm">{currentDay.length} tasks</span></div>{taskRows(currentDay, "Today")}</section>
+          <section className="today-group" aria-labelledby="today-heading"><div className="today-group-heading"><h3 id="today-heading">Planned and due today</h3><span className="muted text-sm">{currentDay.length} tasks</span></div>{taskRows(currentDay, "Today")}</section>
         </section>
       </div>
       <ManualCalendar home projects={projects} tasks={data.tasks} events={listEvents(db, ownerId)} timezone={timezone} weekStart={preferences.weekStart} date={date} />

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { activity } from "../../src/lib/db/schema";
 import { createProject } from "../../src/lib/projects";
 import { createTask, getTask, updateTask } from "../../src/lib/tasks";
-import { undoOperation } from "../../src/lib/lifecycle";
+import { confirmDeletion, previewDeletion, restoreDeletion, undoOperation } from "../../src/lib/lifecycle";
 import { homeData, searchWorkspace } from "../../src/lib/workbench";
 import { testWorkspace } from "../support/auth";
 
@@ -87,6 +87,8 @@ describe("phase 1.3 upgrade", () => {
     const t = createTask(w.db, w.alice.id, { title: "Legacy task", mutationId: crypto.randomUUID() });
     const edited = updateTask(w.db, w.alice.id, t.id, t.revision, { title: "Legacy edit", mutationId: crypto.randomUUID() });
     const other = createTask(w.db, w.alice.id, { title: "Legacy untouched", mutationId: crypto.randomUUID() });
+    const removed = createTask(w.db, w.alice.id, { title: "Legacy deleted", mutationId: crypto.randomUUID() });
+    const { operationId: deletion } = confirmDeletion(w.db, w.alice.id, { ...previewDeletion(w.db, w.alice.id, "task", removed.id), mutationId: crypto.randomUUID() });
     const strip = (value: unknown): unknown => {
       if (Array.isArray(value)) return value.map(strip);
       if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([k]) => k !== "plannedDate").map(([k, v]) => [k, strip(v)]));
@@ -107,5 +109,9 @@ describe("phase 1.3 upgrade", () => {
     const editLog = w.db.select().from(activity).where(eq(activity.entityId, t.id)).all().at(-1)!;
     undoOperation(w.db, w.alice.id, editLog.id, { mutationId: crypto.randomUUID() });
     expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ title: "Legacy task", plannedDate: "2027-06-01", revision: edited.revision + 1 });
+    // Restore from a legacy deletion snapshot must keep the current plannedDate too.
+    w.db.$client.prepare("UPDATE task SET planned_date=? WHERE id=?").run("2027-06-02", removed.id);
+    restoreDeletion(w.db, w.alice.id, deletion, { mutationId: crypto.randomUUID() });
+    expect(getTask(w.db, w.alice.id, removed.id)).toMatchObject({ title: "Legacy deleted", plannedDate: "2027-06-02", deletedAt: null });
   });
 });

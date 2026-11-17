@@ -138,7 +138,7 @@ for (const kind of ["check-in", "capture"]) test(`pending ${kind} cannot be dism
       const input = dialog.getByLabel(kind === "check-in" ? "Check-in" : "Quick capture", { exact: true });
       await input.fill("Keep this unsaved text");
       await dialog.getByRole("button", { name: kind === "check-in" ? "Save check-in" : "Capture task", exact: true }).click();
-      await expect(dialog.getByRole("button", { name: kind === "check-in" ? "Saving..." : "Capturing...", exact: true })).toBeDisabled();
+      await expect(dialog.getByRole("button", { name: "Saving...", exact: true })).toBeDisabled();
       await expect(input).not.toBeEditable();
       await page.keyboard.press("Escape");
       if (kind === "capture") {
