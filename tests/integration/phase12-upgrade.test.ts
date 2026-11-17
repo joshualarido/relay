@@ -1,0 +1,48 @@
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { eq } from "drizzle-orm";
+import { activity } from "../../src/lib/db/schema";
+import { createTask, getTask, updateTask } from "../../src/lib/tasks";
+import { requestHash } from "../../src/lib/activity";
+import { confirmDeletion, previewDeletion, restoreDeletion, undoOperation } from "../../src/lib/lifecycle";
+import { testWorkspace } from "../support/auth";
+
+let w: Awaited<ReturnType<typeof testWorkspace>>;
+beforeAll(async () => { w = await testWorkspace(); });
+afterAll(() => w?.close());
+
+it("upgrades populated legacy rows/history/replay results without losing priorities or bypassing later classification", () => {
+  const input = { title: "Legacy High task", priority: "High", mutationId: crypto.randomUUID() };
+  const t = createTask(w.db, w.alice.id, input);
+  const edited = updateTask(w.db, w.alice.id, t.id, 1, { title: "Legacy edit", mutationId: crypto.randomUUID() });
+  const deleted = createTask(w.db, w.alice.id, { title: "Legacy deleted", priority: "Low", mutationId: crypto.randomUUID() });
+  const deletion = confirmDeletion(w.db, w.alice.id, { ...previewDeletion(w.db, w.alice.id, "task", deleted.id), mutationId: crypto.randomUUID() });
+  const logs = w.db.select().from(activity).where(eq(activity.entityId, t.id)).all();
+  const legacy = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(legacy);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !["important", "urgent"].includes(key)).map(([key, v]) => [key, legacy(v)]));
+    return value;
+  };
+  for (const log of w.db.select().from(activity).all()) w.db.$client.prepare("UPDATE activity SET before_state=?, after_state=?, result=? WHERE id=?")
+    .run(JSON.stringify(legacy(log.beforeState)), JSON.stringify(legacy(log.afterState)), JSON.stringify(legacy(log.result)), log.id);
+  const oldCreate = { title: t.title, description: t.description, projectId: t.projectId, status: t.status, priority: t.priority,
+    dueDate: t.dueDate, dueAt: t.dueAt, timezone: t.timezone, estimateMinutes: t.estimateMinutes, blockerReason: t.blockerReason, position: t.position };
+  w.db.$client.prepare("UPDATE activity SET request_hash=? WHERE id=?").run(requestHash("task-create", null, oldCreate), logs[0].id);
+  // Recreate the exact pre-1.2/pre-1.3 schema boundary before applying upgrades.
+  w.db.$client.exec("ALTER TABLE task DROP COLUMN planned_date; ALTER TABLE task DROP COLUMN important; ALTER TABLE task DROP COLUMN urgent; DELETE FROM __drizzle_migrations WHERE created_at=(SELECT MAX(created_at) FROM __drizzle_migrations); DELETE FROM __drizzle_migrations WHERE created_at=(SELECT MAX(created_at) FROM __drizzle_migrations)");
+  migrate(w.db, { migrationsFolder: "./drizzle" });
+  expect(w.db.$client.pragma("integrity_check", { simple: true })).toBe("ok");
+  expect(w.db.$client.pragma("foreign_key_check")).toEqual([]);
+  expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ priority: "High", important: null, urgent: null, title: "Legacy edit" });
+  restoreDeletion(w.db, w.alice.id, deletion.operationId, { mutationId: crypto.randomUUID() });
+  expect(getTask(w.db, w.alice.id, deleted.id)).toMatchObject({ title: "Legacy deleted", priority: "Low", important: null, urgent: null });
+  expect(createTask(w.db, w.alice.id, input)).toMatchObject({ id: t.id, priority: "High", important: null, urgent: null });
+  expect(() => createTask(w.db, w.alice.id, { ...input, important: true })).toThrow(/reused/i);
+  undoOperation(w.db, w.alice.id, logs[1].id, { mutationId: crypto.randomUUID() });
+  const recovered = getTask(w.db, w.alice.id, t.id);
+  expect(recovered).toMatchObject({ title: "Legacy High task", important: null, urgent: null, revision: edited.revision + 1 });
+  updateTask(w.db, w.alice.id, t.id, recovered.revision, { important: false, urgent: true, mutationId: crypto.randomUUID() });
+  expect(() => undoOperation(w.db, w.alice.id, logs[0].id, { mutationId: crypto.randomUUID() })).toThrow(/changed/i);
+  expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ important: false, urgent: true });
+});

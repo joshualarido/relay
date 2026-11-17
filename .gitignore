@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+data/
+.artifacts/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.superpowers/
