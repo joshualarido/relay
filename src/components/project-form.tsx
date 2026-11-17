@@ -9,7 +9,7 @@ import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useProjectCompletion } from "./project-completion";
 
-const statuses = ["Planned", "Active", "Paused", "Completed"];
+const statuses = ["Planned", "Active", "Paused", "Done"];
 
 export function ProjectForm({ project, initialOpen = false, initialTitle = "", onClose }: { project?: Project; initialOpen?: boolean; initialTitle?: string; onClose?: () => void }) {
   const [open, setOpenState] = useState(initialOpen);
@@ -42,7 +42,7 @@ export function ProjectForm({ project, initialOpen = false, initialTitle = "", o
             ...(project ? { expectedRevision: project.revision } : {}) };
           setPending(true); setError(""); setFields({});
           try {
-            const completionPreview = project && status === "Completed" && project.status !== "Completed" ? await reviewCompletion(project.id, project.name) : undefined;
+            const completionPreview = project && status === "Done" && project.status !== "Done" ? await reviewCompletion(project.id, project.name) : undefined;
             if (completionPreview === null) return;
             const payload = JSON.stringify({ ...input, completionPreview });
             if (lastPayload.current !== payload) { mutationId.current = crypto.randomUUID(); lastPayload.current = payload; }

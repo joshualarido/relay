@@ -17,7 +17,7 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
   const project = () => projects.createProject(w.db, w.alice.id, { name: "Cascade", mutationId: crypto.randomUUID() });
   const task = (projectId: string | null, data = {}) => createTask(w.db, w.alice.id, { title: "Child", projectId, ...data, mutationId: crypto.randomUUID() });
   const complete = (id: string, preview = projects.previewProjectCompletion(w.db, w.alice.id, id), mutationId = crypto.randomUUID()) =>
-    projects.updateProject(w.db, w.alice.id, id, 1, { status: "Completed", completionPreview: preview, mutationId });
+    projects.updateProject(w.db, w.alice.id, id, 1, { status: "Done", completionPreview: preview, mutationId });
 
   it("stores explicit independent importance/urgency, defaults to unclassified, and filters false values", () => {
     const plain = task(null);
@@ -49,7 +49,7 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
     expect(logs).toHaveLength(1);
     expect(logs[0].afterState).toHaveLength(2);
     undoOperation(w.db, w.alice.id, logs[0].id, { mutationId: crypto.randomUUID() });
-    expect(getTask(w.db, w.alice.id, child.id)).toMatchObject({ status: "Backlog", completedAt: null, revision: 3 });
+    expect(getTask(w.db, w.alice.id, child.id)).toMatchObject({ status: "To do", completedAt: null, revision: 3 });
     expect(projects.getProject(w.db, w.alice.id, p.id).status).toBe("Planned");
   });
 
@@ -69,7 +69,7 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
 
   it("refuses missing/foreign previews and rolls back a failed cascade audit", () => {
     const p = project(), child = task(p.id);
-    expect(() => projects.updateProject(w.db, w.alice.id, p.id, 1, { status: "Completed", mutationId: crypto.randomUUID() })).toThrow(/preview|unfinished/i);
+    expect(() => projects.updateProject(w.db, w.alice.id, p.id, 1, { status: "Done", mutationId: crypto.randomUUID() })).toThrow(/preview|unfinished/i);
     expect(() => projects.previewProjectCompletion(w.db, w.bob.id, p.id)).toThrow(/not found/i);
     const preview = projects.previewProjectCompletion(w.db, w.alice.id, p.id);
     w.db.$client.exec("CREATE TRIGGER fail_cascade BEFORE INSERT ON activity BEGIN SELECT RAISE(ABORT, 'cascade audit failure'); END");
@@ -85,7 +85,7 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
     const operation = w.db.select().from(activity).all().at(-1)!;
     const newer = updateTask(w.db, w.alice.id, child.id, 2, { title: "Later work", mutationId: crypto.randomUUID() });
     expect(() => undoOperation(w.db, w.alice.id, operation.id, { mutationId: crypto.randomUUID() })).toThrow(/changed/i);
-    expect(projects.getProject(w.db, w.alice.id, p.id).status).toBe("Completed");
+    expect(projects.getProject(w.db, w.alice.id, p.id).status).toBe("Done");
     const reopened = projects.updateProject(w.db, w.alice.id, p.id, completed.revision, { status: "Active", mutationId: crypto.randomUUID() });
     const paused = projects.updateProject(w.db, w.alice.id, p.id, reopened.revision, { status: "Paused", mutationId: crypto.randomUUID() });
     projects.archiveProject(w.db, w.alice.id, p.id, paused.revision, { archived: true, mutationId: crypto.randomUUID() });
@@ -94,13 +94,13 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
 
   it("board completion uses the same child preview and records one reversible cascade", () => {
     const p = project(), child = task(p.id);
-    const all = projects.listProjects(w.db, w.alice.id).filter((r) => r.status === "Completed" || r.id === p.id);
+    const all = projects.listProjects(w.db, w.alice.id).filter((r) => r.status === "Done" || r.id === p.id);
     const result = projects.reorderProjects(w.db, w.alice.id, {
-      id: p.id, status: "Completed", orderedIds: all.map((r) => r.id),
+      id: p.id, status: "Done", orderedIds: all.map((r) => r.id),
       expectedRevisions: all.map(({ id, revision }) => ({ id, revision })),
       completionPreview: projects.previewProjectCompletion(w.db, w.alice.id, p.id), mutationId: crypto.randomUUID(),
     });
-    expect(result.find((r) => r.id === p.id)?.status).toBe("Completed");
+    expect(result.find((r) => r.id === p.id)?.status).toBe("Done");
     expect(getTask(w.db, w.alice.id, child.id).status).toBe("Done");
   });
 
@@ -114,7 +114,7 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
   });
 
   it("completion preserves linked/independent events and outside prerequisites while previewing blocker warnings", () => {
-    const p = project(), outsideProject = project(), child = task(p.id, { status: "Blocked", blockerReason: "Awaiting review" }), prerequisite = task(outsideProject.id);
+    const p = project(), outsideProject = project(), child = task(p.id, { status: "Doing", blockerReason: "Awaiting review" }), prerequisite = task(outsideProject.id);
     addDependency(w.db, w.alice.id, { taskId: child.id, prerequisiteId: prerequisite.id, mutationId: crypto.randomUUID() });
     const event = (taskId: string | null) => createEvent(w.db, w.alice.id, { title: "Keep event", taskId, start: "2027-04-01", end: "2027-04-02", allDay: true, timezone: "UTC", mutationId: crypto.randomUUID() });
     const linked = event(child.id), independent = event(null);

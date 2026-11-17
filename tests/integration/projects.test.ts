@@ -28,7 +28,7 @@ describe("projects and transactional mutation/history", () => {
   it("rejects empty names, invalid dates/statuses, and submitted ownership", () => {
     for (const invalid of [
       { name: "" }, { name: "  " }, { name: "X", deadline: "2027-02-30" },
-      { name: "X", status: "Done" }, { name: "X", ownerId: workspace.bob.id },
+      { name: "X", status: "Completed" }, { name: "X", ownerId: workspace.bob.id },
     ]) expect(() => createProject(workspace.db, workspace.alice.id, { ...invalid, mutationId: crypto.randomUUID() })).toThrow();
   });
 

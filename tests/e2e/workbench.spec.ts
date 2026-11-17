@@ -38,7 +38,7 @@ test("manual Home capture, search/palette, check-in, dependency warning and Focu
   await page.getByLabel("Task status", { exact: true }).selectOption("Done");
   await page.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(focus.getByText(/Completed at/)).toBeVisible();
-  expect((await (await request.get(`/api/tasks/${prerequisite.id}`)).json()).status).toBe("Backlog");
+  expect((await (await request.get(`/api/tasks/${prerequisite.id}`)).json()).status).toBe("To do");
   expect((await (await request.get("/api/tasks")).json()).length).toBe(countBefore);
   await focus.getByRole("button", { name: `Remove dependency on ${prerequisite.title}`, exact: true }).click();
   await expect(focus.getByText(/Waiting on/)).toHaveCount(0);

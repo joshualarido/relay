@@ -86,13 +86,13 @@ test("task status/order controls persist and project completion requires acknowl
   const second = page.getByRole("article", { name: "Second task", exact: true });
   await second.getByRole("button", { name: "Move Second task earlier", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("region", { name: "Backlog", exact: true }).getByRole("article").first()).toHaveAttribute("aria-label", "Second task");
+  await expect(page.getByRole("region", { name: "To do", exact: true }).getByRole("article").first()).toHaveAttribute("aria-label", "Second task");
   await page.reload();
-  await expect(page.getByRole("region", { name: "Backlog", exact: true }).getByRole("article").first()).toHaveAttribute("aria-label", "Second task");
+  await expect(page.getByRole("region", { name: "To do", exact: true }).getByRole("article").first()).toHaveAttribute("aria-label", "Second task");
   await second.getByLabel("Change task status").selectOption("Done");
   await expect(page.getByText("50% complete", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit project", exact: true }).click();
-  await page.getByLabel("Status", { exact: true }).selectOption("Completed");
+  await page.getByLabel("Status", { exact: true }).selectOption("Done");
   await page.getByRole("button", { name: "Save project", exact: true }).click();
   const confirmation = page.getByRole("alertdialog", { name: "Complete project?" });
   await expect(confirmation).toContainText("1 unfinished task");
@@ -111,15 +111,15 @@ test("desktop task pointer drag persists its new status", async ({ page, request
   const handle = page.getByRole("button", { name: "Drag Drag this task", exact: true });
   await handle.scrollIntoViewIfNeeded();
   const start = await handle.boundingBox();
-  const target = await page.getByRole("region", { name: "Next", exact: true }).boundingBox();
+  const target = await page.getByRole("region", { name: "Doing", exact: true }).boundingBox();
   await page.mouse.move(start!.x + 12, start!.y + 12);
   await page.mouse.down();
   await page.mouse.move(start!.x + 30, start!.y + 30, { steps: 5 });
   await page.mouse.move(target!.x + 70, target!.y + 80, { steps: 15 });
   await page.mouse.up();
-  await expect(page.getByRole("region", { name: "Next", exact: true }).getByRole("article", { name: "Drag this task" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Doing", exact: true }).getByRole("article", { name: "Drag this task" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("region", { name: "Next", exact: true }).getByRole("article", { name: "Drag this task" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Doing", exact: true }).getByRole("article", { name: "Drag this task" })).toBeVisible();
 });
 
 test("timed date filters use the deadline zone", async ({ page, request, baseURL }) => {

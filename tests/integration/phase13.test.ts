@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { and, eq } from "drizzle-orm";
+import journal from "../../drizzle/meta/_journal.json";
 import { activity } from "../../src/lib/db/schema";
 import { createProject } from "../../src/lib/projects";
 import { createTask, getTask, updateTask } from "../../src/lib/tasks";
@@ -27,7 +28,7 @@ describe("phase 1.3 planned dates", () => {
 
   it("planned edits leave status, project, completion, deadlines and priority unchanged", () => {
     const p = createProject(w.db, w.alice.id, { name: "Planned project", status: "Active", mutationId: crypto.randomUUID() });
-    const t = task({ projectId: p.id, status: "In Progress", dueAt: "2027-03-20T09:00:00Z", timezone: "UTC", important: true, urgent: false });
+    const t = task({ projectId: p.id, status: "Doing", dueAt: "2027-03-20T09:00:00Z", timezone: "UTC", important: true, urgent: false });
     const saved = updateTask(w.db, w.alice.id, t.id, t.revision, { plannedDate: "2027-03-16", mutationId: crypto.randomUUID() });
     expect(saved.plannedDate).toBe("2027-03-16");
     expect(pick(saved)).toEqual(pick(t));
@@ -98,7 +99,8 @@ describe("phase 1.3 upgrade", () => {
       .run(JSON.stringify(strip(log.beforeState)), JSON.stringify(strip(log.afterState)), JSON.stringify(strip(log.result)), log.id);
     expect(JSON.stringify(w.db.select().from(activity).all())).not.toContain("plannedDate");
     // Recreate the pre-1.3 schema boundary (0006 adds planned_date), then apply the upgrade.
-    w.db.$client.exec("ALTER TABLE task DROP COLUMN planned_date; DELETE FROM __drizzle_migrations WHERE created_at=(SELECT MAX(created_at) FROM __drizzle_migrations)");
+    const phase13When = journal.entries.find((e) => e.tag === "0006_fearless_edwin_jarvis")!.when;
+    w.db.$client.exec(`ALTER TABLE task DROP COLUMN planned_date; DELETE FROM __drizzle_migrations WHERE created_at >= ${phase13When}`);
     migrate(w.db, { migrationsFolder: "./drizzle" });
     expect(w.db.$client.pragma("integrity_check", { simple: true })).toBe("ok");
     expect(w.db.$client.pragma("foreign_key_check")).toEqual([]);

@@ -50,6 +50,13 @@
       "when": 1794808388319,
       "tag": "0006_fearless_edwin_jarvis",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794894788319,
+      "tag": "0007_v3_statuses",
+      "breakpoints": true
     }
   ]
 }

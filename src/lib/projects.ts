@@ -7,7 +7,7 @@ import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "
 import { AppError } from "./errors";
 import { dependencyWarnings } from "./dependencies";
 
-export const projectStatuses = ["Planned", "Active", "Paused", "Completed"] as const;
+export const projectStatuses = ["Planned", "Active", "Paused", "Done"] as const;
 
 const fields = {
   name: z.string().trim().min(1, "Enter a project name.").max(200),
@@ -105,7 +105,7 @@ export function updateProject(db: AppDatabase, ownerId: string, id: string, expe
     if (previous) return previous.result as Project;
     const before = getProject(tx, ownerId, id);
     if (before.revision !== expectedRevision) throw new AppError(409, "Project changed. Reload and try again.");
-    const children = data.status === "Completed" && before.status !== "Completed"
+    const children = data.status === "Done" && before.status !== "Done"
       ? completeChildren(tx, ownerId, id, completionPreview) : { beforeState: [], afterState: [] };
     const result = tx.update(project).set({ ...data, revision: before.revision + 1, updatedAt: new Date().toISOString() })
       .where(and(eq(project.id, id), eq(project.ownerId, ownerId), eq(project.revision, expectedRevision))).returning().get()!;
@@ -162,7 +162,7 @@ export function reorderProjects(db: AppDatabase, ownerId: string, input: unknown
       affected.some((p) => data.expectedRevisions.filter((r) => r.id === p.id && r.revision === p.revision).length !== 1)) {
       throw new AppError(409, "Project order changed. Reload and try again.");
     }
-    const children = data.status === "Completed" && moving.status !== "Completed"
+    const children = data.status === "Done" && moving.status !== "Done"
       ? completeChildren(tx, ownerId, moving.id, data.completionPreview) : { beforeState: [], afterState: [] };
     const results = data.orderedIds.map((id, position) => {
       const before = affected.find((p) => p.id === id)!;

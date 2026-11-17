@@ -8,7 +8,7 @@ import { getProject, listProjects } from "./projects";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "./activity";
 import { AppError } from "./errors";
 
-export const taskStatuses = ["Backlog", "Next", "In Progress", "Blocked", "Done"] as const;
+export const taskStatuses = ["To do", "Doing", "Done"] as const;
 export const priorities = ["Low", "Medium", "High"] as const;
 const fields = {
   title: z.string().min(1).max(500).refine((v) => v.trim().length > 0, "Enter a task title."),
@@ -28,7 +28,7 @@ const fields = {
 };
 const createSchema = z.object({
   ...fields, description: fields.description.default(""), projectId: fields.projectId.default(null),
-  status: fields.status.default("Backlog"), priority: fields.priority.default("Medium"),
+  status: fields.status.default("To do"), priority: fields.priority.default("Medium"),
   important: fields.important.default(null), urgent: fields.urgent.default(null),
   plannedDate: fields.plannedDate.default(null),
   dueDate: fields.dueDate.default(null), dueAt: fields.dueAt.default(null), timezone: fields.timezone.default(null),

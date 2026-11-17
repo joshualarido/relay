@@ -12,7 +12,7 @@ import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useProjectCompletion } from "./project-completion";
 
-const statuses = ["Planned", "Active", "Paused", "Completed"] as const;
+const statuses = ["Planned", "Active", "Paused", "Done"] as const;
 type Status = Project["status"];
 
 function ProjectCard({ project, disabled, move, index, count, progress }: {
@@ -69,7 +69,7 @@ export function ProjectBoard({ projects, archived, progress }: { projects: Proje
     const affected = projects.filter((p) => p.status === status || p.id === id);
     setPending(true); setError("");
     try {
-      const completionPreview = status === "Completed" && moving.status !== "Completed" ? await reviewCompletion(id, moving.name) : undefined;
+      const completionPreview = status === "Done" && moving.status !== "Done" ? await reviewCompletion(id, moving.name) : undefined;
       if (completionPreview === null) return;
       const response = await fetch("/api/projects/reorder", {
         method: "POST", headers: { "Content-Type": "application/json" },

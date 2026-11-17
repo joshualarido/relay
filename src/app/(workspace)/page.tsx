@@ -40,7 +40,7 @@ export default async function HomePage({ searchParams }: {
       <div className="today-task-body"><Link className="task-title" data-task-link={task.id} href={taskHref(task)}>{task.title}</Link>
         <p className="muted text-sm">{label} / {projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"} / {priorityLabel(task)}</p>
         <p className="muted text-sm">{task.plannedDate ? `Planned ${dateText(task.plannedDate)}` : ""}{task.plannedDate && (task.dueDate || task.dueAt) ? " / " : ""}{task.dueDate || task.dueAt ? `Due ${dateText((task.dueDate ?? task.dueAt)!)}` : ""}</p>
-        {(task.status === "Blocked" || task.blockerReason || task.warnings.length > 0) && <p className="error-message text-sm">{task.status === "Blocked" ? "Blocked. " : ""}{task.blockerReason} {task.warnings.join(" ")}</p>}
+        {(task.blockerReason || task.warnings.length > 0) && <p className="error-message text-sm">{task.blockerReason} {task.warnings.join(" ")}</p>}
       </div>
     </li>)}</ul> : <p className="muted">Nothing here yet. Capture a task or plan one on the calendar.</p>;
   }

@@ -55,9 +55,9 @@ describe("conflict-safe manual recovery", () => {
     expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ title: t.title, projectId: p.id, completedAt: null, revision: 3 });
     expect(getTask(w.db, w.alice.id, other.id)).toEqual(other);
     const order = mutation();
-    reorderTasks(w.db, w.alice.id, { id: t.id, projectId: q.id, status: "Next", orderedIds: [t.id], expectedRevisions: [{ id: t.id, revision: 3 }], ...order });
+    reorderTasks(w.db, w.alice.id, { id: t.id, projectId: q.id, status: "Doing", orderedIds: [t.id], expectedRevisions: [{ id: t.id, revision: 3 }], ...order });
     undo(operation(order.mutationId).id);
-    expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ projectId: p.id, status: "Backlog", revision: 5 });
+    expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ projectId: p.id, status: "To do", revision: 5 });
     const e = makeEvent(), move = mutation();
     rescheduleEvent(w.db, w.alice.id, e.id, 1, { start: "2027-03-15T09:00:00Z", ...move });
     undo(operation(move.mutationId).id);
@@ -187,7 +187,7 @@ describe("conflict-safe manual recovery", () => {
   it("rejects stale multi-record undo and restore without touching any sibling or history", () => {
     const p = project(), a = makeTask(p.id), b = makeTask(p.id), order = mutation();
     reorderTasks(w.db, w.alice.id, {
-      id: b.id, projectId: p.id, status: "Backlog", orderedIds: [b.id, a.id],
+      id: b.id, projectId: p.id, status: "To do", orderedIds: [b.id, a.id],
       expectedRevisions: [{ id: a.id, revision: 1 }, { id: b.id, revision: 1 }], ...order,
     });
     updateTask(w.db, w.alice.id, a.id, 2, { title: "Later edit", ...mutation() });

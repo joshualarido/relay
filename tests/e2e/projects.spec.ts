@@ -112,7 +112,7 @@ test("project drag moves status and refresh retains it", async ({ page, request 
     data: { title: `Drag child ${name}`, projectId: project.id, mutationId: crypto.randomUUID() } })).json();
   await page.getByLabel("Search projects").fill(name);
   const active = await handle.boundingBox();
-  const completed = await page.getByRole("region", { name: "Completed", exact: true }).boundingBox();
+  const completed = await page.getByRole("region", { name: "Done", exact: true }).boundingBox();
   await page.mouse.move(active!.x + 12, active!.y + 12);
   await page.mouse.down();
   await page.mouse.move(active!.x + 30, active!.y + 30, { steps: 5 });
@@ -122,6 +122,6 @@ test("project drag moves status and refresh retains it", async ({ page, request 
   await expect(confirmation).toContainText(child.title);
   // dnd-kit briefly suppresses clicks after a drop; also verify keyboard confirmation.
   await confirmation.getByRole("button", { name: "Complete project", exact: true }).press("Space", { delay: 100 });
-  await expect(page.getByRole("region", { name: "Completed", exact: true }).getByRole("article", { name })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Done", exact: true }).getByRole("article", { name })).toBeVisible();
   expect((await (await request.get(`/api/tasks/${child.id}`)).json()).status).toBe("Done");
 });

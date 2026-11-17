@@ -8,7 +8,7 @@ import type { Project, Task } from "@/lib/db/schema";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 
-const statuses = ["Backlog", "Next", "In Progress", "Blocked", "Done"];
+const statuses = ["To do", "Doing", "Done"];
 
 export function TaskForm({ task, projects, projectId = null, warnings = [], initialOpen = false, onClose }: { task?: Task; projects: Project[]; projectId?: string | null; warnings?: string[]; initialOpen?: boolean; onClose?: () => void }) {
   const [open, setOpenState] = useState(initialOpen);
@@ -64,7 +64,7 @@ export function TaskForm({ task, projects, projectId = null, warnings = [], init
         <div className="field"><label htmlFor={`${prefix}-description`}>Task description</label><textarea {...field("description")} defaultValue={task?.description} rows={3} maxLength={20000} />{errors("description")}</div>
         <div className="field"><label htmlFor={`${prefix}-projectId`}>Project</label><select {...field("projectId")} defaultValue={task?.projectId ?? projectId ?? ""}><option value="">Inbox (unassigned)</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.archivedAt ? " (archived)" : ""}</option>)}</select>{errors("projectId")}</div>
         <div className="form-grid">
-          <div className="field"><label htmlFor={`${prefix}-status`}>Task status</label><select {...field("status")} defaultValue={task?.status ?? "Backlog"}>{statuses.map((s) => <option key={s}>{s}</option>)}</select>{errors("status")}</div>
+          <div className="field"><label htmlFor={`${prefix}-status`}>Task status</label><select {...field("status")} defaultValue={task?.status ?? "To do"}>{statuses.map((s) => <option key={s}>{s}</option>)}</select>{errors("status")}</div>
           {(["important", "urgent"] as const).map((dimension) => <div className="field" key={dimension}><label htmlFor={`${prefix}-${dimension}`}>{dimension === "important" ? "Important" : "Urgent"}</label>
             <select {...field(dimension)} defaultValue={task?.[dimension] == null ? "" : String(task[dimension])}><option value="">Unset</option><option value="true">Yes</option><option value="false">No</option></select>{errors(dimension)}</div>)}
         </div>

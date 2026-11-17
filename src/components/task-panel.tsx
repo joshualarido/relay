@@ -65,7 +65,7 @@ export function TaskPanel({ task, projects, tasks, checkIns, dependencies, focus
             setPending(true); setError("");
             try {
               const response = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ expectedRevision: task.revision, status: "Next", mutationId: crypto.randomUUID() }) });
+                body: JSON.stringify({ expectedRevision: task.revision, status: "To do", mutationId: crypto.randomUUID() }) });
               const result = await response.json();
               if (!response.ok) throw new Error(result.error);
               notifyMutation(response, () => router.refresh()); router.refresh();

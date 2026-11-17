@@ -14,7 +14,7 @@ import { notifyMutation } from "./mutation-notice";
 import { priorityLabel, quadrants } from "@/lib/priority";
 import { PriorityMatrix } from "./priority-matrix";
 
-const statuses = ["Backlog", "Next", "In Progress", "Blocked", "Done"] as const;
+const statuses = ["To do", "Doing", "Done"] as const;
 type Status = Task["status"];
 type Move = (id: string, status: Status, position?: number) => void;
 

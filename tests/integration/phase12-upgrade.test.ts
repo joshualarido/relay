@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { eq } from "drizzle-orm";
+import journal from "../../drizzle/meta/_journal.json";
 import { activity } from "../../src/lib/db/schema";
 import { createTask, getTask, updateTask } from "../../src/lib/tasks";
 import { requestHash } from "../../src/lib/activity";
@@ -30,7 +31,8 @@ it("upgrades populated legacy rows/history/replay results without losing priorit
     dueDate: t.dueDate, dueAt: t.dueAt, timezone: t.timezone, estimateMinutes: t.estimateMinutes, blockerReason: t.blockerReason, position: t.position };
   w.db.$client.prepare("UPDATE activity SET request_hash=? WHERE id=?").run(requestHash("task-create", null, oldCreate), logs[0].id);
   // Recreate the exact pre-1.2/pre-1.3 schema boundary before applying upgrades.
-  w.db.$client.exec("ALTER TABLE task DROP COLUMN planned_date; ALTER TABLE task DROP COLUMN important; ALTER TABLE task DROP COLUMN urgent; DELETE FROM __drizzle_migrations WHERE created_at=(SELECT MAX(created_at) FROM __drizzle_migrations); DELETE FROM __drizzle_migrations WHERE created_at=(SELECT MAX(created_at) FROM __drizzle_migrations)");
+  const phase12When = journal.entries.find((e) => e.tag === "0005_phase12_priorities")!.when;
+  w.db.$client.exec(`ALTER TABLE task DROP COLUMN planned_date; ALTER TABLE task DROP COLUMN important; ALTER TABLE task DROP COLUMN urgent; DELETE FROM __drizzle_migrations WHERE created_at >= ${phase12When}`);
   migrate(w.db, { migrationsFolder: "./drizzle" });
   expect(w.db.$client.pragma("integrity_check", { simple: true })).toBe("ok");
   expect(w.db.$client.pragma("foreign_key_check")).toEqual([]);

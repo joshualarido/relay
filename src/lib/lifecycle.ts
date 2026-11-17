@@ -2,6 +2,7 @@ import type { AppDatabase } from "./db";
 import { z } from "zod";
 import { and, eq, isNull } from "drizzle-orm";
 import { project, task, event, checkIn, dependency, activity, type Snapshot } from "./db/schema";
+import { normalizeSnapshot } from "./legacy";
 import { AppError } from "./errors";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "./activity";
 import { assertNoCycle } from "./dependencies";
@@ -104,7 +105,9 @@ function recoverOperation(db: AppDatabase, ownerId: string, operationId: string,
   return db.transaction((tx) => {
     const replay = replayMutation(tx, ownerId, mutationId, hash);
     if (replay) return replay.result as { operationId: string };
-    const original = tx.select().from(activity).where(and(eq(activity.id, operationId), eq(activity.ownerId, ownerId))).get();
+    const stored = tx.select().from(activity).where(and(eq(activity.id, operationId), eq(activity.ownerId, ownerId))).get();
+    // Pre-v3 snapshots may hold legacy statuses; normalize once so comparisons and re-applied states use v3 values.
+    const original = stored && { ...stored, beforeState: stored.beforeState.map(normalizeSnapshot), afterState: stored.afterState.map(normalizeSnapshot) };
     if (!original) throw new AppError(404, "Operation not found.");
     if (original.undoneAt) throw new AppError(409, "This operation was already undone or restored.");
     const deletion = original.beforeState.length > 0 && original.beforeState.every((s) => !s.record.deletedAt) &&

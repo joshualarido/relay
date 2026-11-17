@@ -16,7 +16,7 @@ describe("manual tasks", () => {
 
   it("captures exact text in Inbox, links owned projects, and rejects foreign parents", () => {
     const t = create();
-    expect(t).toMatchObject({ title: "  Fix login and write tests  ", projectId: null, status: "Backlog", priority: "Medium" });
+    expect(t).toMatchObject({ title: "  Fix login and write tests  ", projectId: null, status: "To do", priority: "Medium" });
     expect(tasks.listTasks(w.db, w.alice.id).find((v) => v.id === t.id)).toEqual(t);
     expect(() => tasks.getTask(w.db, w.bob.id, t.id)).toThrow(/not found/i);
     const p = project();
@@ -53,7 +53,7 @@ describe("manual tasks", () => {
     const count = tasks.listTasks(w.db, w.alice.id).length;
     const done = tasks.updateTask(w.db, w.alice.id, t.id, 1, { status: "Done", mutationId: crypto.randomUUID() });
     expect(done.completedAt).toBeTruthy();
-    const reopened = tasks.updateTask(w.db, w.alice.id, t.id, 2, { status: "Next", mutationId: crypto.randomUUID() });
+    const reopened = tasks.updateTask(w.db, w.alice.id, t.id, 2, { status: "Doing", mutationId: crypto.randomUUID() });
     expect(reopened.completedAt).toBeNull();
     const history = w.db.select().from(activity).where(eq(activity.entityId, t.id)).all();
     expect(history).toHaveLength(3);
@@ -65,9 +65,9 @@ describe("manual tasks", () => {
   it("moves and orders tasks, with atomic stale-membership checks and retry protection", () => {
     const p = project();
     const a = create();
-    const b = create({ projectId: p.id, status: "Next" });
+    const b = create({ projectId: p.id, status: "Doing" });
     const input = {
-      id: a.id, projectId: p.id, status: "Next", orderedIds: [a.id, b.id],
+      id: a.id, projectId: p.id, status: "Doing", orderedIds: [a.id, b.id],
       expectedRevisions: [{ id: a.id, revision: 1 }, { id: b.id, revision: 1 }], mutationId: crypto.randomUUID(),
     };
     const result = tasks.reorderTasks(w.db, w.alice.id, input);
@@ -83,8 +83,8 @@ describe("manual tasks", () => {
     const a = create({ projectId: p.id });
     const b = create({ projectId: p.id, status: "Done" });
     expect(getProjectProgress(w.db, w.alice.id, p.id)).toEqual({ total: 2, done: 1, percent: 50 });
-    expect(() => updateProject(w.db, w.alice.id, p.id, 1, { status: "Completed", mutationId: crypto.randomUUID() })).toThrow(/unfinished/i);
-    const completed = updateProject(w.db, w.alice.id, p.id, 1, { status: "Completed", completionPreview: previewProjectCompletion(w.db, w.alice.id, p.id), mutationId: crypto.randomUUID() });
+    expect(() => updateProject(w.db, w.alice.id, p.id, 1, { status: "Done", mutationId: crypto.randomUUID() })).toThrow(/unfinished/i);
+    const completed = updateProject(w.db, w.alice.id, p.id, 1, { status: "Done", completionPreview: previewProjectCompletion(w.db, w.alice.id, p.id), mutationId: crypto.randomUUID() });
     expect(tasks.getTask(w.db, w.alice.id, a.id).status).toBe("Done");
     archiveProject(w.db, w.alice.id, p.id, completed.revision, { archived: true, mutationId: crypto.randomUUID() });
     expect(tasks.listTasks(w.db, w.alice.id).some((t) => [a.id, b.id].includes(t.id))).toBe(false);

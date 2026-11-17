@@ -112,10 +112,10 @@ test("Home creates all three types and detailed Inbox retains matrix classificat
 test("project board previews affected tasks and rejects a stale completion without native dialogs", async ({ page, request, baseURL }) => {
   const headers = { origin: baseURL! }, suffix = crypto.randomUUID();
   const p = await (await request.post("/api/projects", { headers, data: { name: `Preview ${suffix}`, mutationId: crypto.randomUUID() } })).json();
-  const t = await (await request.post("/api/tasks", { headers, data: { title: `Blocked child ${suffix}`, status: "Blocked", blockerReason: "Review required", projectId: p.id, mutationId: crypto.randomUUID() } })).json();
+  const t = await (await request.post("/api/tasks", { headers, data: { title: `Blocked child ${suffix}`, status: "Doing", blockerReason: "Review required", projectId: p.id, mutationId: crypto.randomUUID() } })).json();
   await page.goto("/projects");
   const card = page.getByRole("article", { name: p.name, exact: true });
-  await card.getByLabel("Project status").selectOption("Completed");
+  await card.getByLabel("Project status").selectOption("Done");
   const confirm = page.getByRole("alertdialog", { name: "Complete project?", exact: true });
   await expect(confirm).toContainText(t.title);
   await expect(confirm).toContainText("Review required");
@@ -123,10 +123,10 @@ test("project board previews affected tasks and rejects a stale completion witho
   await confirm.getByRole("button", { name: "Complete project", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: /affected records changed/i })).toBeVisible();
   expect((await (await request.get(`/api/projects/${p.id}`)).json()).status).toBe("Planned");
-  expect((await (await request.get(`/api/tasks/${t.id}`)).json()).status).toBe("Blocked");
-  await card.getByLabel("Project status").selectOption("Completed");
+  expect((await (await request.get(`/api/tasks/${t.id}`)).json()).status).toBe("Doing");
+  await card.getByLabel("Project status").selectOption("Done");
   await confirm.getByRole("button", { name: "Complete project", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Completed", exact: true }).getByRole("article", { name: p.name, exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Done", exact: true }).getByRole("article", { name: p.name, exact: true })).toBeVisible();
   expect((await (await request.get(`/api/tasks/${t.id}`)).json()).status).toBe("Done");
 });
 

@@ -58,7 +58,7 @@ export const project = sqliteTable("project", {
   ownerId: text("owner_id").notNull().references(() => user.id),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
-  status: text("status", { enum: ["Planned", "Active", "Paused", "Completed"] }).notNull().default("Planned"),
+  status: text("status", { enum: ["Planned", "Active", "Paused", "Done"] }).notNull().default("Planned"),
   deadline: text("deadline"),
   position: integer("position").notNull().default(0),
   revision: integer("revision").notNull().default(1),
@@ -77,7 +77,7 @@ export const task = sqliteTable("task", {
   projectId: text("project_id").references(() => project.id),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
-  status: text("status", { enum: ["Backlog", "Next", "In Progress", "Blocked", "Done"] }).notNull().default("Backlog"),
+  status: text("status", { enum: ["To do", "Doing", "Done"] }).notNull().default("To do"),
   // ponytail: retain legacy priority for old snapshots/replays; remove only with a versioned history migration.
   priority: text("priority", { enum: ["Low", "Medium", "High"] }).notNull().default("Medium"),
   important: integer("important", { mode: "boolean" }),
