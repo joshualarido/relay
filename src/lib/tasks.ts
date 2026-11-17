@@ -49,19 +49,28 @@ export function getTask(db: Pick<AppDatabase, "select">, ownerId: string, id: st
   return result;
 }
 
+// Pre-v3 creates (main@691c3bb) hashed the parsed request in this key order, with legacy statuses
+// (default "Backlog") and dormant fields at their defaults; before Phase 1.2 important/urgent/plannedDate were absent.
+// A retry of such a create after the upgrade must replay instead of failing as a reused mutation id.
+const legacyStatuses = { "To do": ["Backlog", "Next"], Doing: ["In Progress", "Blocked"], Done: ["Done"] } as const;
+function legacyCreateHashes(data: Omit<z.infer<typeof createSchema>, "mutationId">) {
+  const { title, description, projectId, important, dueDate, dueAt, timezone, position } = data;
+  return legacyStatuses[data.status].flatMap((status) => {
+    const before = { title, description, projectId, status, priority: "Medium" };
+    const after = { dueDate, dueAt, timezone, estimateMinutes: null, blockerReason: "", position };
+    return [
+      requestHash("task-create", null, { ...before, important, urgent: null, plannedDate: null, ...after }),
+      ...(important === null ? [requestHash("task-create", null, { ...before, ...after })] : []),
+    ];
+  });
+}
+
 export function createTask(db: AppDatabase, ownerId: string, input: unknown): Task {
   const { mutationId, ...data } = createSchema.parse(input);
   validateDeadline(data);
   const hash = requestHash("task-create", null, data);
   return db.transaction((tx) => {
-    // Creates recorded before v3 hashed the dormant priority/urgent/estimate/blocker fields at their defaults
-    // (and, before Phase 1.2, without important/urgent). A retry of such a create must still replay.
-    const { title, description, projectId, status, important, dueDate, dueAt, timezone, position } = data;
-    const legacy = [requestHash("task-create", null, { title, description, projectId, status, priority: "Medium", important, urgent: null,
-      dueDate, dueAt, timezone, estimateMinutes: null, blockerReason: "", position })];
-    if (important === null) legacy.push(requestHash("task-create", null, { title, description, projectId, status, priority: "Medium",
-      dueDate, dueAt, timezone, estimateMinutes: null, blockerReason: "", position }));
-    const previous = replayMutation(tx, ownerId, mutationId, hash, legacy);
+    const previous = replayMutation(tx, ownerId, mutationId, hash, legacyCreateHashes(data));
     if (previous) {
       const saved = previous.result as Task;
       return { ...saved, important: saved.important ?? null, urgent: saved.urgent ?? null };

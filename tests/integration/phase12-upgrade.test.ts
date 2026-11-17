@@ -30,7 +30,8 @@ it("upgrades populated legacy rows/history/replay results without losing priorit
   };
   for (const log of w.db.select().from(activity).all()) w.db.$client.prepare("UPDATE activity SET before_state=?, after_state=?, result=? WHERE id=?")
     .run(JSON.stringify(legacy(log.beforeState)), JSON.stringify(legacy(log.afterState)), JSON.stringify(legacy(log.result)), log.id);
-  const oldCreate = { title: t.title, description: t.description, projectId: t.projectId, status: t.status, priority: t.priority,
+  // Pre-1.2 createSchema output (no important/urgent/plannedDate); status defaulted to "Backlog".
+  const oldCreate = { title: t.title, description: t.description, projectId: t.projectId, status: "Backlog", priority: t.priority,
     dueDate: t.dueDate, dueAt: t.dueAt, timezone: t.timezone, estimateMinutes: t.estimateMinutes, blockerReason: t.blockerReason, position: t.position };
   w.db.$client.prepare("UPDATE activity SET request_hash=? WHERE id=?").run(requestHash("task-create", null, oldCreate), logs[0].id);
   // Recreate the exact pre-1.2/pre-1.3 schema boundary before applying upgrades.

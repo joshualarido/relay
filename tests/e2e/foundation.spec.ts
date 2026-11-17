@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createWriteStream, writeFileSync } from "node:fs";
@@ -97,8 +98,11 @@ test("populated manual workspace stays coherent, accessible and persistent acros
           try { return (await restartContext.request.get("/login", { timeout: 1000 })).status(); } catch { return 0; }
         }, { timeout: 20_000 }).toBe(200);
         expect(await (await restartContext.request.get(`/api/tasks/${saved.id}`)).json()).toEqual(saved);
-        const history = await (await restartContext.request.get("/api/history")).json();
-        expect(history).toHaveLength(256);
+        // No history API in v3: read the activity log straight from the isolated test database.
+        const sqlite = new Database(path, { readonly: true });
+        try {
+          expect(sqlite.prepare("SELECT count(*) AS n FROM activity WHERE owner_id = ?").get(workspace.alice.id)).toEqual({ n: 256 });
+        } finally { sqlite.close(); }
       } finally {
         if (server.exitCode === null) { const exited = once(server, "exit"); server.kill(); await exited; }
         log.end();

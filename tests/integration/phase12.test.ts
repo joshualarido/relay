@@ -37,13 +37,18 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
     expect(() => searchWorkspace(w.db, w.alice.id, { priority: "High" })).toThrow();
   });
 
-  it("replays a create recorded with the pre-v3 request shape (dormant fields at defaults)", () => {
-    const input = { title: "Retry me", important: true, mutationId: crypto.randomUUID() }, t = createTask(w.db, w.alice.id, input);
-    const v2 = { title: t.title, description: "", projectId: null, status: "To do", priority: "Medium", important: true, urgent: null,
-      dueDate: null, dueAt: null, timezone: null, estimateMinutes: null, blockerReason: "", position: 0 };
-    w.db.$client.prepare("UPDATE activity SET request_hash = ? WHERE mutation_id = ?").run(requestHash("task-create", null, v2), input.mutationId);
-    expect(createTask(w.db, w.alice.id, input)).toEqual(t);
-    expect(() => createTask(w.db, w.alice.id, { ...input, important: false })).toThrow(/reused/i);
+  it("replays creates whose request hash was stored by main@691c3bb", () => {
+    // main's createSchema output, in key order: status defaulted to "Backlog"; a client could also have sent "Next".
+    for (const [legacyStatus, body] of [["Backlog", {}], ["Next", { status: "To do" }]] as const) {
+      const input = { title: `Retry ${legacyStatus}`, important: true, ...body, mutationId: crypto.randomUUID() };
+      const t = createTask(w.db, w.alice.id, input);
+      const mainRequest = { title: input.title, description: "", projectId: null, status: legacyStatus, priority: "Medium",
+        important: true, urgent: null, plannedDate: null, dueDate: null, dueAt: null, timezone: null,
+        estimateMinutes: null, blockerReason: "", position: 0 };
+      w.db.$client.prepare("UPDATE activity SET request_hash = ? WHERE mutation_id = ?").run(requestHash("task-create", null, mainRequest), input.mutationId);
+      expect(createTask(w.db, w.alice.id, input)).toEqual(t);
+      expect(() => createTask(w.db, w.alice.id, { ...input, important: false })).toThrow(/reused/i);
+    }
   });
 
   it("atomically completes unfinished children, preserves Done/deleted/unrelated records, and replays one operation", () => {
