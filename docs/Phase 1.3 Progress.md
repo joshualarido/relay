@@ -96,7 +96,7 @@ All against isolated test databases; never against `data/relay.db`.
 
 Open Minor items (accepted, not fixed): `/calendar` has no `+N more` limit (the
 detailed view shows every record); the legacy-upgrade test assumes 0006 is the
-latest-but-one migration; the Momentum chart test was removed with the chart.
+newest migration and will need an edit when 0007 is added; the Momentum chart test was removed with the chart.
 Remaining Minor notes are in the review files.
 
 ## Reset Record
