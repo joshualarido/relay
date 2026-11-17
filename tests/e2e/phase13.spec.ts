@@ -60,6 +60,27 @@ test("Home date click pre-fills capture and unified capture creates project, tas
   expect((await request.get("/api/tasks", { headers: headers(baseURL!) })).status()).toBe(200);
 });
 
+test("Home date click keeps a typed draft, and a cleared date saves no planned date", async ({ page, request }, info) => {
+  const title = `Draft kept ${crypto.randomUUID().slice(0, 6)}`;
+  const captureDate = info.project.name === "mobile" ? "2027-03-25" : "2027-03-18";
+  await page.goto(`/?date=${monthDate}`);
+  if (info.project.name === "mobile") await page.locator(".home-calendar .calendar-frame").evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+  await expect(page.locator(".home-calendar .calendar-controls h2")).not.toBeEmpty();
+  const capture = page.locator(".quick-capture-card input[name=title]");
+  const dateInput = page.locator(".quick-capture-card").getByLabel("Planned work date", { exact: true });
+  await capture.fill(title);
+  await expect(async () => {
+    await page.locator(`.home-calendar [data-date="${captureDate}"] .calendar-day-capture`).click();
+    await expect(dateInput).toHaveValue(captureDate, { timeout: 2_000 });
+  }).toPass();
+  await expect(capture).toHaveValue(title);
+  await dateInput.fill("");
+  await page.getByRole("button", { name: "Capture task", exact: true }).click();
+  await expect(page.getByText("Task captured.", { exact: true })).toBeVisible();
+  const tasks: { title: string; plannedDate: string | null }[] = await (await request.get("/api/tasks")).json();
+  expect(tasks.find((task) => task.title === title)?.plannedDate).toBeNull();
+});
+
 test("Home calendar renders real categories and keeps planned dates independent from deadlines", async ({ page, request, baseURL }, info) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   // One record per day in a per-project month so the +N more limit never hides them.

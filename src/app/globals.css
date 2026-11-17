@@ -168,6 +168,8 @@ label { font-weight: 500; }
 .calendar-record::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--record-color); }
 .quick-capture-form { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; gap: 10px; align-items: end; }
 .quick-capture-form .field { min-width: 0; }
+.quick-capture { container: capture / inline-size; }
+.quick-capture-form > p { grid-column: 1 / -1; }
 .home-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
 .home-heading p { margin-top: 5px; color: var(--muted-foreground); }
 .home-calendar-link { display: inline-flex; align-items: center; gap: 8px; color: var(--primary); white-space: nowrap; }
@@ -177,8 +179,8 @@ label { font-weight: 500; }
 @media (min-height: 600px) { .home-workbench { overflow: auto; } }
 @media (max-height: 599.98px) { .home-calendar { min-height: 520px; } .today-card { max-height: 70vh; } }
 .home-left { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
-.quick-capture-card { flex: 0 0 auto; padding: 18px; container-type: inline-size; }
-@container (max-width: 520px) {
+.quick-capture-card { flex: 0 0 auto; padding: 18px; }
+@container capture (max-width: 520px) {
   .quick-capture-form { grid-template-columns: minmax(0, 1fr) auto; }
   .quick-capture-form .field:first-child { grid-column: 1 / -1; }
   .quick-capture-form .field:nth-child(2) { grid-column: 1; }

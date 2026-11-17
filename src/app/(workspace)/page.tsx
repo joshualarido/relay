@@ -48,7 +48,7 @@ export default async function HomePage({ searchParams }: {
     <header className="home-heading"><div><h1>Today</h1><p>{session?.user.name.split(" ")[0]}&apos;s daily workspace / {dateText(today)}</p></div><Link className="home-calendar-link" href="/calendar"><CalendarDays size={17} aria-hidden="true" />Detailed calendar</Link></header>
     <div className="home-workbench">
       <div className="home-left">
-        <section className="section quick-capture-card"><QuickCapture key={captureDate} projects={projects} tasks={data.tasks} timezone={timezone} initialDate={captureDate} /></section>
+        <section className="section quick-capture-card"><QuickCapture projects={projects} tasks={data.tasks} timezone={timezone} initialDate={captureDate} /></section>
         <section className="section today-card" aria-labelledby="today-tasks-heading">
           <div className="card-heading"><h2 id="today-tasks-heading"><CalendarDays size={20} aria-hidden="true" />Today&apos;s tasks</h2><span className="progress-count">{data.todayProgress.done}/{data.todayProgress.total} complete</span></div>
           {data.overdue.length > 0 && <section className="today-group" aria-labelledby="overdue-heading"><div className="today-group-heading"><h3 id="overdue-heading"><AlertTriangle size={16} aria-hidden="true" />Overdue</h3><span className="badge badge-danger">{data.overdue.length}</span></div>{taskRows(data.todayTasks.filter((task) => overdue.has(task.id)), "Overdue")}</section>}

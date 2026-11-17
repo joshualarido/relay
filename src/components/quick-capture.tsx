@@ -18,6 +18,9 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [eventDraft, setEventDraft] = useState<{ title: string; date: string } | null>(null);
+  // A calendar date click updates only the date field; the typed title, type and drafts survive.
+  const [date, setDate] = useState(initialDate), [shownDate, setShownDate] = useState(initialDate);
+  if (initialDate !== shownDate) { setShownDate(initialDate); setDate(initialDate); }
   const identity = useRef({ payload: "", id: "" });
   const id = useId(), router = useRouter();
   const eventAvailable = Boolean(timezone);
@@ -35,7 +38,7 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.fields?.title?.join(" ") || result.fields?.name?.join(" ") || result.error);
-      form.reset(); identity.current = { payload: "", id: "" }; setSaved(true); onSaved?.();
+      form.reset(); setDate(initialDate); identity.current = { payload: "", id: "" }; setSaved(true); onSaved?.();
       notifyMutation(response, () => router.refresh()); router.refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save. Your input is preserved."); }
     finally { setPending(false); onPendingChange?.(false); }
@@ -51,13 +54,13 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
       : <form className="quick-capture-form" onSubmit={async (e) => {
         e.preventDefault();
         const form = e.currentTarget, data = new FormData(form), title = String(data.get("title") || "");
-        const date = String(data.get("date") || initialDate || "") || null;
-        if (kind === "event") { setEventDraft({ title, date: date ?? "" }); return; }
-        await save(form, title, date);
+        // Only Event (no date field here) falls back to the clicked date; a cleared field stays empty.
+        if (kind === "event") { setEventDraft({ title, date: initialDate }); return; }
+        await save(form, title, String(data.get("date") || "") || null);
       }}>
         <div className="field"><label className="sr-only" htmlFor={`${id}-title`}>{kind === "project" ? "Project name" : kind === "event" ? "Event title" : "Quick capture"}</label>
           <input id={`${id}-title`} name="title" maxLength={500} required disabled={pending} placeholder={kind === "project" ? "Name a project" : kind === "event" ? "Name an event" : "Capture a task"} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} /></div>
-        {kind !== "event" && <div className="field"><label htmlFor={`${id}-date`}>{dateLabel}</label><input id={`${id}-date`} name="date" type="date" defaultValue={initialDate} disabled={pending} /></div>}
+        {kind !== "event" && <div className="field"><label htmlFor={`${id}-date`}>{dateLabel}</label><input id={`${id}-date`} name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={pending} /></div>}
         <Button type="submit" disabled={pending}>{pending ? "Saving..." : kind === "task" ? "Capture task" : kind === "project" ? "Create project" : "Set event details"}</Button>
         {error && <p id={`${id}-error`} className="error-message" role="alert">{error}</p>}{saved && <p role="status" className="muted">{kind === "project" ? "Project created." : "Task captured."}</p>}
       </form>}
