@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { DropdownMenu } from "radix-ui";
+import { Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "./ui/button";
@@ -39,4 +42,15 @@ export function SignOut() {
     }}>{pending ? "Signing out..." : "Sign out"}</Button>
     {error && <p role="alert">{error}</p>}
   </div>;
+}
+
+export function AccountMenu({ name, onNavigate }: { name: string; onNavigate?: () => void }) {
+  return <DropdownMenu.Root modal={false}>
+    <DropdownMenu.Trigger className="nav-footer" aria-label={`Account menu for ${name}`} title={`Account menu for ${name}`}>
+      <span className="avatar" aria-hidden="true">{name.slice(0, 1)}</span><div className="nav-label"><strong>{name}</strong><span>Personal workspace</span></div>
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Portal><DropdownMenu.Content className="dropdown-menu account-menu" side="top" align="start" sideOffset={6}>
+      <DropdownMenu.Item asChild><Link className="dropdown-item" href="/settings" onClick={onNavigate}><Settings2 size={16} aria-hidden="true" />Settings</Link></DropdownMenu.Item>
+    </DropdownMenu.Content></DropdownMenu.Portal>
+  </DropdownMenu.Root>;
 }

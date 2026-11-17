@@ -13,10 +13,13 @@ beforeAll(async () => { w = await testWorkspace(); });
 afterAll(() => w?.close());
 
 it("upgrades populated legacy rows/history/replay results without losing priorities or bypassing later classification", () => {
-  const input = { title: "Legacy High task", priority: "High", mutationId: crypto.randomUUID() };
+  // v3: priority is dormant and no longer accepted as input; seed legacy priorities directly on the rows.
+  const input = { title: "Legacy High task", mutationId: crypto.randomUUID() };
   const t = createTask(w.db, w.alice.id, input);
+  w.db.$client.prepare("UPDATE task SET priority = 'High' WHERE id = ?").run(t.id);
   const edited = updateTask(w.db, w.alice.id, t.id, 1, { title: "Legacy edit", mutationId: crypto.randomUUID() });
-  const deleted = createTask(w.db, w.alice.id, { title: "Legacy deleted", priority: "Low", mutationId: crypto.randomUUID() });
+  const deleted = createTask(w.db, w.alice.id, { title: "Legacy deleted", mutationId: crypto.randomUUID() });
+  w.db.$client.prepare("UPDATE task SET priority = 'Low' WHERE id = ?").run(deleted.id);
   const deletion = confirmDeletion(w.db, w.alice.id, { ...previewDeletion(w.db, w.alice.id, "task", deleted.id), mutationId: crypto.randomUUID() });
   const logs = w.db.select().from(activity).where(eq(activity.entityId, t.id)).all();
   const legacy = (value: unknown): unknown => {
@@ -39,12 +42,12 @@ it("upgrades populated legacy rows/history/replay results without losing priorit
   expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ priority: "High", important: null, urgent: null, title: "Legacy edit" });
   restoreDeletion(w.db, w.alice.id, deletion.operationId, { mutationId: crypto.randomUUID() });
   expect(getTask(w.db, w.alice.id, deleted.id)).toMatchObject({ title: "Legacy deleted", priority: "Low", important: null, urgent: null });
-  expect(createTask(w.db, w.alice.id, input)).toMatchObject({ id: t.id, priority: "High", important: null, urgent: null });
+  expect(createTask(w.db, w.alice.id, input)).toMatchObject({ id: t.id, title: "Legacy High task", important: null, urgent: null });
   expect(() => createTask(w.db, w.alice.id, { ...input, important: true })).toThrow(/reused/i);
   undoOperation(w.db, w.alice.id, logs[1].id, { mutationId: crypto.randomUUID() });
   const recovered = getTask(w.db, w.alice.id, t.id);
   expect(recovered).toMatchObject({ title: "Legacy High task", important: null, urgent: null, revision: edited.revision + 1 });
-  updateTask(w.db, w.alice.id, t.id, recovered.revision, { important: false, urgent: true, mutationId: crypto.randomUUID() });
+  updateTask(w.db, w.alice.id, t.id, recovered.revision, { important: false, mutationId: crypto.randomUUID() });
   expect(() => undoOperation(w.db, w.alice.id, logs[0].id, { mutationId: crypto.randomUUID() })).toThrow(/changed/i);
-  expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ important: false, urgent: true });
+  expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ important: false });
 });

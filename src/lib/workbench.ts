@@ -1,9 +1,8 @@
 import { z } from "zod";
 import type { AppDatabase } from "./db";
 import { listProjects, getProjectProgress, projectStatuses } from "./projects";
-import { listTasks, taskStatuses, priorities } from "./tasks";
+import { listTasks, taskStatuses } from "./tasks";
 import { dateInTimezone, dateOnlySchema } from "./dates";
-import { dependencyWarnings } from "./dependencies";
 import { listEvents } from "./events";
 
 // Planned work is a non-deleted event linked to the task: an all-day event's date, or a timed event's start day in `timezone`
@@ -19,22 +18,20 @@ function plannedDates(db: Pick<AppDatabase, "select">, ownerId: string, timezone
 export type WorkItem = { kind: "project" | "task" | "event"; id: string; title: string; href: string; date: string | null; dateKind: "deadline" | "planned" | null; updatedAt: string };
 export const searchSchema = z.object({
   q: z.string().max(500).default(""), status: z.enum([...projectStatuses, ...taskStatuses]).optional(),
-  priority: z.enum(priorities).optional(), projectId: z.string().min(1).optional(), date: dateOnlySchema.optional(),
-  important: z.enum(["true", "false", "unset"]).optional(), urgent: z.enum(["true", "false", "unset"]).optional(),
+  projectId: z.string().min(1).optional(), date: dateOnlySchema.optional(), important: z.enum(["true", "false", "unset"]).optional(),
 }).strict();
 
 export function searchWorkspace(db: Pick<AppDatabase, "select">, ownerId: string, input: unknown) {
   const data = searchSchema.parse(input), q = data.q.toLowerCase(), planned = plannedDates(db, ownerId);
   const items: WorkItem[] = [
     ...listProjects(db, ownerId).filter((p) => `${p.name} ${p.description}`.toLowerCase().includes(q) &&
-      (!data.status || p.status === data.status) && !data.priority && !data.important && !data.urgent && (!data.projectId || p.id === data.projectId) &&
+      (!data.status || p.status === data.status) && !data.important && (!data.projectId || p.id === data.projectId) &&
       (!data.date || p.deadline === data.date)).map((p) => ({
       kind: "project" as const, id: p.id, title: p.name, href: `/projects/${p.id}`, date: p.deadline, dateKind: p.deadline ? "deadline" as const : null, updatedAt: p.updatedAt,
     })),
     ...listTasks(db, ownerId).filter((t) => `${t.title} ${t.description}`.toLowerCase().includes(q) &&
-      (!data.status || t.status === data.status) && (!data.priority || t.priority === data.priority) &&
+      (!data.status || t.status === data.status) &&
       (!data.important || t.important === (data.important === "unset" ? null : data.important === "true")) &&
-      (!data.urgent || t.urgent === (data.urgent === "unset" ? null : data.urgent === "true")) &&
       (!data.projectId || (data.projectId === "inbox" ? !t.projectId : t.projectId === data.projectId)) &&
        (!data.date || planned.get(t.id)?.includes(data.date) || t.dueDate === data.date || (t.dueAt && dateInTimezone(t.dueAt, t.timezone!) === data.date))).map((t) => ({
       kind: "task" as const, id: t.id, title: t.title, href: `${t.projectId ? `/projects/${t.projectId}` : "/inbox"}?task=${t.id}`,
@@ -56,8 +53,7 @@ export function homeData(db: Pick<AppDatabase, "select">, ownerId: string, timez
   const todayTasks = [...new Map([...overdue, ...currentDay].map((t) => [t.id, t])).values()]
     .sort((a, b) => (a.status === "Done" ? 1 : 0) - (b.status === "Done" ? 1 : 0) ||
       (a.dueDate ?? (isPlannedToday(a.id) ? today : null) ?? a.dueAt ?? "").localeCompare(b.dueDate ?? (isPlannedToday(b.id) ? today : null) ?? b.dueAt ?? "") ||
-      a.position - b.position || a.createdAt.localeCompare(b.createdAt))
-    .map((t) => ({ ...t, warnings: dependencyWarnings(db, ownerId, t.id) }));
+      a.position - b.position || a.createdAt.localeCompare(b.createdAt));
   return {
     projects: projects.filter((p) => p.status === "Active").map((p) => ({ ...p, progress: getProjectProgress(db, ownerId, p.id) })),
     overdue, dueToday, plannedToday, todayTasks,

@@ -2,9 +2,6 @@ import type { AppDatabase } from "@/lib/db";
 import type { Project, Task } from "@/lib/db/schema";
 import { getTask } from "@/lib/tasks";
 import { AppError } from "@/lib/errors";
-import { listTasks } from "@/lib/tasks";
-import { listCheckIns } from "@/lib/check-ins";
-import { listDependencies } from "@/lib/dependencies";
 import { TaskPanel } from "./task-panel";
 
 export function TaskSelection({ db, ownerId, id, projects, focus = false }: { db: AppDatabase; ownerId: string; id?: string; projects: Project[]; focus?: boolean }) {
@@ -14,6 +11,5 @@ export function TaskSelection({ db, ownerId, id, projects, focus = false }: { db
   catch (error) {
     if (!(error instanceof AppError && error.status === 404)) throw error;
   }
-  return <TaskPanel task={task} projects={projects} focus={focus} tasks={task ? listTasks(db, ownerId, true) : []}
-    checkIns={task ? listCheckIns(db, ownerId, { taskId: id }) : []} dependencies={task ? listDependencies(db, ownerId, id) : []} />;
+  return <TaskPanel task={task} projects={projects} focus={focus} />;
 }

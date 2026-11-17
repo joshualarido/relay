@@ -5,7 +5,6 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { dateOnlySchema } from "./dates";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "./activity";
 import { AppError } from "./errors";
-import { dependencyWarnings } from "./dependencies";
 
 export const projectStatuses = ["Planned", "Active", "Paused", "Done"] as const;
 
@@ -27,7 +26,7 @@ const createSchema = z.object({
 const completionSchema = z.object({
   projectId: z.string(), revision: z.number().int().positive(),
   tasks: z.array(z.object({ id: z.string(), revision: z.number().int().positive(), title: z.string(),
-    status: z.string(), warnings: z.array(z.string()) }).strict()),
+    status: z.string() }).strict()),
 }).strict();
 export type CompletionPreview = z.infer<typeof completionSchema>;
 const updateSchema = z.object({ ...fields }).partial().extend({ mutationId: mutationIdSchema, completionPreview: completionSchema.optional() }).strict();
@@ -57,7 +56,6 @@ export function previewProjectCompletion(db: Pick<AppDatabase, "select">, ownerI
   const children = db.select().from(task).where(and(eq(task.ownerId, ownerId), eq(task.projectId, id), isNull(task.deletedAt))).all();
   return { projectId: id, revision: p.revision, tasks: children.sort((a, b) => a.id.localeCompare(b.id)).map((t) => ({
     id: t.id, revision: t.revision, title: t.title, status: t.status,
-    warnings: [...(t.blockerReason ? [t.blockerReason] : []), ...dependencyWarnings(db, ownerId, t.id)],
   })) };
 }
 

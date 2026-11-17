@@ -13,7 +13,6 @@ export function notifyMutation(response: Response, refresh: () => void) {
   if (!operationId) return;
   const mutationId = crypto.randomUUID();
   toast("Change saved.", {
-    description: "Undo is also available in History.",
     action: { label: "Undo", onClick: async () => {
       try {
         const response = await fetch(`/api/history/${operationId}/undo`, {
@@ -23,7 +22,7 @@ export function notifyMutation(response: Response, refresh: () => void) {
         if (!response.ok) throw new Error(result.error);
         toast.success("Change undone."); refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Could not undo. Open History to retry.");
+        toast.error(error instanceof Error ? error.message : "Could not undo. Try again.");
       }
     } },
   });

@@ -10,7 +10,7 @@ import { notifyMutation } from "./mutation-notice";
 
 const statuses = ["To do", "Doing", "Done"];
 
-export function TaskForm({ task, projects, projectId = null, warnings = [], initialOpen = false, onClose }: { task?: Task; projects: Project[]; projectId?: string | null; warnings?: string[]; initialOpen?: boolean; onClose?: () => void }) {
+export function TaskForm({ task, projects, projectId = null, initialOpen = false, onClose }: { task?: Task; projects: Project[]; projectId?: string | null; initialOpen?: boolean; onClose?: () => void }) {
   const [open, setOpenState] = useState(initialOpen);
   function setOpen(value: boolean) { setOpenState(value); if (!value) onClose?.(); }
   const [pending, setPending] = useState(false);
@@ -39,10 +39,9 @@ export function TaskForm({ task, projects, projectId = null, warnings = [], init
           title: form.get("title"), description: form.get("description"), projectId: form.get("projectId") || null,
           status: form.get("status"),
           important: form.get("important") === "" ? null : form.get("important") === "true",
-          urgent: form.get("urgent") === "" ? null : form.get("urgent") === "true", dueDate: form.get("dueDate") || null,
+          dueDate: form.get("dueDate") || null,
           dueAt: form.get("dueAt") || null, timezone: form.get("dueAt") ? form.get("timezone") : null,
-          estimateMinutes: form.get("estimateMinutes") ? Number(form.get("estimateMinutes")) : null,
-          blockerReason: form.get("blockerReason"), ...(task ? { expectedRevision: task.revision } : {}),
+          ...(task ? { expectedRevision: task.revision } : {}),
         };
         const payload = JSON.stringify(input);
         if (identity.current.payload !== payload) identity.current = { payload, id: crypto.randomUUID() };
@@ -59,19 +58,15 @@ export function TaskForm({ task, projects, projectId = null, warnings = [], init
         finally { setPending(false); }
       }}>
 <fieldset disabled={pending} className="contents">
-        {warnings.map((warning) => <p className="notice" key={warning}>{warning} Changing status is still allowed.</p>)}
         <div className="field"><label htmlFor={`${prefix}-title`}>Task title</label><input {...field("title")} defaultValue={task?.title} required maxLength={500} />{errors("title")}</div>
         <div className="field"><label htmlFor={`${prefix}-description`}>Task description</label><textarea {...field("description")} defaultValue={task?.description} rows={3} maxLength={20000} />{errors("description")}</div>
         <div className="field"><label htmlFor={`${prefix}-projectId`}>Project</label><select {...field("projectId")} defaultValue={task?.projectId ?? projectId ?? ""}><option value="">Inbox (unassigned)</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.archivedAt ? " (archived)" : ""}</option>)}</select>{errors("projectId")}</div>
         <div className="form-grid">
           <div className="field"><label htmlFor={`${prefix}-status`}>Task status</label><select {...field("status")} defaultValue={task?.status ?? "To do"}>{statuses.map((s) => <option key={s}>{s}</option>)}</select>{errors("status")}</div>
-          {(["important", "urgent"] as const).map((dimension) => <div className="field" key={dimension}><label htmlFor={`${prefix}-${dimension}`}>{dimension === "important" ? "Important" : "Urgent"}</label>
-            <select {...field(dimension)} defaultValue={task?.[dimension] == null ? "" : String(task[dimension])}><option value="">Unset</option><option value="true">Yes</option><option value="false">No</option></select>{errors(dimension)}</div>)}
+          <div className="field"><label htmlFor={`${prefix}-important`}>Important</label>
+            <select {...field("important")} defaultValue={task?.important == null ? "" : String(task.important)}><option value="">Unset</option><option value="true">Yes</option><option value="false">No</option></select>{errors("important")}</div>
         </div>
-        <div className="form-grid">
-          <div className="field"><label htmlFor={`${prefix}-dueDate`}>Due date</label><input {...field("dueDate")} type="date" defaultValue={task?.dueDate ?? ""} />{errors("dueDate")}</div>
-          <div className="field"><label htmlFor={`${prefix}-estimateMinutes`}>Effort (minutes)</label><input {...field("estimateMinutes")} type="number" min={1} max={1000000} step={1} defaultValue={task?.estimateMinutes ?? ""} />{errors("estimateMinutes")}</div>
-        </div>
+        <div className="field"><label htmlFor={`${prefix}-dueDate`}>Due date</label><input {...field("dueDate")} type="date" defaultValue={task?.dueDate ?? ""} />{errors("dueDate")}</div>
         {/* ponytail: explicit ISO offsets avoid ambiguous local times; use a zoned picker when shared calendar inputs exist. */}
         <details open={Boolean(task?.dueAt)}><summary className="muted cursor-pointer">Use a timed deadline instead</summary>
           <div className="stack mt-4">
@@ -80,7 +75,6 @@ export function TaskForm({ task, projects, projectId = null, warnings = [], init
             <div className="field"><label htmlFor={`${prefix}-timezone`}>Deadline timezone</label><input {...field("timezone")} defaultValue={task?.timezone ?? "Asia/Jakarta"} />{errors("timezone")}</div>
           </div>
         </details>
-        <div className="field"><label htmlFor={`${prefix}-blockerReason`}>Blocker reason</label><textarea {...field("blockerReason")} rows={2} maxLength={5000} defaultValue={task?.blockerReason} />{errors("blockerReason")}</div>
         {error && <p role="alert" className="error-message">{error}</p>}
         <div className="form-actions"><Dialog.Close asChild><Button variant="outline" type="button" disabled={pending}>Cancel</Button></Dialog.Close><Button type="submit" disabled={pending}>{pending ? "Saving..." : task ? "Save task" : "Create task"}</Button></div>
       </fieldset>

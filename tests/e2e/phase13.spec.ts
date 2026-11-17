@@ -3,6 +3,11 @@ import { join } from "node:path";
 
 const headers = (origin: string) => ({ origin });
 const monthDate = "2027-03-15";
+const nextDay = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+// v3: planned work is an all-day event linked to the task.
+const plan = async (request: APIRequestContext, origin: string, taskId: string, date: string) => (await request.post("/api/events", { headers: headers(origin), data: {
+  title: "Plan", taskId, allDay: true, start: date, end: nextDay(date), timezone: "UTC", mutationId: crypto.randomUUID(),
+} })).json();
 
 test("Home is one viewport-fit daily workbench without page scrolling", async ({ page }) => {
   await page.goto(`/?date=${monthDate}`);
@@ -24,16 +29,14 @@ test("Home date click pre-fills capture and unified capture creates project, tas
   if (info.project.name === "mobile") await page.locator(".home-calendar .calendar-frame").evaluate((el) => { el.scrollLeft = el.scrollWidth; });
   // The title is set by datesSet on the client, so a non-empty title proves the calendar is mounted.
   await expect(page.locator(".home-calendar .calendar-controls h2")).not.toBeEmpty();
-  const dateInput = page.locator(".quick-capture-card").getByLabel("Planned work date", { exact: true });
+  const capture = page.locator(".quick-capture-card input[name=title]");
+  await page.getByLabel("Capture type", { exact: true }).selectOption("project");
+  const dateInput = page.locator(".quick-capture-card").getByLabel("Deadline", { exact: true });
   await expect(async () => {
     await page.locator(`.home-calendar [data-date="${captureDate}"] .calendar-day-capture`).click();
     await expect(dateInput).toHaveValue(captureDate, { timeout: 2_000 });
   }).toPass();
-
-  const capture = page.locator(".quick-capture-card input[name=title]");
-  await page.getByLabel("Capture type", { exact: true }).selectOption("project");
   await capture.fill(`Phase 1.3 project ${suffix}`);
-  await page.getByLabel("Deadline", { exact: true }).fill(captureDate);
   await page.getByRole("button", { name: "Create project", exact: true }).click();
   await expect(page.getByText("Project created.", { exact: true })).toBeVisible();
 
@@ -55,33 +58,31 @@ test("Home date click pre-fills capture and unified capture creates project, tas
   const tasks = await (await request.get("/api/tasks")).json();
   const events = await (await request.get("/api/events")).json();
   expect(projects.some((p: { name: string; deadline: string }) => p.name === `Phase 1.3 project ${suffix}` && p.deadline === captureDate)).toBe(true);
-  expect(tasks.some((t: { title: string; plannedDate: string }) => t.title === `Phase 1.3 task ${suffix}` && t.plannedDate === captureDate)).toBe(true);
+  expect(tasks.some((t: { title: string }) => t.title === `Phase 1.3 task ${suffix}`)).toBe(true);
   expect(events.some((e: { title: string; start: string }) => e.title === `Phase 1.3 event ${suffix}` && e.start === captureDate)).toBe(true);
   expect((await request.get("/api/tasks", { headers: headers(baseURL!) })).status()).toBe(200);
 });
 
-test("Home date click keeps a typed draft, and a cleared date saves no planned date", async ({ page, request }, info) => {
+test("Home date click keeps a typed draft", async ({ page, request }, info) => {
   const title = `Draft kept ${crypto.randomUUID().slice(0, 6)}`;
   const captureDate = info.project.name === "mobile" ? "2027-03-25" : "2027-03-18";
   await page.goto(`/?date=${monthDate}`);
   if (info.project.name === "mobile") await page.locator(".home-calendar .calendar-frame").evaluate((el) => { el.scrollLeft = el.scrollWidth; });
   await expect(page.locator(".home-calendar .calendar-controls h2")).not.toBeEmpty();
   const capture = page.locator(".quick-capture-card input[name=title]");
-  const dateInput = page.locator(".quick-capture-card").getByLabel("Planned work date", { exact: true });
   await capture.fill(title);
   await expect(async () => {
     await page.locator(`.home-calendar [data-date="${captureDate}"] .calendar-day-capture`).click();
-    await expect(dateInput).toHaveValue(captureDate, { timeout: 2_000 });
+    await expect(page).toHaveURL(new RegExp(`captureDate=${captureDate}`), { timeout: 2_000 });
   }).toPass();
   await expect(capture).toHaveValue(title);
-  await dateInput.fill("");
   await page.getByRole("button", { name: "Capture task", exact: true }).click();
   await expect(page.getByText("Task captured.", { exact: true })).toBeVisible();
-  const tasks: { title: string; plannedDate: string | null }[] = await (await request.get("/api/tasks")).json();
-  expect(tasks.find((task) => task.title === title)?.plannedDate).toBeNull();
+  const tasks: { title: string }[] = await (await request.get("/api/tasks")).json();
+  expect(tasks.filter((task) => task.title === title)).toHaveLength(1);
 });
 
-test("Home calendar renders real categories and keeps planned dates independent from deadlines", async ({ page, request, baseURL }, info) => {
+test("Home calendar renders real categories and keeps linked planned events independent from deadlines", async ({ page, request, baseURL }, info) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   // One record per day in a per-project month so the +N more limit never hides them.
   const month = info.project.name === "mobile" ? "2027-05" : "2027-04";
@@ -90,8 +91,9 @@ test("Home calendar renders real categories and keeps planned dates independent 
     name: `Calendar project ${suffix}`, deadline: day(12), mutationId: crypto.randomUUID(),
   } })).json();
   const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: {
-    title: `Calendar task ${suffix}`, plannedDate: day(13), dueDate: day(20), mutationId: crypto.randomUUID(),
+    title: `Calendar task ${suffix}`, dueDate: day(20), mutationId: crypto.randomUUID(),
   } })).json();
+  const planned = await plan(request, baseURL!, task.id, day(13));
   const deadlineTask = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: {
     title: `Deadline task ${suffix}`, dueDate: day(14), mutationId: crypto.randomUUID(),
   } })).json();
@@ -100,24 +102,23 @@ test("Home calendar renders real categories and keeps planned dates independent 
     timezone: "Asia/Jakarta", mutationId: crypto.randomUUID(),
   } })).json();
   await page.goto(`/?date=${day(13)}`);
-  await expect(page.locator(`[data-calendar-record="planned:${task.id}"]`)).toBeVisible();
+  await expect(page.locator(`[data-calendar-record="event:${planned.id}"]`)).toBeVisible();
   await expect(page.locator(`[data-calendar-record="task:${deadlineTask.id}"]`)).toBeVisible();
   await expect(page.locator(`[data-calendar-record="project:${project.id}"]`)).toBeVisible();
   await expect(page.locator(`[data-calendar-record="event:${event.id}"]`)).toBeVisible();
-  await expect(page.locator(`[data-calendar-record="planned:${task.id}"]`)).toHaveAttribute("aria-label", new RegExp("Planned work"));
   await expect(page.locator(`[data-calendar-record="task:${deadlineTask.id}"]`)).toHaveAttribute("aria-label", new RegExp("Task deadline"));
 
-  await page.locator(`[data-calendar-record="planned:${task.id}"]`).click();
+  await page.locator(`[data-calendar-record="task:${task.id}"]`).click();
   const details = page.getByRole("dialog", { name: "Task details", exact: true });
   await expect(details).toBeVisible();
   await details.getByRole("button", { name: "Edit task", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Edit task", exact: true });
-  await expect(editor.getByLabel("Planned work date", { exact: true })).toHaveValue(day(13));
   await expect(editor.getByLabel("Due date", { exact: true })).toHaveValue(day(20));
-  await editor.getByLabel("Planned work date", { exact: true }).fill(day(22));
+  await editor.getByLabel("Due date", { exact: true }).fill(day(22));
   await page.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Task details", exact: true })).toBeVisible();
-  expect((await (await request.get(`/api/tasks/${task.id}`)).json())).toMatchObject({ plannedDate: day(22), dueDate: day(20) });
+  expect((await (await request.get(`/api/tasks/${task.id}`)).json())).toMatchObject({ dueDate: day(22) });
+  expect((await (await request.get(`/api/events/${planned.id}`)).json())).toMatchObject({ start: day(13), taskId: task.id });
 });
 
 
@@ -143,26 +144,19 @@ async function homeDrag(page: Page, record: string, date: string, confirm = true
   if (confirm) await page.getByRole("alertdialog").getByRole("button", { name: "Reschedule", exact: true }).click();
 }
 
-test("Home drag moves planned work and deadlines, changing only the dragged date", async ({ page, request, baseURL }, info) => {
+test("Home drag moves deadlines, changing only the dragged date", async ({ page, request, baseURL }, info) => {
   test.skip(info.project.name === "mobile", "Pointer drag path; touch users edit dates in the task form.");
   const suffix = crypto.randomUUID().slice(0, 6), h = headers(baseURL!);
   const project = await (await request.post("/api/projects", { headers: h, data: { name: `Drag home project ${suffix}`, mutationId: crypto.randomUUID() } })).json();
-  const planned = await (await request.post("/api/tasks", { headers: h, data: {
-    title: `Planned drag ${suffix}`, plannedDate: "2027-06-08", dueDate: "2027-06-24", projectId: project.id, important: true, urgent: true, mutationId: crypto.randomUUID(),
-  } })).json();
   const dated = await (await request.post("/api/tasks", { headers: h, data: {
-    title: `Dated deadline ${suffix}`, dueDate: "2027-06-15", plannedDate: "2027-06-01", mutationId: crypto.randomUUID(),
+    title: `Dated deadline ${suffix}`, dueDate: "2027-06-15", projectId: project.id, important: true, mutationId: crypto.randomUUID(),
   } })).json();
   const timed = await (await request.post("/api/tasks", { headers: h, data: {
     title: `Timed deadline ${suffix}`, dueAt: "2027-06-09T14:30:00.000Z", timezone: "America/New_York", mutationId: crypto.randomUUID(),
   } })).json();
-  const pick = (t: Record<string, unknown>) => ({ plannedDate: t.plannedDate, dueDate: t.dueDate, dueAt: t.dueAt, timezone: t.timezone, status: t.status, important: t.important, urgent: t.urgent, projectId: t.projectId });
+  const pick = (t: Record<string, unknown>) => ({ dueDate: t.dueDate, dueAt: t.dueAt, timezone: t.timezone, status: t.status, important: t.important, projectId: t.projectId });
   const get = async (id: string) => (await request.get(`/api/tasks/${id}`)).json();
   await page.goto("/?date=2027-06-15");
-
-  await homeDrag(page, `planned:${planned.id}`, "2027-06-10");
-  await expect.poll(async () => (await get(planned.id)).plannedDate).toBe("2027-06-10");
-  expect(pick(await get(planned.id))).toEqual({ ...pick(planned), plannedDate: "2027-06-10" });
 
   await homeDrag(page, `task:${dated.id}`, "2027-06-17");
   await expect.poll(async () => (await get(dated.id)).dueDate).toBe("2027-06-17");
@@ -176,19 +170,19 @@ test("Home drag moves planned work and deadlines, changing only the dragged date
 test("Home stale drag shows the conflict, rolls back, and keeps the server value", async ({ page, request, baseURL }, info) => {
   test.skip(info.project.name === "mobile", "Pointer drag path.");
   const h = headers(baseURL!);
-  const task = await (await request.post("/api/tasks", { headers: h, data: { title: `Stale drag ${crypto.randomUUID().slice(0, 6)}`, plannedDate: "2027-07-07", mutationId: crypto.randomUUID() } })).json();
+  const task = await (await request.post("/api/tasks", { headers: h, data: { title: `Stale drag ${crypto.randomUUID().slice(0, 6)}`, dueDate: "2027-07-07", mutationId: crypto.randomUUID() } })).json();
   await page.goto("/?date=2027-07-07");
-  await expect(page.locator(`.home-calendar [data-date="2027-07-07"] [data-calendar-record="planned:${task.id}"]`)).toBeVisible();
+  await expect(page.locator(`.home-calendar [data-date="2027-07-07"] [data-calendar-record="task:${task.id}"]`)).toBeVisible();
   const changed = await (await request.patch(`/api/tasks/${task.id}`, { headers: h, data: { title: `${task.title} changed`, expectedRevision: task.revision, mutationId: crypto.randomUUID() } })).json();
-  await homeDrag(page, `planned:${task.id}`, "2027-07-09");
+  await homeDrag(page, `task:${task.id}`, "2027-07-09");
   await expect(page.getByRole("alert").filter({ hasText: "Task changed" })).toBeVisible();
-  await expect(page.locator(`.home-calendar [data-date="2027-07-07"] [data-calendar-record="planned:${task.id}"]`)).toBeVisible();
-  expect(await (await request.get(`/api/tasks/${task.id}`)).json()).toMatchObject({ plannedDate: "2027-07-07", revision: changed.revision });
+  await expect(page.locator(`.home-calendar [data-date="2027-07-07"] [data-calendar-record="task:${task.id}"]`)).toBeVisible();
+  expect(await (await request.get(`/api/tasks/${task.id}`)).json()).toMatchObject({ dueDate: "2027-07-07", revision: changed.revision });
 });
 
 test("Home crowded date shows a keyboard-reachable +N more popover", async ({ page, request, baseURL }, info) => {
   const day = info.project.name === "mobile" ? "2027-08-19" : "2027-08-18";
-  for (let i = 0; i < 9; i++) await request.post("/api/tasks", { headers: headers(baseURL!), data: { title: `Crowd ${i} ${crypto.randomUUID().slice(0, 4)}`, plannedDate: day, mutationId: crypto.randomUUID() } });
+  for (let i = 0; i < 9; i++) await request.post("/api/tasks", { headers: headers(baseURL!), data: { title: `Crowd ${i} ${crypto.randomUUID().slice(0, 4)}`, dueDate: day, mutationId: crypto.randomUUID() } });
   await page.goto(`/?date=${day}`);
   const more = page.locator(`.home-calendar [data-date="${day}"] :is(a, button, [role=button], [role=link], [tabindex])`).filter({ hasText: /^\+\d+ more$/ }).first();
   await expect(more).toBeVisible();
@@ -213,7 +207,7 @@ test("Home day capture button selects the capture date by keyboard", async ({ pa
   await tabTo(page, button);
   await expect(button).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".quick-capture-card").getByLabel("Planned work date", { exact: true })).toHaveValue(day);
+  await expect(page).toHaveURL(new RegExp(`captureDate=${day}`));
   const help = page.locator(".home-calendar-help");
   await expect(help).toBeVisible();
   await expect(help).toContainText("Open an item to change its dates without dragging.");
@@ -315,24 +309,26 @@ test("Today groups overdue and current-day work, completes inline, and updates c
   const { today, yesterday } = await todayInWorkspace(request);
   const make = async (data: Record<string, unknown>) => (await request.post("/api/tasks", { headers: h, data: { ...data, mutationId: crypto.randomUUID() } })).json();
   const project = await (await request.post("/api/projects", { headers: h, data: { name: `Today project ${s}`, mutationId: crypto.randomUUID() } })).json();
-  await make({ title: `Overdue ${s}`, dueDate: yesterday, important: true, urgent: false });
-  const planned = await make({ title: `Planned today ${s}`, plannedDate: today, projectId: project.id });
+  await make({ title: `Overdue ${s}`, dueDate: yesterday, important: true });
+  const planned = await make({ title: `Planned today ${s}`, projectId: project.id });
+  await plan(request, baseURL!, planned.id, today);
   await make({ title: `Due today ${s}`, dueDate: today, projectId: project.id });
-  await make({ title: `Both today ${s}`, plannedDate: today, dueDate: today });
-  const done = await make({ title: `Done today ${s}`, plannedDate: today });
+  await plan(request, baseURL!, (await make({ title: `Both today ${s}`, dueDate: today })).id, today);
+  const done = await make({ title: `Done today ${s}` });
+  await plan(request, baseURL!, done.id, today);
   await request.patch(`/api/tasks/${done.id}`, { headers: h, data: { status: "Done", expectedRevision: done.revision, mutationId: crypto.randomUUID() } });
-  await make({ title: `Past planned ${s}`, plannedDate: yesterday });
+  await plan(request, baseURL!, (await make({ title: `Past planned ${s}` })).id, yesterday);
 
   await page.goto("/");
   const card = page.locator(".today-card");
   const overdueGroup = card.getByRole("region", { name: "Overdue", exact: true });
   const todayGroup = card.getByRole("region", { name: "Planned and due today", exact: true });
   const row = (group: Locator, title: string) => group.locator("li").filter({ has: page.getByRole("link", { name: title, exact: true }) });
-  await expect(row(overdueGroup, `Overdue ${s}`)).toContainText("Overdue / Inbox / Schedule");
+  await expect(row(overdueGroup, `Overdue ${s}`)).toContainText("Overdue / Inbox");
   await expect(card.getByRole("link", { name: `Past planned ${s}`, exact: true })).toHaveCount(0);
   for (const title of [`Planned today ${s}`, `Due today ${s}`, `Done today ${s}`]) await expect(row(todayGroup, title)).toBeVisible();
   await expect(card.getByRole("link", { name: `Both today ${s}`, exact: true })).toHaveCount(1);
-  await expect(row(todayGroup, `Planned today ${s}`)).toContainText(`Today / Today project ${s} / Unclassified`);
+  await expect(row(todayGroup, `Planned today ${s}`)).toContainText(`Today / Today project ${s}`);
   await expect(row(todayGroup, `Done today ${s}`).getByLabel("Completed")).toBeVisible();
 
   const progress = card.locator(".progress-count");
@@ -346,8 +342,6 @@ test("Today groups overdue and current-day work, completes inline, and updates c
   await expect(progress).toHaveText(`${doneBefore + 1}/${total} complete`);
   await expect(row(todayGroup, `Planned today ${s}`).getByLabel("Completed")).toBeVisible();
   expect(Number(await overdueGroup.locator(".badge").textContent())).toBe(overdueCount);
-  const record = page.locator(`[data-calendar-record="planned:${planned.id}"]`);
-  if (await record.isVisible()) await expect(record).toHaveCSS("opacity", "0.6");
   expect((await (await request.get(`/api/tasks/${planned.id}`)).json()).status).toBe("Done");
 
   const palette = await openPalette(page, info.project.name === "mobile");
@@ -365,8 +359,9 @@ test("Today shows empty-state copy when nothing is planned, due, or overdue", as
   try {
     const page = await context.newPage();
     const { today } = await todayInWorkspace(context.request);
-    const tasks = await (await context.request.get("/api/tasks")).json() as { dueDate: string | null; plannedDate: string | null; dueAt: string | null }[];
-    test.skip(tasks.some((t) => t.plannedDate === today || (t.dueDate ?? t.dueAt ?? "9999") <= `${today}T23:59`), "Bob already has Today work.");
+    const tasks = await (await context.request.get("/api/tasks")).json() as { dueDate: string | null; dueAt: string | null }[];
+    const events = await (await context.request.get("/api/events")).json() as { taskId: string | null }[];
+    test.skip(events.some((e) => e.taskId) || tasks.some((t) => (t.dueDate ?? t.dueAt ?? "9999") <= `${today}T23:59`), "Bob already has Today work.");
     await page.goto("/");
     const group = page.locator(".today-card").getByRole("region", { name: "Planned and due today", exact: true });
     await expect(group.getByText("Nothing here yet. Capture a task or plan one on the calendar.", { exact: true })).toBeVisible();
@@ -375,7 +370,7 @@ test("Today shows empty-state copy when nothing is planned, due, or overdue", as
 });
 
 test("Quick Capture failure keeps input, shows an inline error, and retries without duplicates", async ({ page, request }, info) => {
-  const title = `Retry capture ${info.project.name} ${crypto.randomUUID().slice(0, 6)}`, date = "2027-10-14";
+  const title = `Retry capture ${info.project.name} ${crypto.randomUUID().slice(0, 6)}`;
   await page.goto("/");
   let failed = false;
   await page.route("**/api/tasks", async (route) => {
@@ -386,15 +381,13 @@ test("Quick Capture failure keeps input, shows an inline error, and retries with
   });
   const card = page.locator(".quick-capture-card");
   await card.locator("input[name=title]").fill(title);
-  await card.getByLabel("Planned work date", { exact: true }).fill(date);
   await card.getByRole("button", { name: "Capture task", exact: true }).click();
   await expect(card.getByRole("alert")).toHaveText("Could not save the task. Try again.");
   await expect(card.locator("input[name=title]")).toHaveValue(title);
-  await expect(card.getByLabel("Planned work date", { exact: true })).toHaveValue(date);
   await card.getByRole("button", { name: "Capture task", exact: true }).click();
   await expect(page.getByText("Task captured.", { exact: true })).toBeVisible();
-  const tasks = await (await request.get("/api/tasks")).json() as { title: string; plannedDate: string }[];
-  expect(tasks.filter((t) => t.title === title)).toEqual([expect.objectContaining({ plannedDate: date })]);
+  const tasks = await (await request.get("/api/tasks")).json() as { title: string }[];
+  expect(tasks.filter((t) => t.title === title)).toHaveLength(1);
 });
 
 test("Home calendar items open the task panel, project page, and event panel", async ({ page, request, baseURL }, info) => {
@@ -420,7 +413,8 @@ test("Home calendar items open the task panel, project page, and event panel", a
 
 test("Palette labels a planned-only task date as Planned", async ({ page, request, baseURL }, info) => {
   const title = `Palette planned ${crypto.randomUUID().slice(0, 6)}`;
-  await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: "2027-10-20", mutationId: crypto.randomUUID() } });
+  const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, mutationId: crypto.randomUUID() } })).json();
+  await plan(request, baseURL!, task.id, "2027-10-20");
   await page.goto("/");
   const palette = await openPalette(page, info.project.name === "mobile");
   await palette.getByLabel("Search workspace").fill(title);
@@ -432,8 +426,8 @@ test("Long titles wrap in Today and the calendar without horizontal overflow", a
   const { today } = await todayInWorkspace(request);
   const title = `${info.project.name}${"Longwordwithoutbreaks".repeat(10)} ${"wrapped words ".repeat(5)}`.slice(0, 200);
   const day = info.project.name === "mobile" ? "2027-10-27" : "2027-10-26";
-  const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: today, mutationId: crypto.randomUUID() } })).json();
-  const later = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: day, mutationId: crypto.randomUUID() } })).json();
+  const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, dueDate: today, mutationId: crypto.randomUUID() } })).json();
+  const later = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, dueDate: day, mutationId: crypto.randomUUID() } })).json();
   expect(task.title).toHaveLength(200);
   await page.goto(`/?date=${day}`);
   await expect(page.locator(`.home-calendar [data-date="${day}"]`)).toBeAttached();
@@ -441,7 +435,7 @@ test("Long titles wrap in Today and the calendar without horizontal overflow", a
   await expect(row).toBeAttached();
   expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   expect(await page.locator(".today-card").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  const record = page.locator(`[data-calendar-record="planned:${later.id}"]`);
+  const record = page.locator(`[data-calendar-record="task:${later.id}"]`);
   await record.scrollIntoViewIfNeeded();
   await expect(record).toBeVisible();
   await expect.poll(async () => {
@@ -480,7 +474,7 @@ test("Home collapses by available width with the sidebar: no cramped columns at 
 
 test("Today focus rings stay inside the scrolling group", async ({ page, request, baseURL }) => {
   const { today } = await todayInWorkspace(request);
-  await request.post("/api/tasks", { headers: headers(baseURL!), data: { title: `Focus ring ${crypto.randomUUID().slice(0, 6)}`, plannedDate: today, mutationId: crypto.randomUUID() } });
+  await request.post("/api/tasks", { headers: headers(baseURL!), data: { title: `Focus ring ${crypto.randomUUID().slice(0, 6)}`, dueDate: today, mutationId: crypto.randomUUID() } });
   await page.goto("/");
   const group = page.locator(".today-card").getByRole("region", { name: "Planned and due today", exact: true });
   const button = group.locator(".complete-task").first();
@@ -508,7 +502,7 @@ test("Today focus rings stay inside the scrolling group", async ({ page, request
 test("Today inline completion failure shows a full-width error that does not overlap the title", async ({ page, request, baseURL }) => {
   const { today } = await todayInWorkspace(request);
   const title = `Fail complete ${crypto.randomUUID().slice(0, 6)}`;
-  const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, plannedDate: today, mutationId: crypto.randomUUID() } })).json();
+  const task = await (await request.post("/api/tasks", { headers: headers(baseURL!), data: { title, dueDate: today, mutationId: crypto.randomUUID() } })).json();
   await page.goto("/");
   let failed = false;
   await page.route(`**/api/tasks/${task.id}`, async (route) => {

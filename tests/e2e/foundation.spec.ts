@@ -45,7 +45,7 @@ test("populated manual workspace stays coherent, accessible and persistent acros
     name: `Load project ${i}`, status: "Active", deadline: "2027-03-15", mutationId: crypto.randomUUID(),
   }));
   const tasks = Array.from({ length: 120 }, (_, i) => createTask(workspace.db, workspace.alice.id, {
-    title: `Load task ${i}`, projectId: i < 60 ? projects[i % 16].id : null, priority: i % 2 ? "High" : "Medium",
+    title: `Load task ${i}`, projectId: i < 60 ? projects[i % 16].id : null,
     dueDate: "2027-03-15", mutationId: crypto.randomUUID(),
   }));
   Array.from({ length: 120 }, (_, i) => createEvent(workspace.db, workspace.alice.id, {
@@ -60,7 +60,7 @@ test("populated manual workspace stays coherent, accessible and persistent acros
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-  for (const [route, heading] of [["/", "Today"], ["/projects", "Projects"], ["/inbox", "Inbox"], ["/calendar?date=2027-03-15", "Calendar"], ["/history", "History"]]) {
+  for (const [route, heading] of [["/", "Today"], ["/projects", "Projects"], ["/inbox", "Inbox"], ["/calendar?date=2027-03-15", "Calendar"]]) {
     const began = performance.now();
     await page.goto(route);
     await expect(page.getByRole("heading", { level: 1, name: heading, exact: true })).toBeVisible();

@@ -6,8 +6,7 @@ import { activity, task, event, checkIn, dependency } from "../../src/lib/db/sch
 import { createProject, updateProject, archiveProject, getProject, reorderProjects } from "../../src/lib/projects";
 import { createTask, updateTask, getTask, reorderTasks } from "../../src/lib/tasks";
 import { createEvent, getEvent, rescheduleEvent, updateEvent } from "../../src/lib/events";
-import { createCheckIn, listCheckIns } from "../../src/lib/check-ins";
-import { addDependency, removeDependency, listDependencies } from "../../src/lib/dependencies";
+import { createCheckIn, listCheckIns, addDependency, removeDependency, listDependencies } from "../support/legacy-records";
 import { listActivity } from "../../src/lib/activity";
 import * as recovery from "../../src/lib/lifecycle";
 

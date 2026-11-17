@@ -17,7 +17,6 @@ test("exact-text Inbox capture, URL details, dates, complete/reopen, reassignmen
   await page.goto("/inbox");
   await page.getByRole("button", { name: "Add task", exact: true }).click();
   await page.getByLabel("Task title", { exact: true }).fill(title);
-  await page.getByLabel("Effort (minutes)").fill("45");
   await page.getByLabel("Due date", { exact: true }).fill("2027-02-10");
   await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -129,9 +128,9 @@ test("timed date filters use the deadline zone", async ({ page, request, baseURL
   });
   await page.goto("/inbox");
   await page.getByLabel("Search tasks", { exact: true }).fill(title);
-  await page.getByLabel("Filter planned or due date", { exact: true }).fill("2027-01-02");
+  await page.getByLabel("Filter due date", { exact: true }).fill("2027-01-02");
   await expect(page.getByRole("article", { name: title, exact: true })).toBeVisible();
-  await page.getByLabel("Filter planned or due date", { exact: true }).fill("2027-01-01");
+  await page.getByLabel("Filter due date", { exact: true }).fill("2027-01-01");
   await expect(page.getByRole("article", { name: title, exact: true })).toHaveCount(0);
 });
 

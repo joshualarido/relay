@@ -13,9 +13,6 @@ import { ProjectActions } from "@/components/project-actions";
 import { TaskForm } from "@/components/task-form";
 import { TaskBoard } from "@/components/task-board";
 import { TaskSelection } from "@/components/task-selection";
-import { listCheckIns } from "@/lib/check-ins";
-import { CheckIns } from "@/components/check-ins";
-import { dependencyWarnings } from "@/lib/dependencies";
 import { listActivity } from "@/lib/activity";
 
 export default async function ProjectPage({ params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ task?: string; focus?: string }> }) {
@@ -48,19 +45,16 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     </section>
     <section className="section stack"><div className="flex flex-wrap justify-between gap-4"><h2>Tasks</h2><TaskForm projects={projects} projectId={projectId} /></div>
       {project.archivedAt && <p className="notice">Archived project: tasks retain their statuses and are hidden from active work.</p>}
-      <TaskBoard tasks={tasks} projectId={projectId} warnings={Object.fromEntries(tasks.map((t) => [t.id, dependencyWarnings(db, userId, t.id)]))} />
+      <TaskBoard tasks={tasks} projectId={projectId} />
     </section>
-    <div className="detail-grid"><section className="section stack"><h2>Related events</h2>
+    <section className="section stack"><h2>Related events</h2>
       {events.length ? <ul className="stack">{events.map((event) => <li key={event.id}><Link className="text-primary" href={`/calendar?event=${event.id}&date=${event.allDay ? event.start : dateInTimezone(event.start, timezone)}`}>{event.title}</Link><p className="muted text-sm">{event.allDay ? event.start : new Intl.DateTimeFormat("en-GB", { timeZone: event.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(event.start))} / {event.timezone}</p></li>)}</ul>
         : <p className="muted">No linked events yet.</p>}
       <Link className="text-primary" href="/calendar">Manage events in Calendar</Link>
     </section>
-    <CheckIns projectId={projectId} entries={listCheckIns(db, userId, { projectId })} />
-    </div>
     <TaskSelection key={selection} db={db} ownerId={userId} id={selection} projects={projects} focus={Boolean(query.focus)} />
     <section className="section stack"><h2>Recent activity</h2>
       <ul className="work-list">{recentActivity.map((entry) => <li key={entry.id}><span>{entry.action} / {entry.entityType}</span><p className="muted text-sm"><time dateTime={entry.createdAt}>{entry.createdAt}</time></p></li>)}</ul>
-      <Link className="text-primary" href="/history">Inspect changes and recovery in History</Link>
     </section>
   </div>;
 }

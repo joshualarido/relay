@@ -10,7 +10,7 @@ test("protected pages reject anonymous users and forged sessions", async ({ brow
     const page = await context.newPage();
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
-    for (const endpoint of ["preferences", "projects", "tasks", "events", "check-ins", "dependencies", "search", "history"]) {
+    for (const endpoint of ["preferences", "projects", "tasks", "events", "search"]) {
       expect((await context.request.get(`/api/${endpoint}`)).status()).toBe(401);
     }
     await context.addCookies([{ name: "better-auth.session_token", value: "forged.signature", domain: "127.0.0.1", path: "/" }]);
@@ -35,28 +35,53 @@ test("an expired signed cookie is denied by the running application's session bo
     await context.addCookies(cookies);
     expect((await context.request.get("/api/tasks")).status()).toBe(401);
     const page = await context.newPage();
-    await page.goto("/history");
+    await page.goto("/calendar");
     await expect(page).toHaveURL(/\/login$/);
   } finally { await context.close(); }
 });
 
-test("authenticated shell is dark, navigable, responsive, and has honest AI state", async ({ page }, info) => {
+test("authenticated shell is dark, navigable, responsive, and shows exactly three screens", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Today" })).toBeVisible();
   if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
-  await page.getByRole("link", { name: "Projects", exact: true }).click();
+  const nav = page.getByRole("navigation", { name: "Workspace" });
+  await expect(nav.getByRole("link")).toHaveText(["Today", "Projects", "Calendar"]);
+  await nav.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
-  await page.getByRole("link", { name: "Chat", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Coming soon" })).toBeVisible();
-  await expect(page.getByText("Assistant availability", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("textbox")).toHaveCount(0);
   expect(await page.locator("html").evaluate((el) => getComputedStyle(el).colorScheme)).toBe("dark");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("button", { name: /^Account menu/ }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByLabel("Timezone")).toBeVisible();
   expect(errors).toEqual([]);
-  await page.screenshot({ path: join(process.env.RELAY_TEST_DIR!, `chat-${info.project.name}.png`), fullPage: true, caret: "initial" });
+});
+
+test("old History and Chat bookmarks land on Today", async ({ page }) => {
+  for (const path of ["/history", "/chat"]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Today" })).toBeVisible();
+  }
+});
+
+test("a search result for a loose task opens its panel while Inbox is hidden", async ({ page, request, baseURL }, info) => {
+  const title = `Loose search ${crypto.randomUUID()}`;
+  expect((await request.post("/api/tasks", { headers: { origin: baseURL! }, data: { title, mutationId: crypto.randomUUID() } })).ok()).toBe(true);
+  await page.goto("/");
+  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Inbox" })).toHaveCount(0);
+  if (info.project.name === "mobile") await page.getByRole("button", { name: "Close navigation" }).click();
+  await page.getByRole("button", { name: "Search and commands" }).first().click();
+  const palette = page.getByRole("dialog", { name: "Search and commands", exact: true });
+  await palette.getByLabel("Search workspace").fill(title);
+  await palette.getByRole("button", { name: "Search", exact: true }).click();
+  await palette.getByRole("link", { name: title }).click();
+  await expect(page).toHaveURL(/\/inbox\?task=/);
+  await expect(page.getByRole("dialog", { name: "Task details" }).getByRole("heading", { name: title })).toBeVisible();
 });
 
 test("preferences persist after reload and remain owner-isolated", async ({ page, browser, baseURL }, info) => {

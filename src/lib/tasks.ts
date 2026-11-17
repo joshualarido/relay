@@ -9,28 +9,21 @@ import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "
 import { AppError } from "./errors";
 
 export const taskStatuses = ["To do", "Doing", "Done"] as const;
-export const priorities = ["Low", "Medium", "High"] as const;
 const fields = {
   title: z.string().min(1).max(500).refine((v) => v.trim().length > 0, "Enter a task title."),
   description: z.string().max(20_000),
   projectId: z.string().min(1).nullable(),
   status: z.enum(taskStatuses),
-  priority: z.enum(priorities),
   important: z.boolean().nullable(),
-  urgent: z.boolean().nullable(),
   dueDate: dateOnlySchema.nullable(),
   dueAt: z.iso.datetime({ offset: true }).nullable(),
   timezone: timezoneSchema.nullable(),
-  estimateMinutes: z.number().int().positive().max(1_000_000).nullable(),
-  blockerReason: z.string().max(5_000),
   position: z.number().int().min(0).max(1_000_000),
 };
 const createSchema = z.object({
   ...fields, description: fields.description.default(""), projectId: fields.projectId.default(null),
-  status: fields.status.default("To do"), priority: fields.priority.default("Medium"),
-  important: fields.important.default(null), urgent: fields.urgent.default(null),
+  status: fields.status.default("To do"), important: fields.important.default(null),
   dueDate: fields.dueDate.default(null), dueAt: fields.dueAt.default(null), timezone: fields.timezone.default(null),
-  estimateMinutes: fields.estimateMinutes.default(null), blockerReason: fields.blockerReason.default(""),
   position: fields.position.default(0), mutationId: mutationIdSchema,
 }).strict();
 const updateSchema = z.object(fields).partial().extend({ mutationId: mutationIdSchema }).strict();
@@ -61,9 +54,14 @@ export function createTask(db: AppDatabase, ownerId: string, input: unknown): Ta
   validateDeadline(data);
   const hash = requestHash("task-create", null, data);
   return db.transaction((tx) => {
-    const { important, urgent, ...legacy } = data;
-    const previous = replayMutation(tx, ownerId, mutationId, hash,
-      important === null && urgent === null ? requestHash("task-create", null, legacy) : undefined);
+    // Creates recorded before v3 hashed the dormant priority/urgent/estimate/blocker fields at their defaults
+    // (and, before Phase 1.2, without important/urgent). A retry of such a create must still replay.
+    const { title, description, projectId, status, important, dueDate, dueAt, timezone, position } = data;
+    const legacy = [requestHash("task-create", null, { title, description, projectId, status, priority: "Medium", important, urgent: null,
+      dueDate, dueAt, timezone, estimateMinutes: null, blockerReason: "", position })];
+    if (important === null) legacy.push(requestHash("task-create", null, { title, description, projectId, status, priority: "Medium",
+      dueDate, dueAt, timezone, estimateMinutes: null, blockerReason: "", position }));
+    const previous = replayMutation(tx, ownerId, mutationId, hash, legacy);
     if (previous) {
       const saved = previous.result as Task;
       return { ...saved, important: saved.important ?? null, urgent: saved.urgent ?? null };

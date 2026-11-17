@@ -13,10 +13,9 @@ export function useProjectCompletion() {
     const unfinished = preview.tasks.filter((t) => t.status !== "Done");
     if (unfinished.length && !await confirm({
       title: "Complete project?", action: "Complete project",
-      description: `"${name}" and ${unfinished.length} unfinished ${unfinished.length === 1 ? "task" : "tasks"} will be completed together. You can undo this change in History.`,
+      description: `"${name}" and ${unfinished.length} unfinished ${unfinished.length === 1 ? "task" : "tasks"} will be completed together. You can undo this change.`,
       details: <ul className="preview-list">{unfinished.map((t) => <li className="flex-col" key={t.id}>
         <span>{t.title}</span><span className="muted text-sm">{t.status}</span>
-        {t.warnings.map((warning) => <span className="error-message text-sm" key={warning}>{warning}</span>)}
       </li>)}</ul>,
     })) return null;
     return preview;

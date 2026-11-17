@@ -11,10 +11,10 @@ export function requestHash(action: string, entityId: string | null, data: unkno
   return createHash("sha256").update(JSON.stringify([action, entityId, data])).digest("hex");
 }
 
-export function replayMutation(db: Pick<AppDatabase, "select">, ownerId: string, mutationId: string, hash: string, legacyHash?: string) {
+export function replayMutation(db: Pick<AppDatabase, "select">, ownerId: string, mutationId: string, hash: string, legacyHashes: string[] = []) {
   const previous = db.select().from(activity)
     .where(and(eq(activity.ownerId, ownerId), eq(activity.mutationId, mutationId))).get();
-  if (previous && previous.requestHash !== hash && previous.requestHash !== legacyHash) throw new AppError(409, "This mutation identity was reused for different input.");
+  if (previous && previous.requestHash !== hash && !legacyHashes.includes(previous.requestHash)) throw new AppError(409, "This mutation identity was reused for different input.");
   return previous;
 }
 

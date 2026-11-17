@@ -9,7 +9,6 @@ import { listTasks } from "@/lib/tasks";
 import { listEvents } from "@/lib/events";
 import { dateInTimezone, dateOnlySchema } from "@/lib/dates";
 import { homeData } from "@/lib/workbench";
-import { priorityLabel } from "@/lib/priority";
 import { QuickCapture } from "@/components/quick-capture";
 import { ManualCalendar } from "@/components/manual-calendar";
 import { TaskComplete } from "@/components/task-complete";
@@ -39,9 +38,8 @@ export default async function HomePage({ searchParams }: {
     return tasks.length ? <ul className="work-list divided-list">{tasks.map((task) => <li className={`today-task${task.status === "Done" ? " is-done" : ""}`} key={task.id}>
       <div className="today-task-check">{task.status === "Done" ? <span className="complete-mark" aria-label="Completed"><Check size={18} aria-hidden="true" /></span> : <TaskComplete task={task} />}</div>
       <div className="today-task-body"><Link className="task-title" data-task-link={task.id} href={taskHref(task)}>{task.title}</Link>
-        <p className="muted text-sm">{label} / {projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"} / {priorityLabel(task)}</p>
+        <p className="muted text-sm">{label} / {projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"}</p>
         <p className="muted text-sm">{plannedToday.has(task.id) ? "Planned today" : ""}{plannedToday.has(task.id) && (task.dueDate || task.dueAt) ? " / " : ""}{task.dueDate || task.dueAt ? `Due ${dateText((task.dueDate ?? task.dueAt)!)}` : ""}</p>
-        {(task.blockerReason || task.warnings.length > 0) && <p className="error-message text-sm">{task.blockerReason} {task.warnings.join(" ")}</p>}
       </div>
     </li>)}</ul> : <p className="muted">Nothing here yet. Capture a task or plan one on the calendar.</p>;
   }

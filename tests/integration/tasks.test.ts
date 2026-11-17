@@ -24,14 +24,14 @@ describe("manual tasks", () => {
     expect(() => tasks.createTask(w.db, w.bob.id, { title: "No", projectId: p.id, mutationId: crypto.randomUUID() })).toThrow(/not found/i);
   });
 
-  it("validates statuses, priorities, positive whole estimates, dates, zones, and ownership input", () => {
+  it("validates statuses, dates, zones, and ownership input, and rejects dormant v2 fields", () => {
     for (const input of [
-      { title: " " }, { status: "Active" }, { priority: "Urgent" }, { estimateMinutes: 0 },
-      { estimateMinutes: 1.5 }, { plannedDate: "2027-02-30" }, { dueDate: "2027-02-30" }, { dueAt: "2027-01-01T00:00:00Z" },
+      { title: " " }, { status: "Active" }, { priority: "Medium" }, { urgent: false }, { estimateMinutes: 45 },
+      { blockerReason: "" }, { plannedDate: "2027-02-30" }, { dueDate: "2027-02-30" }, { dueAt: "2027-01-01T00:00:00Z" },
       { dueAt: "bad", timezone: "UTC" }, { dueAt: "2027-01-01T00:00:00Z", timezone: "Not/Zone" },
       { dueDate: "2027-01-01", dueAt: "2027-01-01T00:00:00Z", timezone: "UTC" }, { ownerId: w.bob.id },
     ]) expect(() => create(input)).toThrow();
-    expect(create({ dueDate: "2027-01-01", estimateMinutes: 45 }).dueDate).toBe("2027-01-01");
+    expect(create({ dueDate: "2027-01-01" }).dueDate).toBe("2027-01-01");
     expect(create({ dueAt: "2027-01-01T10:30:00+07:00", timezone: "Asia/Jakarta" }).dueAt).toBe("2027-01-01T03:30:00.000Z");
   });
 
@@ -42,7 +42,7 @@ describe("manual tasks", () => {
   });
 
   it("completes/reopens without additional tasks, preserves history, and rejects stale edits", () => {
-    const t = create({ blockerReason: "Waiting for review" });
+    const t = create();
     const count = tasks.listTasks(w.db, w.alice.id).length;
     const done = tasks.updateTask(w.db, w.alice.id, t.id, 1, { status: "Done", mutationId: crypto.randomUUID() });
     expect(done.completedAt).toBeTruthy();

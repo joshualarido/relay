@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "radix-ui";
-import { House, FolderKanban, Inbox, CalendarDays, MessageSquare, Settings2, History, Menu, X, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { House, FolderKanban, CalendarDays, Menu, X, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
+import { AccountMenu } from "./auth-controls";
 
 const SidebarContext = createContext({ collapsed: false, toggle: () => {} });
 
@@ -19,13 +20,9 @@ export function NavigationPreference() {
 }
 
 const links = [
-  { href: "/", label: "Home", icon: House },
+  { href: "/", label: "Today", icon: House },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/history", label: "History", icon: History },
-  { href: "/settings", label: "Settings", icon: Settings2 },
 ];
 
 export function Navigation({ name, initialCollapsed, projects, children }: {
@@ -57,7 +54,7 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
         aria-current={(href === "/" ? pathname === "/" : pathname.startsWith(href)) ? "page" : undefined}
         onClick={() => setOpen(false)}><Icon size={18} aria-hidden="true" /><span className="nav-label">{label}</span></Link>)}
     </nav>
-    <Link href="/settings" className="nav-footer" aria-label={`Account settings for ${name}`} title={`Account settings for ${name}`} onClick={() => setOpen(false)}><span className="avatar" aria-hidden="true">{name.slice(0, 1)}</span><div className="nav-label"><strong>{name}</strong><span>Personal workspace</span></div></Link>
+    <AccountMenu name={name} onNavigate={() => setOpen(false)} />
   </div>;
   return <SidebarContext.Provider value={{ collapsed, toggle }}><div className="workspace-shell" data-collapsed={collapsed}>
     <aside className="desktop-sidebar">{content}</aside>

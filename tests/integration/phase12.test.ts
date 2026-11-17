@@ -3,11 +3,11 @@ import { eq } from "drizzle-orm";
 import * as projects from "../../src/lib/projects";
 import { createTask, getTask, updateTask } from "../../src/lib/tasks";
 import { activity } from "../../src/lib/db/schema";
+import { requestHash } from "../../src/lib/activity";
 import { confirmDeletion, previewDeletion, undoOperation } from "../../src/lib/lifecycle";
 import { homeData, searchWorkspace } from "../../src/lib/workbench";
-import { addDependency } from "../../src/lib/dependencies";
+import { addDependency } from "../support/legacy-records";
 import { createEvent, getEvent } from "../../src/lib/events";
-import { quadrants, priorityLabel } from "../../src/lib/priority";
 import { testWorkspace } from "../support/auth";
 
 describe("Phase 1.2 manual classification and cascading completion", () => {
@@ -19,16 +19,31 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
   const complete = (id: string, preview = projects.previewProjectCompletion(w.db, w.alice.id, id), mutationId = crypto.randomUUID()) =>
     projects.updateProject(w.db, w.alice.id, id, 1, { status: "Done", completionPreview: preview, mutationId });
 
-  it("stores explicit independent importance/urgency, defaults to unclassified, and filters false values", () => {
+  it("stores explicit importance, defaults to unset, filters false values, and rejects dormant v2 fields", () => {
     const plain = task(null);
-    expect(plain).toMatchObject({ important: null, urgent: null });
-    const classified = task(null, { important: true, urgent: false, dueDate: "2020-01-01" });
-    expect(classified).toMatchObject({ important: true, urgent: false });
+    expect(plain).toMatchObject({ important: null, urgent: null, priority: "Medium", blockerReason: "", estimateMinutes: null });
+    const classified = task(null, { important: true, dueDate: "2020-01-01" });
+    expect(classified).toMatchObject({ important: true });
     const moved = updateTask(w.db, w.alice.id, classified.id, 1, { dueDate: "2030-01-01", mutationId: crypto.randomUUID() });
-    expect(moved).toMatchObject({ important: true, urgent: false });
-    expect(searchWorkspace(w.db, w.alice.id, { important: "true", urgent: "false" }).items.map((r) => r.id)).toContain(classified.id);
+    expect(moved).toMatchObject({ important: true });
+    expect(searchWorkspace(w.db, w.alice.id, { important: "true" }).items.map((r) => r.id)).toContain(classified.id);
     expect(searchWorkspace(w.db, w.alice.id, { important: "false" }).items.map((r) => r.id)).not.toContain(classified.id);
     expect(() => task(null, { important: "yes" })).toThrow();
+    for (const dormant of [{ priority: "High" }, { urgent: true }, { estimateMinutes: 30 }, { blockerReason: "Waiting" }]) {
+      expect(() => task(null, dormant)).toThrow();
+      expect(() => updateTask(w.db, w.alice.id, plain.id, 1, { ...dormant, mutationId: crypto.randomUUID() })).toThrow();
+    }
+    expect(() => searchWorkspace(w.db, w.alice.id, { urgent: "true" })).toThrow();
+    expect(() => searchWorkspace(w.db, w.alice.id, { priority: "High" })).toThrow();
+  });
+
+  it("replays a create recorded with the pre-v3 request shape (dormant fields at defaults)", () => {
+    const input = { title: "Retry me", important: true, mutationId: crypto.randomUUID() }, t = createTask(w.db, w.alice.id, input);
+    const v2 = { title: t.title, description: "", projectId: null, status: "To do", priority: "Medium", important: true, urgent: null,
+      dueDate: null, dueAt: null, timezone: null, estimateMinutes: null, blockerReason: "", position: 0 };
+    w.db.$client.prepare("UPDATE activity SET request_hash = ? WHERE mutation_id = ?").run(requestHash("task-create", null, v2), input.mutationId);
+    expect(createTask(w.db, w.alice.id, input)).toEqual(t);
+    expect(() => createTask(w.db, w.alice.id, { ...input, important: false })).toThrow(/reused/i);
   });
 
   it("atomically completes unfinished children, preserves Done/deleted/unrelated records, and replays one operation", () => {
@@ -104,33 +119,27 @@ describe("Phase 1.2 manual classification and cascading completion", () => {
     expect(getTask(w.db, w.alice.id, child.id).status).toBe("Done");
   });
 
-  it("Home counts local today/overdue separately and does not change urgency", () => {
+  it("Home counts local today/overdue separately and does not change the dormant urgency", () => {
     const late = task(null, { title: "Late", dueDate: "2027-03-14" });
-    const today = task(null, { title: "Today", dueAt: "2027-03-14T18:00:00Z", timezone: "UTC", urgent: false });
+    const today = task(null, { title: "Today", dueAt: "2027-03-14T18:00:00Z", timezone: "UTC" });
+    w.db.$client.prepare("UPDATE task SET urgent = 0 WHERE id = ?").run(today.id);
     const data = homeData(w.db, w.alice.id, "Asia/Jakarta", "2027-03-14T19:00:00Z");
     expect(data.dueToday.map((t) => t.id)).toContain(today.id);
     expect(data.overdue.map((t) => t.id)).toEqual(expect.arrayContaining([late.id, today.id]));
     expect(getTask(w.db, w.alice.id, today.id).urgent).toBe(false);
   });
 
-  it("completion preserves linked/independent events and outside prerequisites while previewing blocker warnings", () => {
-    const p = project(), outsideProject = project(), child = task(p.id, { status: "Doing", blockerReason: "Awaiting review" }), prerequisite = task(outsideProject.id);
+  it("completion preserves linked/independent events and pre-v3 outside prerequisites", () => {
+    const p = project(), outsideProject = project(), child = task(p.id, { status: "Doing" }), prerequisite = task(outsideProject.id);
     addDependency(w.db, w.alice.id, { taskId: child.id, prerequisiteId: prerequisite.id, mutationId: crypto.randomUUID() });
     const event = (taskId: string | null) => createEvent(w.db, w.alice.id, { title: "Keep event", taskId, start: "2027-04-01", end: "2027-04-02", allDay: true, timezone: "UTC", mutationId: crypto.randomUUID() });
     const linked = event(child.id), independent = event(null);
     const preview = projects.previewProjectCompletion(w.db, w.alice.id, p.id);
-    expect(preview.tasks[0].warnings).toContain("Awaiting review");
-    expect(preview.tasks[0].warnings.some((s) => s.includes("Waiting on"))).toBe(true);
+    expect(preview.tasks).toEqual([{ id: child.id, revision: child.revision, title: child.title, status: "Doing" }]);
     complete(p.id, preview);
     expect(getTask(w.db, w.alice.id, child.id).status).toBe("Done");
     expect(getTask(w.db, w.alice.id, prerequisite.id)).toEqual(prerequisite);
     expect(getEvent(w.db, w.alice.id, linked.id)).toEqual(linked);
     expect(getEvent(w.db, w.alice.id, independent.id)).toEqual(independent);
-  });
-
-  it("all four quadrants and partial classification have distinct labels", () => {
-    const choices = [{ important: true, urgent: true }, { important: true, urgent: false },
-      { important: false, urgent: true }, { important: false, urgent: false }, { important: null, urgent: true }];
-    expect(choices.map(priorityLabel)).toEqual([...quadrants]);
   });
 });

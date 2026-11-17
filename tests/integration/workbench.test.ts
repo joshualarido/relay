@@ -1,9 +1,8 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { createProject, archiveProject } from "../../src/lib/projects";
-import { createTask, updateTask } from "../../src/lib/tasks";
+import { createTask } from "../../src/lib/tasks";
 import { createEvent } from "../../src/lib/events";
-import * as checkins from "../../src/lib/check-ins";
-import * as dependencies from "../../src/lib/dependencies";
+import * as legacy from "../support/legacy-records";
 import * as workbench from "../../src/lib/workbench";
 import { previewDeletion, confirmDeletion } from "../../src/lib/lifecycle";
 import { testWorkspace } from "../support/auth";
@@ -14,49 +13,23 @@ describe("manual workbench", () => {
   afterAll(() => w?.close());
   const project = () => createProject(w.db, w.alice.id, { name: "Workbench project", status: "Active", deadline: "2027-03-15", mutationId: crypto.randomUUID() });
   const task = (input = {}) => createTask(w.db, w.alice.id, { title: "Workbench task", ...input, mutationId: crypto.randomUUID() });
-  const link = (taskId: string, prerequisiteId: string) => dependencies.addDependency(w.db, w.alice.id, { taskId, prerequisiteId, mutationId: crypto.randomUUID() });
-  it("saves exact manual check-ins on one selected owned association, deriving task projects", () => {
-    const p = project(), t = task({ projectId: p.id });
-    for (const data of [{}, { projectId: p.id, taskId: t.id }, { taskId: "missing" }]) {
-      expect(() => checkins.createCheckIn(w.db, w.alice.id, { content: "Progress", ...data, mutationId: crypto.randomUUID() })).toThrow();
-    }
-    expect(() => checkins.createCheckIn(w.db, w.bob.id, { content: "Foreign", taskId: t.id, mutationId: crypto.randomUUID() })).toThrow(/not found/i);
-    const input = { content: "  Tests work, UI needs care.  ", taskId: t.id, mutationId: crypto.randomUUID() };
-    const saved = checkins.createCheckIn(w.db, w.alice.id, input);
-    expect(saved).toMatchObject({ content: input.content, taskId: t.id, projectId: null });
-    expect(checkins.createCheckIn(w.db, w.alice.id, input)).toEqual(saved);
-    expect(checkins.listCheckIns(w.db, w.alice.id, { projectId: p.id }).map((c) => c.id)).toContain(saved.id);
-    expect(checkins.listCheckIns(w.db, w.bob.id, { taskId: t.id })).toEqual([]);
-  });
-  it("rejects self-links, cycles, duplicate links and foreign ownership, without blocking completion", () => {
-    const a = task(), b = task(), c = task();
-    expect(() => link(a.id, a.id)).toThrow(/itself|self/i);
-    link(a.id, b.id); link(b.id, c.id);
-    expect(() => link(c.id, a.id)).toThrow(/cycle/i);
-    expect(() => link(a.id, b.id)).toThrow(/already/i);
-    expect(() => dependencies.addDependency(w.db, w.bob.id, { taskId: a.id, prerequisiteId: b.id, mutationId: crypto.randomUUID() })).toThrow(/not found/i);
-    expect(dependencies.dependencyWarnings(w.db, w.alice.id, a.id)).toHaveLength(1);
-    expect(updateTask(w.db, w.alice.id, a.id, 1, { status: "Done", mutationId: crypto.randomUUID() }).status).toBe("Done");
-    const edge = dependencies.listDependencies(w.db, w.alice.id, a.id)[0];
-    dependencies.removeDependency(w.db, w.alice.id, edge.id, edge.revision, { mutationId: crypto.randomUUID() });
-    expect(dependencies.dependencyWarnings(w.db, w.alice.id, a.id)).toEqual([]);
-  });
-  it("cascades check-ins and reference edges, never the independent prerequisite/dependent task", () => {
+  const link = (taskId: string, prerequisiteId: string) => legacy.addDependency(w.db, w.alice.id, { taskId, prerequisiteId, mutationId: crypto.randomUUID() });
+  it("cascades pre-v3 check-ins and reference edges, never the independent prerequisite/dependent task", () => {
     const p = project(), a = task({ projectId: p.id }), b = task();
     const edge = link(b.id, a.id);
-    const c = checkins.createCheckIn(w.db, w.alice.id, { taskId: a.id, content: "Save this", mutationId: crypto.randomUUID() });
+    const c = legacy.createCheckIn(w.db, w.alice.id, { taskId: a.id, content: "Save this", mutationId: crypto.randomUUID() });
     const preview = previewDeletion(w.db, w.alice.id, "project", p.id);
     expect(preview.records.map((r) => r.id)).toEqual(expect.arrayContaining([p.id, a.id, edge.id, c.id]));
     expect(preview.records.map((r) => r.id)).not.toContain(b.id);
     confirmDeletion(w.db, w.alice.id, { ...preview, mutationId: crypto.randomUUID() });
-    expect(dependencies.listDependencies(w.db, w.alice.id, b.id)).toEqual([]);
-    expect(checkins.listCheckIns(w.db, w.alice.id, { taskId: a.id })).toEqual([]);
+    expect(legacy.listDependencies(w.db, w.alice.id, b.id)).toEqual([]);
+    expect(legacy.listCheckIns(w.db, w.alice.id, { taskId: a.id })).toEqual([]);
   });
   it("searches/filter only active owned work and computes overdue by user-zone day boundaries", () => {
     const p = project();
-    const a = task({ title: "Needle", projectId: p.id, priority: "High", dueDate: "2027-03-14" });
+    const a = task({ title: "Needle", projectId: p.id, dueDate: "2027-03-14" });
     const b = task({ title: "Needle later", dueAt: "2027-03-15T03:00:00Z", timezone: "Asia/Jakarta" });
-    const results = workbench.searchWorkspace(w.db, w.alice.id, { q: "Needle", priority: "High", projectId: p.id, date: "2027-03-14" });
+    const results = workbench.searchWorkspace(w.db, w.alice.id, { q: "Needle", projectId: p.id, date: "2027-03-14" });
     expect(results.items.map((v) => v.id)).toEqual([a.id]);
     expect(workbench.searchWorkspace(w.db, w.bob.id, { q: "Needle" }).items).toEqual([]);
     const before = workbench.homeData(w.db, w.alice.id, "Asia/Jakarta", "2027-03-14T16:59:00Z");

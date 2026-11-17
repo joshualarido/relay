@@ -48,6 +48,12 @@ describe("phase 1.3 planned dates", () => {
     expect(items.find((i) => i.id === deadline.id)).toMatchObject({ date: "2027-05-09", dateKind: "deadline" });
     expect(searchWorkspace(w.db, w.bob.id, { q: title }).items).toEqual([]);
   });
+
+  it("another owner cannot change a task", () => {
+    const t = task({ title: "Alice only" });
+    expect(() => updateTask(w.db, w.bob.id, t.id, t.revision, { title: "Bob was here", mutationId: crypto.randomUUID() })).toThrow(/not found/i);
+    expect(getTask(w.db, w.alice.id, t.id)).toEqual(t);
+  });
 });
 
 describe("phase 1.3 upgrade", () => {
