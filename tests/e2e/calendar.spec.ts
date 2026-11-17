@@ -32,9 +32,9 @@ test("calendar event create/edit/default duration/delete persists with all views
     await page.getByRole("button", { name, exact: true }).click();
     await expect(page.getByRole("link", { name: `Event: ${title} edited`, exact: true }).first()).toBeVisible();
   }
-  await page.getByLabel("Show events", { exact: true }).uncheck();
+  await page.getByLabel("Show event", { exact: true }).uncheck();
   await expect(page.getByRole("link", { name: `Event: ${title} edited`, exact: true })).toHaveCount(0);
-  await page.getByLabel("Show events", { exact: true }).check();
+  await page.getByLabel("Show event", { exact: true }).check();
   await page.getByRole("link", { name: `Event: ${title} edited`, exact: true }).first().click();
   await page.getByRole("button", { name: "Delete event", exact: true }).click();
   await page.getByRole("button", { name: "Confirm soft deletion", exact: true }).click();

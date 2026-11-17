@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 const headers = (origin: string) => ({ origin });
 const monthDate = "2027-03-15";
@@ -94,6 +94,14 @@ test("Home calendar renders real categories and keeps planned dates independent 
 });
 
 
+async function tabTo(page: Page, target: Locator, max = 150) {
+  for (let i = 0; i < max; i++) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  throw new Error("Target was not reached by Tab traversal.");
+}
+
 async function homeDrag(page: Page, record: string, date: string, confirm = true) {
   const source = page.locator(`[data-calendar-record="${record}"]`).first();
   await source.scrollIntoViewIfNeeded();
@@ -157,13 +165,14 @@ test("Home crowded date shows a keyboard-reachable +N more popover", async ({ pa
   await page.goto(`/?date=${day}`);
   const more = page.locator(`.home-calendar [data-date="${day}"] :is(a, button, [role=button], [role=link], [tabindex])`).filter({ hasText: /^\+\d+ more$/ }).first();
   await expect(more).toBeVisible();
-  await more.focus();
+  await page.locator(".home-calendar").getByRole("button", { name: "Today", exact: true }).focus();
+  await tabTo(page, more);
   await expect(more).toBeFocused();
   await page.keyboard.press("Enter");
   const popover = page.locator(".fc-popover, [role=dialog]").filter({ has: page.locator("[data-calendar-record]") }).first();
   await expect(popover).toBeVisible();
   const item = popover.locator("[data-calendar-record]").first();
-  await item.focus();
+  await tabTo(page, item, 20);
   await expect(item).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(popover).toBeHidden();
@@ -173,11 +182,16 @@ test("Home day capture button selects the capture date by keyboard", async ({ pa
   const day = info.project.name === "mobile" ? "2027-09-23" : "2027-09-22";
   await page.goto(`/?date=${day}`);
   const button = page.getByRole("link", { name: `Capture on ${Number(day.slice(8))} September 2027`, exact: true });
-  await button.focus();
+  await page.locator(".home-calendar").getByRole("button", { name: "Today", exact: true }).focus();
+  await tabTo(page, button);
   await expect(button).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator(".quick-capture-card").getByLabel("Planned work date", { exact: true })).toHaveValue(day);
-  await expect(page.locator(".home-calendar-help")).toBeVisible();
+  const help = page.locator(".home-calendar-help");
+  await expect(help).toBeVisible();
+  await expect(help).toContainText("Open an item to change its dates without dragging.");
+  expect(await help.evaluate((el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
 });
 
 test("Home month navigation changes the title and highlights today", async ({ page }) => {

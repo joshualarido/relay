@@ -193,7 +193,7 @@ html:has(.home-page), body:has(.home-page) { overflow: hidden; }
 .home-calendar { display: flex; flex-direction: column; min-height: 0; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
 .home-calendar .calendar-legend { gap: 8px 14px; }
 .home-calendar .calendar-controls { flex: 0 0 auto; }
-.home-calendar-help { flex: 0 0 auto; font-size: .75rem; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-calendar-help { flex: 0 0 auto; font-size: .72rem; line-height: 1.3; }
 .home-calendar .calendar-frame { flex: 1; min-height: 0; overflow: auto; }
 .calendar-day-capture { min-width: 28px; min-height: 24px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; }
 .calendar-day-capture:hover { background: var(--secondary); }
