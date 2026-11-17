@@ -43,7 +43,5 @@ are required throughout. No specific certification is claimed.
 
 ## Product Authority
 
-`docs/PRD.md` v2.4 defines baseline requirements. `docs/Phase 1.2 Implementation PRD.md`
-explicitly supersedes its priority, completion, and visual rules.
-Phase 1.2 is manual-only and single-agent; no scroll navigation or AI is included.
-After automated acceptance, one backed-up local reset prepares user verification.
+`docs/PRD.md` (Relay PRD v3) is the only product authority. Earlier PRDs and
+phase documents in `docs/archive/` are historical reference and do not apply.

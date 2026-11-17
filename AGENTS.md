@@ -13,26 +13,27 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Authority And Scope
 
 - Relay makes personal work easy to capture, organize, update, and resume.
-- Read `docs/PRD.md`, `PRODUCT.md`, `DESIGN.md`, and the active phase document.
-- Phase 1.2 is defined in `docs/Phase 1.2 Implementation PRD.md`. Its approved
-  changes supersede conflicting earlier priority, completion, and design rules.
-  Other PRD requirements remain in force.
+- `docs/PRD.md` (Relay PRD v3) is the product authority. Earlier PRDs and phase
+  documents live in `docs/archive/` for reference only.
+- The active phase plan is under `docs/superpowers/plans/`; its progress file is
+  `docs/Phase N Progress.md`. Also read `PRODUCT.md` and `DESIGN.md`.
 - Writing or reading a plan does not start implementation. Wait for explicit
   authorization, such as the user invoking the phase through `/goal`.
 - Report material contradictions rather than silently changing product behavior.
-- Do not initialize Git, commit, push, deploy, or start another phase unasked.
+- Git is initialized: commit per task on the phase branch. Never push or merge
+  `main`, deploy, or start another phase unasked.
 
 ## Execution Model
 
 - Subagent-driven development is allowed when the user requests it: one
   orchestrator/reviewer dispatches focused worker subagents one at a time in
-  the shared checkout (no Git, so no extra worktrees) and reviews each package.
+  the phase branch checkout (no extra worktrees) and reviews each package.
 - Workers never touch the ordinary database, `.env`, or OAuth configuration,
   and never spawn their own subagents.
 - Review stable changes in a separate pass before fixing findings. Describe the
   review honestly (orchestrator review of worker output, not certification).
 - Keep one progress document for the active phase. Record decisions, changed
-  files or hashes when Git is unavailable, commands/results, unresolved findings,
+  files or commits, commands/results, unresolved findings,
   pending processes, and the exact next action.
 - On interruption, reread the active phase and checkpoint; verify current files
   before resuming. Preserve user work and stop on unexpected concurrent changes.
@@ -59,17 +60,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   create follow-up tasks. Do not add AI packages or simulated AI features.
 - Save captured task titles literally; do not split, rewrite, or deduplicate them.
 - Implement only the lifecycle and priority rules approved for the active phase.
-- Follow the shared design tokens: warm dark solid surfaces, muted honey accent,
-  full-width shells with good padding, and enclosed rounded bordered cards.
-- Use mostly symmetrical responsive bento layouts, not filler or nested-card
-  scaffolding. Keep prose readable without narrowing the whole page.
-- Keep sidebar search within navigation. Do not add scroll-driven page changes.
+- Visual rules come from DESIGN.md. Phase 1 rewrites it; until then do not add new UI.
 - Use accessible in-app dialogs for decisions, inline errors for failed input,
   and nonblocking app notifications for routine success and Undo.
 - Preserve keyboard/touch access, visible focus, contrast, labels, reduced motion,
   and non-color indicators. Charts need accessible text equivalents.
 - No fake production data, placeholder actions, decorative gradients, or repeated
-  AI disclaimers. Deferred Chat says "Coming soon".
+  AI disclaimers.
 
 ## Develop, Verify, Reset, Hand Off
 
@@ -82,8 +79,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
    build, and production-mode browser tests. Verify fresh and upgrade migrations.
    Use isolated SQLite and test-only real sessions; never test against user data.
 5. Only after automated acceptance, perform an explicitly authorized local
-   verification reset. Phase 1.2 authorizes one end-of-implementation reset;
-   documentation work does not trigger it. Follow that phase's reset procedure.
+   verification reset, only when the active phase plan authorizes a reset;
+   documentation work does not trigger it. Follow that plan's reset procedure.
 6. Resolve and verify the exact configured local database and WAL/SHM paths.
    Stop its writers, make and integrity-check a private SQLite-consistent backup,
    then reset only that database and run migrations. Preserve `.env`, OAuth

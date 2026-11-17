@@ -1,1201 +1,212 @@
-# Relay — Product Requirements Document
-
-**Version:** 2.4  
-**Status:** PRD discussion complete. Workflow/loop pipeline discussion must precede slice planning or implementation.  
-**Platform:** Responsive web application  
-**Product:** AI-assisted personal organizer  
-**Scope:** Single-user MVP, designed for future expansion
-
-### Active Phase 1.2 Overrides
-
-`docs/Phase 1.2 Implementation PRD.md` supersedes earlier priority, completion,
-and visual rules: manual importance/urgency replaces Low/Medium/High; confirmed
-project completion cascades to unfinished tasks; warm solid full-width bento UI
-replaces the initial baseline. Reopen/pause/archive preserve child statuses.
-No scroll navigation or AI is included. Execution is single-agent with a final
-backed-up local reset only after automated acceptance. Unaffected requirements
-and future AI release scope below remain in force.
-
-### Confirmed Decisions and Release Boundary
-
-- SQLite is final. Do not substitute PostgreSQL.
-- Every AI-proposed workspace mutation requires an explicit preview and approval. Read-only queries do not.
-- Explicit check-in submission may save the user's text and selected association; AI-inferred associations, status changes, and follow-up tasks require approval.
-- Stale proposals must not overwrite newer work. Undo and snapshot restoration must also protect subsequent changes.
-- Support archiving and soft deletion. Deleting a parent also soft-deletes its children after a preview and confirmation.
-- Host the application with SQLite on the user's personal VPS. Deployment and backup setup are deferred to deployment work, not blockers for this requirements discussion.
-- The initial deployment will be protected by user-managed Cloudflare email restrictions. Application login uses Google OAuth + Better Auth. Public availability is future work.
-- AI features require a configured model. Without one, chat and AI recommendations/planning are unavailable; manual project/task/event management still works. Do not build a replacement recommendation engine without AI.
-- Relay is a personal task manager tailored to the user's needs, with a conversational AI assistant. Suggesting next actions from recently completed work is a capability the user requests, not an automatic task-completion trigger. Suggestions require approval before creating or changing records.
-- Release includes all features stated in F01-F10, including task dependencies, Focus Mode, the command palette, daily planning, snapshots, and Undo. P0/P1 labels indicate implementation order, not permission to omit features.
-- "Optional" features may be optional for the user to invoke or enable; they must still work in the release.
-- Desktop and mobile web usability, accessibility, persistence, and failure handling are required throughout development, not deferred until the last phase.
-- Section 13 records settled product decisions and topics deliberately deferred to the separate workflow discussion. Report any newly discovered material ambiguity rather than silently selecting product behavior.
-- Finish the requirements discussion, explicitly say it is finished, and stop. Discuss the workflow/loop pipeline next; do not automatically split work into slices, scaffold the app, or implement features.
-
+---
+title: Relay PRD v3
+version: 3.2
+status: draft for review
+date: 2026-11-17
+supersedes: "[[Initial PRD]] (v2.0) and repo docs/PRD.md (v2.4)"
 ---
 
-## 1. Product Vision
+# Relay — PRD v3 (Core first)
 
-Relay is a personal task management application tailored to the user's needs, with a conversational AI assistant for managing projects, tasks, deadlines, events, and personal productivity.
+> [!summary] One line
+> A calm, fast personal planner: **projects hold tasks, tasks go on the calendar, and one Today screen tells me what matters now.** Three screens, nothing else. AI comes after the core feels great.
 
-Its primary purpose is to **minimize the effort required to stay organized, maintain momentum, and resume work after inactivity.**
+## 1. Why v3
 
-Alongside ordinary task management, the user can ask Relay's AI to understand current responsibilities, suggest what to do next, and help recover from neglected or disorganized workloads. The assistant responds to user requests rather than autonomously directing work.
+v2 tried to be an AI organizer, a task manager, a calendar, an audit log and a recovery system all at once. Building it produced a cluttered, generic UI: forms on every screen, helper paragraphs, visible reorder arrows and dropdowns on cards, and seven nav items.
 
-### Core Product Loops
+v3 cuts the MVP to the non-negotiables and treats **clean, quick and calm** as requirements, not polish.
 
-**Normal workflow:**
+## 2. Non-negotiables (MVP)
 
-Capture → Organize → Work → Update → Continue
+1. **Uncluttered workspace.** Projects contain tasks. Tasks can be put on the calendar as events. Everything is visible and editable with quick gestures.
+2. **Easy input.** Capturing a task or event takes one shortcut and one line of text.
+3. **Accessible anywhere.** Deployed and signed in from laptop or phone, and installable as an app (PWA).
+4. **Clean UI and smooth animation.** This counts as an acceptance criterion, not "Phase 4 polish".
+5. **Optional links.** A task doesn't need a project. An event doesn't need a task.
+6. **Kanban-style status board.** Inside the Projects screen, tasks are grouped by status and dragged between groups. There's no separate kanban screen (decided 2026-11-17).
+7. **Calendar view.**
+8. **Three central screens: Today, Projects, Calendar.** That is where 90% of the time goes.
 
-**Optional, user-requested AI assistance:** Ask the assistant → Review its answer or proposed changes → Approve any changes → Continue.
+Anything not serving one of these is out of the MVP.
 
-**Next-action capability:** The user may ask the assistant for direct next steps based on recently completed tasks. Completing a task or submitting a check-in must not automatically invoke AI, generate suggestions, or create another task. There is no requirement to produce a follow-up after every completed task or invent work when a goal is finished.
+## 3. Screens
 
-**Recovery workflow:**
+Navigation is three items plus a search/quick-add trigger and an avatar menu (Settings, Sign out). On desktop it's a slim icon rail or top bar. On mobile it's a bottom tab bar with a center **+** button.
 
-Return → Assess → Prioritize → Approve → Resume
+**Moving between screens:**
+- The order is fixed: **Today ← → Projects ← → Calendar**. `Ctrl+←` and `Ctrl+→` move one screen left or right, and `1`, `2`, `3` jump straight to a screen.
+- These shortcuts only work when you're not typing in a text field, because inside one `Ctrl+←/→` jumps between words.
+- On macOS, `Ctrl+←/→` switches desktops, so the Mac binding is `⌘⌥←/→`.
+- **The transition must feel instant.** The shell (navigation and header) stays put and only the content area animates. It slides in the direction of travel, with a short fade, in 150–200 ms. All three screens are prefetched and their data is cached, so there's never a loading flash between them. A key press interrupts any animation that's still running, so holding the key never queues animations up.
+- The active indicator in the navigation slides to the new item (a shared layout animation).
+- With reduced motion on, it's a plain crossfade.
+- Each screen keeps its scroll position and view state when you come back to it, e.g. the calendar's week, or an expanded project.
 
-### Product Principles
+### 3.1 Today (home)
+Purpose: open the app, know in 5 seconds what matters, start working.
 
-1. **Chat-first, not chat-only:** Everything important must be manageable both manually and through natural language.
-    
-2. **Minimal maintenance:** Maintaining the task database should require very little effort.
-    
-3. **Recovery-oriented:** Returning after days or weeks of inactivity must be straightforward.
-    
-4. **Actionable AI:** Prefer concrete actions over generic advice.
-    
-5. **User-controlled:** AI suggests and assists; consequential decisions remain with the user.
-    
-6. **Single source of truth:** Structured database records, not AI conversation history, determine workspace state.
-    
-7. **Lightweight:** Avoid unnecessary complexity, infrastructure, and dependencies.
-    
+Today is **one timeline of the day**, not a dashboard of sections. The timeline is the screen's single hero element.
 
-### Target Users
+- **Header:** the date, a one-sentence summary computed from data (e.g. "4 things today · next: Design review in 40 min"), and the Capture button.
+- **Catch-up line (only when needed):** one line above the timeline, e.g. "2 overdue · Review". Clicking it expands the overdue tasks in place, each with one-tap *Today*, *Tomorrow* or *Pick date* actions. It never takes over the page.
+- **Timeline:** today's events and scheduled task blocks in time order, with a live **now line** running through them. Tasks *due* today but not scheduled sit in a short "Due today, unscheduled" group at the top, with a one-tap *Schedule* action that opens Schedule mode (§3.3).
+- **Urgency comes from time:** the now line, the countdown to the next item, and "time left today". It doesn't come from more sections or red badges.
+- **Day clear:** when everything today is done, the timeline is replaced by a calm "Day clear" state with a small completion moment (§6).
 
-Students, developers, solo founders, and individuals managing several simultaneous projects.
+Not on Today: coming up and future deadlines (they live on the Calendar) and loose tasks (they live on Projects, under "No project").
 
-The primary problem is not creating tasks. It is keeping task management useful when plans change, work accumulates, or the system has been neglected.
+**Quick capture button** in the Today header, always visible, labelled with its shortcut (`+ Capture  N`). It opens the same quick add as the shortcut (§4), so there's no form on the page itself. If the day is empty, say so in one line, and the capture button is the obvious next step.
+	
+### 3.2 Projects (split view)
+One screen, two panes. The task board is the hero element.
 
----
+**Left pane: project list**
+- **No project** is pinned first. It holds every loose task, so loose tasks always have a home.
+- Projects are grouped by status: **Active, Planned, Paused** and a collapsed **Done**. Drag a project between groups to change its status, or within a group to reorder it.
+- Each row shows the name, a thin progress bar (done tasks / total) and the next deadline. Nothing else is visible.
+- `↑/↓` moves through projects. `Ctrl+N` (or `+` at the list top) creates a project inline.
 
-## 2. Application Structure
+**Right pane: the selected project's task board**
+- A header with the title, description and deadline, each editable inline.
+- Tasks are grouped by status as **To do / Doing / Done**, laid out as kanban columns on wide screens. Drag a task between groups to change its status and within a group to reorder it. Checking a task completes it and animates it into Done.
+- Typing at the bottom of a group adds a task with that status.
+- A small strip shows this project's upcoming events.
+- Moving a task to another project: drag it onto a project in the left pane, or use the context menu.
 
-### Main Navigation
+**Narrow screens:** the list and the board become two levels. Tap a project to open its board, and swipe back to return. Groups stack vertically, and you change a task's status with a long-press drag or the `⋯` menu.
 
-|Page|Purpose|
-|---|---|
-|Home|Overview, priorities, upcoming responsibilities, recovery|
-|Projects|Project Kanban and project management|
-|Inbox|Unassigned tasks and quick capture|
-|Calendar|Unified deadlines and events|
-|Chat|Natural-language workspace management|
-|Settings|Preferences and AI configuration|
+### 3.3 Calendar
+- Week view by default. Month and day views are one click away. Agenda is the mobile default.
+- Drag an event to move it, and drag its edge to resize.
+- Click empty space to create an event inline (title plus time; Enter to save).
 
-**Secondary interfaces:**
+**Schedule mode** — the main way to turn tasks into planned time.
+- **Enter it** with `S` on the Calendar, the *Schedule* button in the calendar header, or *Schedule* on any task elsewhere (which opens the Calendar in Schedule mode with that task highlighted).
+- **A floating panel opens next to the cursor** (or anchored to the button, if you clicked it). It's compact, can be dragged elsewhere, and stays open while you work. It contains:
+  - a search field, focused immediately so you can type to filter;
+  - **unscheduled tasks**, grouped by project (with *No project* first), each showing its due date if it has one;
+  - **projects without a deadline**.
+- **Drop targets:**
 
-- Project details page.
-    
-- Task details panel.
-    
-- Focus Mode.
-    
-- Global command palette (`Ctrl/Cmd + K`).
-    
-- Collapsible AI assistant panel accessible throughout the app.
-    
-
-### Data Hierarchy
-
-- Workspace contains projects, tasks, events, and activity.
-    
-- Projects contain tasks and may link to events.
-    
-- Tasks may be project-associated or unassigned.
-    
-- Events may be independent or linked to projects/tasks.
-    
-- Check-ins record reported progress.
-    
-- AI proposals represent changes awaiting approval.
-    
-
----
-
-## 3. Core Features
-
-### F01 — Home Dashboard
-
-**Priority: P0**
-
-The dashboard must immediately communicate the user's current situation.
-
-Requirements:
-
-- Active projects and progress.
-    
-- Important and overdue tasks.
-    
-- Upcoming deadlines and events.
-    
-- Recently updated work.
-    
-- A maximum of three AI-recommended "Next Up" tasks, generated when the user requests recommendations, not automatically on page load or task completion.
-
-- AI-generated Next Up suggestions require a configured model. Without one, show a clear setup prompt rather than generated advice or a non-AI recommendation fallback.
-    
-- Quick capture input.
-    
-- AI assistant access.
-    
-- Recovery Mode prompt after inactivity.
-    
-
-**Definition of Done:**
-
-- Dashboard reflects actual database records.
-    
-- Every displayed project/task/event links to its details.
-    
-- Empty, loading, and error states are implemented.
-    
-- Recommended priorities are clearly distinguished from user-defined priorities.
-    
-
-### F02 — Projects
-
-**Priority: P0**
-
-Projects use a drag-and-drop Kanban board.
-
-**Statuses:** Planned, Active, Paused, Completed.
-
-Project properties:
-
-- Name and description.
-    
-- Status and optional deadline.
-    
-- Progress percentage.
-    
-- Creation and update timestamps.
-    
-
-Operations:
-
-- Create, edit, archive, delete.
-    
-- Drag between status columns.
-    
-- Search and filter.
-    
-- Open dedicated project details.
-    
-
-**Lifecycle requirements:**
-
-- Archive preserves records and their statuses. Provide a way to find and unarchive archived projects.
-- Delete means soft delete, not permanent removal from SQLite.
-- Project deletion cascades to its tasks, linked events, and associated check-ins after a preview and explicit confirmation. Task deletion cascades to its linked events and associated check-ins.
-- Events with no project/task parent are independent and must not be deleted by a project/task cascade. Task dependencies are references, not parent-child ownership: deleting a prerequisite must not delete other tasks that reference it.
-- Cascade soft deletion is atomic and records the deletion operation so restoration can distinguish its affected records from previously deleted records.
-- Provide access to soft-deleted records and a restore operation. Restore only records affected by the selected operation, never independently deleted records; preserve later work. No automatic permanent purge is required for this release.
-- Completing a project must not silently complete its unfinished tasks.
-
-**Project Details must include:**
-
-- Project overview and progress.
-    
-- Task Kanban and list views.
-    
-- Related deadlines and events.
-    
-- Recent check-ins/activity.
-    
-- Contextual AI assistance.
-    
-
-Progress = completed tasks / total tasks, with an empty project displaying 0%.
-
-**Definition of Done:** Project operations persist correctly, update relevant views, and require no AI connection.
-
-### F03 — Tasks and Inbox
-
-**Priority: P0**
-
-**Task statuses:** Backlog, Next, In Progress, Blocked, Done.
-
-**Task properties:**
-
-- Title and description.
-    
-- Optional project.
-    
-- Status and priority (Low, Medium, High).
-    
-- Optional due date and time.
-    
-- Optional effort estimate.
-
-- Effort estimates use positive whole minutes.
-    
-- Optional blocker reason.
-    
-- Creation, update, and completion timestamps.
-    
-
-Requirements:
-
-- Full CRUD and task reopening.
-    
-- Drag-and-drop status changes and reordering.
-    
-- List and Kanban views.
-    
-- Search and filtering.
-    
-- Task details panel.
-    
-- Check-in history.
-    
-- Unassigned tasks displayed in Inbox.
-    
-- Ability to move tasks between projects.
-
-- Warn, but allow confirmed project completion with unfinished tasks; never silently change task statuses.
-- Dependencies provide warnings rather than automatic task status changes or hard blocking. Self-links, cross-owner links, and cycles remain forbidden.
-- Entering Done sets a completion timestamp; reopening clears it while preserving the history.
-- Completing a task does not invoke AI or automatically suggest another task. The user may ask the assistant for next actions based on completed work; do not insert any suggested task before approval.
-    
-
-**Additional features (P1; required for release):**
-
-- Task dependencies ("Blocked by Task X").
-    
-- Focus Mode displaying one active task, relevant context, and a progress-report input.
-    
-
-**Definition of Done:** Tasks can be managed independently of AI. Status, project assignment, ordering, and completion persist across refreshes. Task dependencies cannot reference themselves or create cycles.
-
-### F04 — Unified Calendar
-
-**Priority: P0**
-
-Calendar displays **three distinct record types**, differentiated by colors and visual indicators.
-
-|Record type|Color|Representation|
+| Drag this | onto a **time slot** | onto a **day / all-day row** |
 |---|---|---|
-|Project deadline|Purple `#8B5CF6`|Project milestone|
-|Task deadline|Amber `#F59E0B`|Task due date|
-|Event|Blue `#3B82F6`|Scheduled activity|
-
-Requirements:
-
-- Month, week, day, and agenda views.
-    
-- Unified rendering of all three types.
-    
-- Filters and legend for each type.
-    
-- Clicking items opens their appropriate detail views.
-    
-- Drag-to-reschedule where applicable.
-    
-- Completed task deadlines may be dimmed or hidden.
-    
-- Accessible icons/labels alongside color distinctions.
-    
-
-**Events must support:**
-
-- Title and description.
-    
-- Start/end date and time.
-    
-- All-day events.
-    
-- Time zone.
-    
-- Optional project/task link.
-    
-- Optional location or meeting URL.
-    
-- Create, edit, and delete operations.
-    
-
-**Important distinctions:**
-
-- Project deadline = project target completion date.
-    
-- Task deadline = when a task is due.
-    
-- Event = scheduled time commitment.
-    
-
-Deadlines must not automatically create time-blocked events.
-
-Date-only deadlines must remain on their intended calendar date regardless of time zone. Timed events must be stored and converted consistently.
-
-**Agreed date rules:**
-
-- Default to Asia/Jakarta and a Monday week start; both are configurable.
-- A date-only task becomes overdue after its day ends in the user's timezone.
-- Store date-only values without converting them to UTC. Timed records preserve the instant and an IANA timezone.
-- Interpret relative dates in the user's timezone and ask when the intended date/time is unclear.
-- If an event end is omitted, suggest a visible 60-minute duration for approval.
-- All-day ranges use an exclusive end date: a one-day event ends at the start of the following date.
-- Dragging a deadline changes its date without adding duration or changing its type. Moving a timed event preserves its duration.
-
-**Definition of Done:** All record types render with correct colors, dates, interactions, and filters. Rescheduling updates the appropriate underlying record.
-
-### F05 — AI Assistant
-
-**Priority: P0**
-
-A conversational assistant that can inspect and manipulate actual workspace data.
-
-**Interface:**
-
-- Dedicated chat page.
-    
-- Collapsible contextual sidebar.
-    
-- Streaming responses where supported.
-    
-- Persistent conversation history.
-    
-- Referenced record links.
-    
-- Structured action previews and confirmation controls.
-    
-
-**Required capabilities:**
-
-1. **Query:** "What do I need to finish this week?"
-    
-2. **Create:** "Create a portfolio project with five initial tasks."
-    
-3. **Update:** "Move the API integration task to In Progress."
-    
-4. **Organize:** "Group these scattered tasks into the right projects."
-    
-5. **Schedule:** "Schedule a study session tomorrow at 4 PM."
-    
-6. **Prioritize:** "What should I work on next?"
-    
-7. **Decompose:** "Break down authentication implementation."
-    
-8. **Clean up:** "Find outdated tasks and help reorganize my workspace."
-    
-
-The assistant must retrieve actual records before making factual claims.
-
-**AI action categories:**
-
-- Workspace reads.
-    
-- Project/task/event creation.
-    
-- Record updates and moves.
-    
-- Check-in recording.
-    
-- Task recommendations.
-    
-- Bulk organization proposals.
-    
-
-**Action policy:**
-
-- Read-only queries execute immediately.
-    
-- Every AI-proposed workspace mutation, including single-record creation or updates, requires a structured preview and explicit approval.
-    
-- An initial chat instruction requests a proposal; it does not approve execution. Show the exact changes before the separate approval action.
-    
-- Explicit check-in submission may immediately persist the user's text and selected task/project association. AI-inferred associations or other changes still require approval.
-    
-- Bulk changes, deletions, and all rescheduling require confirmation of the affected records.
-
-- Editing a proposal invalidates any earlier approval. Only the approved payload may execute.
-    
-- AI cannot execute arbitrary SQL or code.
-
-- Without a configured model, chat explains that a model must be added in Settings. Do not pretend to answer or apply changes. During provider outages, report the error and keep manual management available.
-    
-
-**Definition of Done:** Supported commands result in validated database operations, not simulated chat responses. Invalid requests fail safely, and the assistant accurately reports execution results.
-
-### F06 — AI Model Configuration
-
-**Priority: P0**
-
-Support bring-your-own-key, OpenAI-compatible providers, including gateways such as 9Router.
-
-**Settings:**
-
-- Provider name.
-    
-- API base URL.
-    
-- API key.
-    
-- Model identifier.
-    
-- Test connection.
-    
-- Active model selector.
-    
-
-Requirements:
-
-- Multiple saved model configurations.
-    
-- Server-side model requests.
-    
-- Secure, encrypted API-key storage.
-    
-- Provider-independent AI service.
-    
-- Clear errors for invalid credentials, timeouts, and incompatible endpoints.
-    
-- Structured-output fallback when native tool calling is unsupported.
-    
-
-Credentials must never appear in browser-exposed responses after saving, logs, or client bundles.
-
-The user's providers are available over public HTTPS. Custom URLs must still be validated to prevent requests to private/internal networks and unsafe redirects. Cloudflare inbound access controls do not replace outbound provider URL validation. Private/local gateway support is not required.
-
-**Definition of Done:** A user can configure, test, and switch between two compatible model providers without modifying application code.
-
-### F07 — Progress Check-ins and Next Steps
-
-**Priority: P0 — Core Differentiator**
-
-Users can report completed or unfinished work in natural language.
-
-Example:
-
-"Authentication works now, but I haven't implemented password resets or written tests."
-
-Relay should:
-
-1. Identify relevant tasks/projects.
-    
-2. Save explicitly submitted check-in text with its user-selected association; preview and obtain approval for AI-inferred associations.
-    
-3. Propose status updates only when completion is explicitly established, and apply them only after approval.
-    
-4. Identify outstanding work.
-    
-5. When the user asks for next steps, use the reported or recently completed work to suggest up to three actionable follow-ups. Prefer one clear next step over expanding a large backlog; do not invent unnecessary work or generate suggestions merely because a check-in was saved.
-    
-6. Allow editing, selective approval, or rejection.
-    
-
-Recommendations contain a title, associated project, suggested priority, and short rationale.
-
-**Definition of Done:**
-
-- Check-ins persist independently of chat history.
-    
-- Follow-up tasks are not inserted before approval.
-    
-- Approved actions create the correct records exactly once.
-    
-- Rejected recommendations do not modify the task database.
-
-- Marking a task Done or saving a check-in alone must not invoke AI or generate follow-ups. An explicit user request can produce next-action suggestions; creating or changing records still requires approval. Model failure never undoes an already saved task completion.
-- Repeating or retrying a request must not duplicate approved follow-up tasks. The detailed interaction flow is deferred to the workflow discussion.
-    
-
-### F08 — Recovery Mode
-
-**Priority: P0 — Core Differentiator**
-
-Recovery Mode helps users resume after inactivity or an overwhelming backlog.
-
-**Triggers:**
-
-- Manual invocation.
-    
-- Natural-language request.
-    
-- Optional dashboard prompt after three days without workspace activity (configurable).
-    
-
-**Workflow:**
-
-1. **Assess:** Examine active projects, overdue tasks, upcoming commitments, blockers, and recent updates.
-    
-2. **Summarize:** Explain the current situation concisely.
-    
-3. **Prioritize:** Identify urgent and relevant responsibilities.
-    
-4. **Recommend:** Generate a manageable recovery plan.
-    
-5. **Approve:** Allow selective acceptance of proposed changes.
-    
-6. **Resume:** Direct the user toward a clear next task.
-    
-
-Example:
-
-"You have four overdue tasks and two active projects. Your presentation is due Friday. I'd prioritize preparing the slides and defer the optional UI redesign."
-
-Recovery Mode may suggest:
-
-- Rescheduling overdue tasks.
-    
-- Reprioritizing work.
-    
-- Pausing projects.
-    
-- Moving tasks into Next.
-    
-- Creating follow-up tasks.
-    
-
-It must **never silently delete, archive, or reschedule records**.
-
-**Definition of Done:** Given a workspace with overdue tasks and inactivity, Relay produces a factual recovery summary, a limited actionable plan, and correctly executes only approved changes.
-
-### F09 — Quick Capture, Cleanup, and Planning
-
-**Priority: P0 for capture/cleanup; P1 for daily planning**
-
-Users can paste unstructured notes such as:
-
-"Need to deploy the website, finish mobile UI, prepare for Wednesday's test, and learn Docker sometime."
-
-Relay should:
-
-- Extract tasks and possible projects.
-    
-- Match existing projects.
-    
-- Resolve explicit dates where possible.
-    
-- Detect likely duplicates.
-    
-- Preview structured records.
-    
-- Create only approved items.
-    
-
-Additional workflows:
-
-- Global command palette for quick capture, search, and navigation.
-    
-- Inbox triage with AI-assisted categorization.
-    
-- User-invoked "Plan My Day" action using deadlines, urgency, and estimated effort; required for release.
-
-- Daily planning requires AI. Without a configured model, show the setup prompt; do not build a separate non-AI planning engine.
-    
-
-**Definition of Done:** Natural-language capture produces accurate reviewable proposals without duplicate or unintended records.
-
-### F10 — Search, History, and Recovery Safeguards
-
-**Priority: P0 for search/history, safe Undo, and snapshots before any bulk AI mutation**
-
-- Global search for projects and tasks.
-    
-- Filtering by status, priority, project, and date.
-    
-- Activity log for manual and AI changes.
-    
-- Undo for supported reversible operations.
-
-- Undo is required for create, edit, move, reorder, reschedule, archive, and soft-delete operations. Keep recoverable history without automatic expiry in this release; the toast is a shortcut, not the only way to access Undo.
-    
-- Workspace snapshots before approved bulk AI reorganizations.
-    
-
-Snapshots should preserve affected record states, not implement an unnecessarily complicated version-control system.
-
-**Execution and recovery safety:**
-
-- At approval, revalidate ownership, record availability, affected-record revisions, and constraints inside the execution transaction.
-- Reject stale proposals without applying any of their writes. Show changed records and require a refreshed preview and new approval.
-- If a cascade's affected-record set changes after its preview, invalidate that preview as well.
-- A selected set of proposal actions executes atomically; persist its before-state snapshot and successful activity records in the same transaction. Other unselected actions must not execute.
-- Enforce idempotency in SQLite so retries and concurrent approvals cannot execute the same approved action twice.
-- Undo or snapshot restoration must verify that affected records still match the state produced by the original operation. On conflict, change nothing and report the conflict; never overwrite later work.
-- Snapshot support must exist before bulk organization or Recovery Mode can apply multi-record changes.
-- Undoing a creation with later dependent records must report a conflict, not silently cascade to those later records.
-- If selected proposal actions require another unselected action, explain the dependency and ask the user to revise the selection. Do not silently approve extra actions.
-
-**Definition of Done:** Users can inspect changes and restore affected records from a bulk-operation snapshot without corrupting unrelated data.
-
----
-
-## 4. Design and UX Requirements
-
-**Direction:** Modern, minimal, calm, refined, and highly readable. The interface should feel lightweight but capable.
-
-**Theme:** Dark throughout the application, including login, navigation, forms, dialogs, calendar, and all loading/error/empty states. Use shared dark-theme tokens, accessible contrast, and visible focus states. Apply the theme from the first paint without a light-theme flash. A light theme or theme switcher is not required.
-
-### Layout
-
-**Desktop**
-
-- Persistent left navigation.
-    
-- Spacious primary content.
-    
-- Optional right-side AI panel.
-    
-
-**Mobile**
-
-- Compact navigation.
-    
-- Responsive task lists and Kanban.
-    
-- Expandable full-screen chat.
-    
-- Touch-friendly controls.
-    
-
-### Design Rules
-
-- Use shadcn/ui as the component foundation.
-    
-- Follow a consistent token-based design system.
-    
-- Use clear typography, meaningful whitespace, subtle borders, and restrained color.
-    
-- Preserve status colors and semantic clarity throughout the product.
-    
-- Support keyboard navigation and accessible interactions.
-    
-- Animate meaningful state transitions using Motion.
-    
-- Respect reduced-motion preferences.
-    
-- Implement polished empty, loading, error, and confirmation states.
-    
-- Avoid visually overwhelming dashboards and deeply nested cards.
-    
-
-Use **Impeccable** throughout design planning, critique, accessibility auditing, responsiveness, and final polish.
-
-Maintain `PRODUCT.md` and `DESIGN.md` for consistent AI-assisted development.
-
----
-
-## 5. Exact Technology Stack
-
-Use the following stack unless a documented technical incompatibility requires a change.
-
-| Layer          | Libraries / Tools                                                   |
-| -------------- | ------------------------------------------------------------------- |
-| Framework      | Next.js App Router, React, TypeScript                               |
-| Styling        | Tailwind CSS                                                        |
-| Components     | shadcn/ui, Radix UI, lucide-react                                   |
-| Animation      | `motion`                                                            |
-| Kanban         | `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`          |
-| Calendar       | FullCalendar v7: `@fullcalendar/react`, `temporal-polyfill`         |
-| Backend        | Next.js Route Handlers and server-side services                     |
-| Database       | SQLite                                                              |
-| Authentication | Better Auth + Google OAuth                                          |
-| ORM            | Drizzle ORM, Drizzle Kit, SQLite-compatible driver for the selected Node.js runtime |
-| AI             | Vercel AI SDK 7: `ai`, `@ai-sdk/react`, `@ai-sdk/openai-compatible` |
-| Validation     | Zod                                                                 |
-| Data fetching  | TanStack Query, where client-side caching is needed                 |
-| Forms          | React Hook Form, `@hookform/resolvers`                              |
-| Dates          | `date-fns`                                                          |
-| Notifications  | Sonner                                                              |
-| Testing        | Vitest, Playwright                                                  |
-
-FullCalendar plugins must use v7 imports such as `@fullcalendar/react/daygrid`, `/timegrid`, `/list`, and `/interaction`, rather than mixing v6 packages.
-
-**Architecture:** Modular monolith. No microservices.
-
-Keep database access, business rules, AI context retrieval, proposal validation, and mutation execution in dedicated modules.
-
-Use server-side reads where appropriate; use TanStack Query for interactive client state rather than duplicating all server data into global stores.
-
-Lock tested dependency versions in the package lockfile.
-
-### Deployment and Access Boundary
-
-- Run SQLite on persistent storage on the user's personal VPS. Select a compatible Node.js runtime/driver and handle backup and key recovery during deployment work; do not reopen the database decision.
-- Initial external access is restricted by email through user-managed Cloudflare controls.
-- Use Google OAuth + Better Auth for application login, with Cloudflare as the user-managed external email gate.
-- Continue enforcing owner-scoped reads and writes, including references between records, even while the application is private.
-- Protect application/API traffic from bypassing the configured access boundary. Exact Cloudflare and origin configuration must be established before deployment.
-- Public signup, billing, collaboration, and other public-product infrastructure are not release requirements.
-
-### Required AI Coding Skills
-
-Install, if doesn't exist:
-
-```
-npx impeccable install
-npx skills add vercel-labs/agent-skills --skill vercel-react-best-practices
-npx skills add vercel/ai --skill ai-sdk
-```
-
-**Skill responsibilities:**
-
-- **Impeccable:** UI direction, design system, critique, accessibility, responsiveness, and visual polish.
-    
-- **Vercel React Best Practices:** React architecture, rendering performance, data fetching, and bundle efficiency.
-    
-- **Vercel AI SDK Skill:** AI integration, model configuration, streaming, and structured tool use.
-    
-
-Initialize Impeccable's product/design documentation before major UI development. Apply its design and review workflows during implementation, not just at the end.
-
----
-
-## 6. Data Model
-
-Implement the following core entities.
-
-|Entity|Required information|
+| Task | Creates a linked event, a time block 1 hour long by default. Resize it afterwards. | Sets the task's **due date** |
+| Project | — (not allowed) | Sets the project's **deadline** |
+
+- After a drop, the item animates out of the panel and lands on the calendar, with an Undo toast. The panel stays open for the next one.
+- Shift+drop schedules a task and keeps it in the panel, so it can get several sessions.
+- Keyboard: `↑/↓` picks an item, `Enter` "picks it up", arrow keys move a ghost across slots, `Enter` drops it, and `Esc` cancels. `Esc` with nothing picked up leaves Schedule mode.
+- **Touch:** tap an item to pick it up, then tap a slot or day to place it. Drag also works, but tap-to-place is the reliable path on a phone.
+- The calendar dims slightly outside working hours while in Schedule mode, so free time stands out. Free slots highlight under the dragged item.
+
+- Three visual types, each shown with an icon as well as a color: **event**, **task deadline** and **project deadline**. Planned work is just an event linked to a task, so it needs no fourth type.
+- No filter checkboxes or legends shown permanently. Filters live in one small popover.
+
+## 4. Input
+
+- **Global quick add:** `N` anywhere, the **Capture** button on Today, or the **+** button on mobile. It opens one input line. (`Ctrl/Cmd+K` opens the same box in search mode.)
+  - Plain text creates a loose task.
+  - **Deterministic tokens** (no AI): `#project` assigns a project, `@tomorrow`, `@fri` or `@17/12` sets the due date, `@fri 14:00-15:00` makes it a scheduled event, and `!` marks it important. Tokens render as removable chips as you type.
+  - A Tab key or button toggles between Task and Event.
+- The same palette also searches and navigates (projects, tasks, "go to calendar").
+- **Inline editing everywhere:** click a title to rename it. Details open in a side sheet (desktop) or bottom sheet (mobile), never a separate page or modal form.
+- **Gestures**
+  - Drag: projects between status groups, tasks between status groups, task to project, task or project into the calendar (Schedule mode), and moving or resizing events.
+  - Mobile swipe: right to complete, left to push to tomorrow.
+  - Keyboard: `N` new, `/` search, `E` edit, `X` complete, `S` Schedule mode, `1/2/3` and `Ctrl+←/→` switch screens (see §3). Pressing `?` shows a shortcut cheat sheet. Each control's tooltip shows its shortcut once.
+- Every action that changes data shows an **Undo** toast. There is no History page.
+
+## 5. Data model (minimal)
+
+| Entity | Fields |
 |---|---|
-|User|ID, authentication identity, preferences, timezone|
-|Project|ID, owner, name, description, status, deadline, position, revision, archive/deletion metadata, timestamps|
-|Task|ID, owner, project ID (nullable), title, description, status, priority, due date/time, estimate, blocker reason, position, revision, deletion metadata, creation/update/completion timestamps|
-|TaskDependency|Task ID, prerequisite task ID|
-|Event|ID, owner, linked project/task IDs (nullable), title, description, start/end, timezone, all-day flag, location, revision, deletion metadata, timestamps|
-|CheckIn|ID, owner, project/task association, content, timestamp|
-|Conversation|ID, owner, title, scope, timestamps|
-|Message|ID, conversation ID, role, content, timestamp|
-|AIProposal|ID, owner, source message, action, payload, rationale, expected record revisions, approval/execution identity, status, timestamps|
-|ActivityLog|ID, owner, entity, action, actor, before/after state, timestamp|
-|ModelConfig|ID, owner, name, base URL, encrypted key, model ID, active|
-|WorkspaceSnapshot|ID, owner, source action, affected before/after record states, timestamp|
-
-**Data constraints:**
-
-- Every record must be scoped to its authenticated owner.
-    
-- Project association is optional for tasks.
-    
-- Event links are optional.
-    
-- Project deadlines are date-only values.
-    
-- Task deadlines support date-only or date-and-time.
-    
-- Timed events use consistent time-zone-aware storage.
-    
-- Deleting projects must not accidentally delete independent events.
-    
-- AI proposals are distinct from actual database records.
-    
-- Maintain referential integrity and auditable mutations.
-
-- Child records inherit an authenticated owner through a verified parent or have an explicit owner. Cross-owner project, task, event, dependency, message, and proposal references are invalid.
-
-- Workspace record mutations advance revisions used for proposal, Undo, and restoration conflict checks.
-
-- Normal views, search, AI retrieval, and recommendations exclude soft-deleted records. Archived projects and their associated work are excluded from active-work views without changing child statuses.
-
-- Project progress counts tasks that are neither soft-deleted nor hidden by archive; empty projects show 0%. Archive does not change child statuses.
-    
-
----
-
-## 7. AI Execution Architecture
-
-Follow a deterministic pipeline:
-
-**User Input → Intent → Context Retrieval → Model → Structured Proposal → Validation → Confirmation → Transactional Revalidation → Execution → Response**
-
-### Implementation Requirements
-
-1. Query only relevant workspace context rather than injecting the entire database into every prompt.
-    
-2. Use typed action schemas validated with Zod.
-    
-3. Resolve referenced record IDs against the authenticated user's data.
-    
-4. Perform database writes through controlled server functions.
-    
-5. Apply each approved selection atomically, including its required snapshot and successful activity records.
-    
-6. Make AI action execution idempotent with database-enforced uniqueness and transactional claiming; double approval or retries must not duplicate changes.
-    
-7. Record successful and failed executions appropriately.
-    
-8. Preserve proposal status: pending, approved, rejected, applied, stale, or failed. A stale proposal requires a refreshed preview and new approval; never replay its original approval.
-    
-9. Never treat model output as trusted executable instructions.
-    
-10. Keep manual features operational during model outages.
-
-11. Revalidate record revisions, cascade membership, ownership, and constraints immediately before writing. Treat model output and record content as untrusted; workspace text cannot override tool permissions or approval rules.
-
-12. Retrying an action after an uncertain network response must return its persisted outcome rather than executing it again. Failed transactions must leave no partial workspace changes.
-
-13. Keep everyday chat token use small: retrieve only relevant records and fields, limit result sizes, and send only the conversation context needed for the current request. Do not resend the entire workspace and unlimited chat history on each turn.
-
-14. Test real provider connections and bounded failure/retry behavior. A reconnect or retry must not lose saved records, duplicate actions, or silently reapply a completed mutation. Provider uptime is external; surface outages honestly rather than promising uninterrupted availability.
-    
-
-**Do not use LangChain, LangGraph, vector databases, or multi-agent orchestration for the MVP.** Vercel AI SDK is sufficient for the intended workflows.
-
-The model's role is reasoning and proposing. The application's role is validating and executing.
-
----
-
-## 8. Implementation Roadmap
-
-Build in independently testable vertical slices. Do not attempt the entire application in one generation.
-
-All four phases are required for release. Every slice must meet the global Definition of Done, including responsive and accessible interactions. Phase 4 improves an already usable web application; it is not the first mobile, accessibility, or failure-handling pass.
-
-### Phase 1 — Functional Foundation
-
-Build:
-
-- Authentication and database.
-    
-- Main navigation and application shell.
-    
-- Projects Kanban.
-    
-- Project details.
-    
-- Tasks, Inbox, and task details.
-    
-- Dashboard.
-    
-- Basic activity logging.
-
-- Project archiving, confirmed cascade soft deletion, and restoration according to the resolved lifecycle rules.
-    
-
-**Done when:** A user can manage complete project/task workflows without AI, and all data persists correctly.
-
-### Phase 2 — Calendar and AI Infrastructure
-
-Build:
-
-- Unified calendar with distinct item types/colors.
-    
-- Event CRUD.
-    
-- Model configuration.
-    
-- AI chat.
-    
-- Workspace context retrieval.
-    
-- Read-only queries and basic write actions.
-    
-- Approval and validation pipeline.
-
-- Revision conflict checks, database-enforced idempotency, safe Undo, and snapshots before enabling any multi-record AI changes.
-    
-
-**Done when:** A user can manage events and perform workspace queries and modifications through chat, with correct persistence and confirmation behavior.
-
-### Phase 3 — Managerial Intelligence
-
-Build:
-
-- Progress check-ins.
-    
-- Follow-up task recommendations.
-    
-- Natural-language capture and cleanup.
-    
-- Recovery Mode.
-    
-- AI-based prioritization.
-    
-
-**Done when:** A user can report progress, approve suggested next steps, and recover from a neglected workspace.
-
-### Phase 4 — Polish and Reliability
-
-Build:
-
-- Focus Mode.
-    
-- Task dependencies.
-    
-- Command palette.
-    
-- Daily planning.
-    
-- Bulk-change snapshot and restoration regression coverage; snapshot functionality already exists before bulk actions are enabled.
-    
-- Undo improvements.
-    
-- Mobile refinement.
-    
-- Accessibility and performance improvements.
-    
-- Comprehensive testing.
-    
-
-**Done when:** All supported workflows function reliably on desktop and mobile, including failure and recovery scenarios.
-
----
-
-## 9. Non-Goals and Explicit Restrictions
-
-**Do not implement in the MVP:**
-
-- Team workspaces, collaborative editing, or role management.
-    
-- External calendar/email integrations.
-    
-- Notifications or scheduled background AI agents.
-    
-- Complex recurring tasks.
-    
-- Advanced analytics or productivity scoring.
-    
-- File management and document storage.
-    
-- Native mobile/desktop applications.
-    
-- Vector databases or persistent AI agent memory.
-    
-- Autonomous AI changes without appropriate approval.
-    
-- Microservices or unnecessary abstraction layers.
-    
-- Elaborate animation systems or GSAP-based page choreography.
-    
-
-**Engineering restrictions:**
-
-- Do not create placeholder features that appear functional.
-    
-- Do not use mock data in production flows.
-    
-- Do not invent unrelated features beyond this PRD.
-    
-- Do not introduce new libraries when existing stack capabilities suffice.
-    
-- Do not duplicate business logic between frontend and backend.
-    
-- Do not use AI to calculate values obtainable deterministically from the database.
-    
-- Do not expose credentials or unsafe database operations.
-    
-- Do not prioritize visual polish over correctness.
-    
-
-Use the simplest implementation for minor engineering details that do not alter product behavior. If ambiguity affects user-visible behavior, data loss, access, release scope, or another material requirement, report it and resolve it with the user before proceeding.
-
----
-
-## 10. Global Definition of Done
-
-A feature is complete only when:
-
-1. **Functional:** Its required user journey works end-to-end.
-    
-2. **Persistent:** Changes are correctly stored and survive refresh.
-    
-3. **Validated:** Invalid inputs and unauthorized actions are rejected.
-    
-4. **Integrated:** Related views reflect changes consistently.
-    
-5. **Responsive:** Usable on desktop and mobile.
-    
-6. **Accessible:** Keyboard interaction, labels, focus states, and adequate contrast are present.
-    
-7. **Resilient:** Loading, empty, error, and failure states are handled.
-    
-8. **Tested:** Appropriate unit/integration tests and critical end-to-end scenarios pass.
-    
-9. **Maintainable:** Code follows established architecture and avoids unnecessary complexity.
-    
-10. **Polished:** Relevant Impeccable critique/audit findings are resolved, without regressions.
-    
-
-**Mandatory checks:**
-
-- TypeScript type checking passes.
-    
-- Linting passes.
-    
-- Relevant Vitest tests pass.
-    
-- Relevant Playwright flows pass.
-    
-- No known blocking console or runtime errors.
-    
-- No broken navigation or unfinished placeholder interactions.
-    
-
-### MVP Release Acceptance Scenarios
-
-The application must successfully demonstrate:
-
-1. Create a project, add tasks, change statuses, and refresh without losing changes.
-    
-2. Create a task using chat and verify that it appears in the appropriate project.
-    
-3. Query unfinished work through chat and receive results consistent with the database.
-    
-4. Report task progress and selectively approve generated next steps.
-    
-5. Leave a populated workspace inactive, trigger Recovery Mode, and apply an approved recovery plan.
-    
-6. Create and reschedule calendar events through both UI and chat.
-    
-7. Display project deadlines, task deadlines, and events with correct differentiated colors.
-    
-8. Reject AI proposals and confirm that no unintended records change.
-    
-9. Switch between configured AI models without modifying code.
-    
-10. Simulate AI failure and verify that manual management continues to work.
-    
-11. Verify cross-user record access is prevented.
-    
-12. Verify approved actions do not execute twice when requests are retried.
-
-13. Verify single-record AI changes wait for approval; editing or rejecting a proposal causes no unapproved mutations.
-
-14. Modify a record or cascade membership after preview, then approve the old proposal. Verify it is rejected as stale without partial changes.
-
-15. Apply an approved bulk change, inspect its snapshot, and restore it. Verify restoration and Undo refuse to overwrite subsequent edits.
-
-16. Archive/unarchive a project and confirm statuses are preserved and active-work views are consistent.
+| User | id, auth identity, timezone |
+| Project | id, owner, name, description, status (Planned/Active/Paused/Done), deadline (date, optional), position, archivedAt, timestamps |
+| Task | id, owner, **projectId (optional)**, title, notes, status (To do/Doing/Done), important (bool), dueDate (date, optional), position, completedAt, timestamps |
+| Event | id, owner, **taskId (optional)**, projectId (optional), title, start, end, allDay, timestamps |
 
-17. Preview and confirm a cascade soft deletion, then restore it. Verify unaffected and independently deleted records are not changed.
+Rules:
+- "Scheduling a task" = creating an Event with `taskId`. A task can have several sessions. Completing the task does not delete its events.
+- Deleting a project asks whether to delete its tasks or keep them as loose tasks. Events are never deleted by a cascade; they only get unlinked.
+- Date-only deadlines stay on their calendar date in any time zone. Timed events are stored in UTC and shown in the user's time zone.
+- Soft delete is used only to support Undo. It's single-user, with all rows scoped to the owner.
 
-18. Verify dependencies reject self-references and cycles, and that Focus Mode, the command palette, global search, and daily planning work end-to-end.
+**Removed from the current schema:** check-ins, dependencies, priority (Low/Med/High), the important/urgent matrix, blockerReason, estimate, plannedDate (replaced by task-linked events). These columns and tables stay **dormant** in the database (no UI, no API) until a later cleanup, because old undo history still references them. **Kept as invisible plumbing:** the activity log and revision counters, which power Undo toasts and safe retries. There is no History page.
 
-19. Verify date-only deadlines remain on the intended date across timezones, and timed/all-day events follow the agreed date rules.
+## 6. Design direction
 
-20. Complete critical project, task, calendar, chat, and recovery flows on desktop and mobile with accessible keyboard/touch alternatives to drag-and-drop.
+Run **Impeccable** to define a fresh DESIGN.md before touching UI. The current warm brown and honey theme is open for replacement.
 
-21. Exercise everyday use with 15+ projects, 100+ tasks/events, and daily chat history. Verify the assistant uses relevant context rather than resending the whole workspace/history, and record token usage and connection failures during validation.
+Rules for "uncluttered":
+- **One primary action per screen.** No forms embedded in pages.
+- **No helper or explanatory paragraphs** in the UI ("Displayed in Asia/Jakarta…", the history disclaimer and similar). If something needs explaining, the design is wrong.
+- **Controls appear on hover or focus on desktop,** not permanently on cards. On touch screens, each card or row has one small `⋯` button, so actions are discoverable without hover. Accessibility alternatives live in that menu, the right-click menu and keyboard shortcuts, not as extra visible buttons.
+- **One hero element per screen:** the day timeline on Today, the task board on Projects, and the time grid on Calendar. Everything else is visually secondary.
+- **Hierarchy from type and space, not boxes.** No wall of same-weight bordered cards. Most grouping comes from spacing and headings, and borders are the exception.
+- No card-in-card nesting. Use whitespace and type hierarchy before borders. Use one accent color.
+- Density: show less, and let every element earn its place.
 
-22. With no model configured, verify chat, AI recommendations, and daily planning explain the setup requirement while manual project/task/event management remains functional.
+Motion, using the `motion` library:
+- Layout animation when cards move between columns, list items reorder, or tasks complete (check, then collapse out).
+- Shared-element transition from card to detail sheet.
+- **Completion is the moment worth animating:** the check draws, the row strikes through and collapses out, and Done counts tick up. When Today is fully done, show a short, tasteful "Day clear" moment. No confetti spam. Everything else stays quiet.
+- 150–250 ms, spring-based, with no page-load choreography. Respect reduced motion.
+- Target: 60 fps drags on a mid-range phone.
 
-23. Complete a task and save a check-in without requesting AI assistance; verify neither action invokes AI or generates follow-up suggestions. Then ask the assistant for next steps based on completed work, review its suggestions, and approve one. Verify it is created once, without unsolicited extra tasks.
-    
+### Mobile (to be validated once the desktop screens exist)
+- Moving between screens uses the bottom tab bar only. There's no horizontal page swipe, which would clash with swiping rows to complete them.
+- Projects: two levels (project list → task board) with stacked status groups.
+- Scheduling: tap-to-place in Schedule mode, plus a "Schedule" sheet with suggested slots (next free hour, this evening, tomorrow morning).
 
----
+## 7. Stack and hosting
 
-## 11. Instructions for AI Coding Agents
+Keep the existing stack: Next.js, TypeScript, Tailwind, shadcn/ui, dnd-kit, FullCalendar v7, Drizzle, Better Auth with Google, Zod, motion and Sonner.
 
-Treat this PRD as the authoritative product specification.
+Changes:
+- **Hosting:** deploy to **Vercel** with **Turso (libSQL)** as the database. This keeps the SQLite schema and Drizzle code with a driver swap from `better-sqlite3`. A small VPS with a SQLite file is the alternative if you'd rather not use Turso.
+- **Sign-in:** Google, allow-listed to my email only.
+- **PWA:** manifest and icons so it installs on phone and desktop. Offline mode is out of scope.
+- **Optimistic UI:** every gesture updates instantly and rolls back on server error. This is what makes it feel smooth.
 
-When implementing:
+## 8. Out of scope for MVP
 
-1. Understand the relevant requirements and existing code before editing.
-    
-2. Plan the smallest coherent vertical slice that delivers working functionality.
-    
-3. Reuse existing components, services, patterns, and design tokens.
-    
-4. Follow the specified libraries and installed skills.
-    
-5. Implement real behavior, including persistence and error handling.
-    
-6. Validate with appropriate tests and type checking.
-    
-7. Compare the implementation against the relevant Definition of Done.
-    
-8. Summarize completed work, tests, known limitations, and the next logical task.
-    
+AI of any kind (§10), the Inbox page, Chat page, History page, check-ins, task dependencies, Focus Mode, recurring tasks, external calendar sync, notifications, team features, analytics and native apps.
 
-**Implementation priorities:**
+## 9. Build plan
 
-Correctness → Usability → Reliability → Design quality → Performance optimization.
+**Phase 0 — Cut (≈1 day).** On a branch, remove the Inbox, Chat and History pages, check-ins, dependencies, priority and the matrix (the activity log and revisions stay as plumbing for Undo). Migrate the schema to §5 and convert existing `plannedDate` values into linked events. Navigation becomes three items. Done when the app runs with only Today, Projects and Calendar, and existing projects, tasks and events survive.
 
-Do not sacrifice correctness for rapid feature generation.
+**Phase 1 — Design reset.** Impeccable writes the new DESIGN.md and PRODUCT.md. Rebuild the shell and navigation, then Today. Done when Today passes the "5-second test" on desktop and phone and an Impeccable critique raises no clutter findings.
 
-Do not rebuild working systems unnecessarily.
+**Phase 2 — Projects and tasks.** Split view with the project list (status groups and drag) and the task board (status groups as kanban columns and drag), the No project entry, side sheet, `⋯` and context menus, and completion animation.
 
-Do not add speculative infrastructure for future requirements.
+**Phase 3 — Calendar.** Week, month and day views, inline create, move and resize, and **Schedule mode**: the floating panel, the drop rules, keyboard pick-up and drop, and tap-to-place.
 
-Maintain concise implementation notes and update project documentation when architectural or product decisions change.
+**Phase 4 — Input and anywhere.** Quick add with tokens, the command palette, keyboard shortcuts, mobile swipes, PWA, and deployment to Vercel and Turso.
 
----
+### MVP acceptance
+1. Create a project, add 5 tasks, drag tasks between To do, Doing and Done, drag the project from Planned to Active, and refresh: everything persists.
+2. Capture "Fix login bug #relay @fri" in one line, and it lands in the right project with a Friday due date.
+3. Press `S` on the Calendar and drag a task from the panel onto Thursday 10:00: a linked event appears. Drag another task onto Friday's day row: it gets that due date. Drag a project onto a day: it gets that deadline. All three can be undone.
+4. Create a loose task and a standalone event, both with no links.
+5. Today's timeline correctly shows today's events, scheduled blocks and due-today tasks, with a moving now line. The catch-up line counts overdue items correctly, and the summary line matches.
+6. Every change can be undone from its toast.
+7. Works on the phone from the deployed URL, installed as a PWA, including swipe gestures.
+8. Typecheck, lint, the key Vitest tests and one Playwright flow per screen all pass.
 
-## 12. Final Product Goal
+## 10. After MVP — AI layer (in order)
 
-Relay should be a useful personal task manager tailored to the user's needs, with an AI assistant available to talk through and manage actual workspace data when requested.
+1. **MCP server first.** Relay exposes tools such as `list_today`, `search`, `create_task`, `update_task`, `create_event` and `move_event`. Claude, MausBot or any MCP client can manage Relay right away, with no chat UI to build. This is the cheapest path to AI.
+2. **In-app chat (BYO model).** Custom OpenAI-compatible base URL, key and model (e.g. 9Router) using the Vercel AI SDK. It reuses the same tool layer as the MCP server, and changes are proposed, then confirmed.
+3. **Get me back on track.** After 3 or more idle days, Today offers a catch-up: what slipped, what's due soon, and a proposed plan (reschedule, pause, drop). You approve each item. Nothing changes silently.
+4. **Natural-language input.** Quick add accepts free text ("finish slides before Wednesday and book a dentist next week") and previews structured items before creating them.
+5. **Scheduling assistant.** "Find time for these 3 tasks this week" proposes calendar blocks around existing events.
 
-It should make it easier to maintain and resume an organized workload than to abandon and rebuild it. One important supported experience is:
+Rules carried over from v2: the AI proposes and the app validates and executes. Every change goes through Zod-validated tools, with no raw SQL. Manual features keep working when the AI is down.
 
-**A user returns after a week away, asks Relay what has happened and what they should do next, and receives an accurate, manageable plan that can be applied with minimal effort.**
-
-Every major feature should contribute to that outcome.
-
-This recovery example does not make Relay an autonomous manager or require a completion-to-next-task chain. Everyday manual task management and user-requested AI assistance are equally central.
-
----
-
-## 13. Decision Record and Next Discussion
-
-The PRD discussion is complete. Record the user's answers here without treating deferred deployment or workflow work as unresolved product decisions. Do not start workflow planning, slice planning, or implementation automatically after this discussion.
-
-### D01 - Hosting, SQLite Operations, and Recovery
-
-**Decided:** Personal VPS with SQLite. The user explicitly deferred deployment details. Runtime/driver selection, persistent paths, backups, and separate encryption-secret recovery belong to deployment work, not further product questions now. Do not silently omit safe persistence or key handling when deployment is implemented.
-
-### D02 - Application Identity Behind Cloudflare
-
-**Recorded:** Google OAuth + Better Auth handles application identity; the user controls email access through Cloudflare. This does not add a second app-level email allowlist or remove owner checks. Public signup remains future work.
-
-### D03 - Required AI Providers and Local Gateways
-
-**Decided:** The user's AI endpoints are available over public HTTPS; no local/private gateway exception is needed. Preserve URL validation, safe handling of invalid model output, connection testing, and model switching. Actual connection details can be provided through Settings when testing; they are not needed to finish this discussion.
-
-### D04 - Archive, Cascade, Trash, and Restoration Boundaries
-
-**Decided:** Deleting a parent soft-deletes its children, with a preview and confirmation. A project includes its tasks, linked events, and associated check-ins; a task includes its linked events and associated check-ins. Events with no project/task parent are independent. A task dependency is a reference, not ownership of another task. Preserve activity/audit history. Deleting a conversation removes its messages but not separately stored check-ins or applied workspace changes.
-
-Project archive hides associated work from active views without changing child statuses; standalone task/event archive controls are not additional release requirements. Keep deleted records recoverable without automatic permanent purge in this release. Restore only records changed by that deletion operation; revalidate links, cycle constraints, and conflicts with later work.
-
-### D05 - Date, Time, and Scheduling Defaults
-
-**Decided:** Start with Asia/Jakarta and Monday, both configurable. Date-only tasks become overdue after their local calendar day ends; store date-only values without UTC conversion. Timed records preserve an instant and an IANA timezone. Interpret relative dates in the user's timezone; ask when the intended date/time is unclear. Offer a visible 60-minute duration when an event end is omitted, requiring approval. All-day ranges use an exclusive end date. Dragging a deadline changes its date without adding duration or changing its type; moving a timed event preserves its duration.
-
-### D06 - Status, Dependency, and Progress Semantics
-
-**Decided:** Warn, but allow confirmed project completion without modifying task statuses. Dependencies give warnings, not automatic status changes or hard blocking; self-links, cross-owner links, and cycles remain forbidden. Compute progress from tasks that are not deleted or hidden by archive; empty projects show 0%. Set completion time on entering Done and clear it on reopening; preserve history in the activity log. Store effort as positive whole minutes.
-
-### D07 - Next Up and Daily Planning
-
-**Decided:** AI is required for chat, next-action recommendations, and daily planning. If no model is provided, these features do not run and must explain how to configure a model. Do not implement a non-AI recommendation/planning fallback. Manual database-backed management still works without AI. The exact planning interaction belongs to the separate workflow discussion; any resulting workspace changes still require approval.
-
-### D08 - User-Requested Next Actions and Recovery
-
-**Decided and corrected:** Relay is a personal task manager with an AI the user can talk to. Suggesting direct next actions from recently completed tasks is one AI capability, used when the user asks. Completing a task does not automatically request suggestions or create a next-action chain. There is no minimum number of follow-ups per completed task. Suggestions are optional to accept and require approval before changing workspace records.
-
-**Separate workflow discussion:** Discuss how the user requests assistance, how the assistant selects relevant workspace context, how suggestions and approvals are presented, and how recovery fits ordinary task management. Keep factual summaries grounded in saved records and reuse existing tasks when appropriate. The user explicitly requested this discussion before slices or implementation.
-
-### D09 - Adding a Quick Note Without Creating the Wrong Tasks
-
-**Decided:** If the user types "Fix login and write tests," an ordinary Add Task button saves one task with that exact title. An "Organize with AI" action shows two suggested tasks to approve first. If a task called "Fix login" already exists, show it before adding another one; the user can still choose to create a separate task. If two projects have the same name, ask which one instead of guessing. With no model configured, ordinary Add Task still works and Organize with AI shows the setup requirement.
-
-### D10 - Undo Scope, Lifetime, and Partial Approval
-
-**Decided:** Undo is required. Persist recoverable history for create, edit, move, reorder, reschedule, archive, and soft-delete operations; no automatic history expiry in this release. A brief Undo toast is only a shortcut to the same history operation. Undoing creation of a record with later children is a conflict, not permission for a new silent cascade. Explain incomplete action selections and let the user revise them rather than approving extra actions silently. Apply an approved selection as one transaction.
-
-### D11 - Conversation Scope and Check-in Associations
-
-**Decided:** The panel and Chat page open the same selected conversation. New conversations started from a project default to that project; looking at other projects requires an explicit workspace-wide request. A check-in may link to a project or task; a task's project is derived rather than duplicated. Manual check-in submission requires a selected association. Deleting chat history never deletes separately saved check-ins, applied changes, or audit history.
-
-### D12 - Measurable Release Validation
-
-**Decided:** Support 15+ projects, 100+ tasks/events, and daily chat usage with restrained token consumption, reliable provider connections, and infrequent timeouts/reconnects.
-
-Use this workload in release validation. Record tokens per request and connection failures; investigate excessive context or repeated unnecessary requests. Provider uptime is not controlled by Relay: failures must be clear and recoverable without lost records or duplicate actions. Numeric timeout, context, and retry limits are implementation/test-plan choices to state and verify later, not invented user-approved guarantees.
-
-### Discussion Boundary
-
-Use plain language in future questions. The PRD discussion is finished: tell the user and stop. The next discussion is the workflow/loop pipeline; only after that should slices and implementation be planned with the user.
+## 11. Decision log
+- **2026-11-17 (v3.0):** cut the MVP to Today, Projects and Calendar. AI comes after the MVP.
+- **2026-11-17 (v3.1):** a Capture button on Today. `Ctrl+←/→` and `1/2/3` switch screens with a directional slide.
+- **2026-11-17 (v3.2):** Today is a single timeline. Projects is a split view whose task board, grouped by status and draggable, replaces a separate kanban screen. Loose tasks live under "No project". Task statuses stay To do / Doing / Done. Schedule mode (`S`) uses a floating panel near the cursor for dropping tasks and projects onto the calendar. Touch screens get a `⋯` button. One hero element per screen, and completion is the animation moment. The mobile approach is agreed in principle and will be validated later.
+- **2026-11-17 (v3.2a, planning):** keep the activity log and revisions as invisible Undo plumbing. Removed fields stay dormant in the database instead of being dropped. Task statuses map Backlog/Next→To do, In Progress/Blocked→Doing; project Completed→Done.
