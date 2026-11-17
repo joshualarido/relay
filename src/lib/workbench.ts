@@ -4,6 +4,17 @@ import { listProjects, getProjectProgress, projectStatuses } from "./projects";
 import { listTasks, taskStatuses, priorities } from "./tasks";
 import { dateInTimezone, dateOnlySchema } from "./dates";
 import { dependencyWarnings } from "./dependencies";
+import { listEvents } from "./events";
+
+// Planned work is a non-deleted event linked to the task: an all-day event's date, or a timed event's start day in `timezone`
+// (the event's own zone when omitted). Returns each task's planned dates in ascending order.
+function plannedDates(db: Pick<AppDatabase, "select">, ownerId: string, timezone?: string) {
+  const dates = new Map<string, string[]>();
+  for (const e of listEvents(db, ownerId)) if (e.taskId) {
+    dates.set(e.taskId, [...(dates.get(e.taskId) ?? []), e.allDay ? e.start : dateInTimezone(e.start, timezone ?? e.timezone)].sort());
+  }
+  return dates;
+}
 
 export type WorkItem = { kind: "project" | "task" | "event"; id: string; title: string; href: string; date: string | null; dateKind: "deadline" | "planned" | null; updatedAt: string };
 export const searchSchema = z.object({
@@ -13,7 +24,7 @@ export const searchSchema = z.object({
 }).strict();
 
 export function searchWorkspace(db: Pick<AppDatabase, "select">, ownerId: string, input: unknown) {
-  const data = searchSchema.parse(input), q = data.q.toLowerCase();
+  const data = searchSchema.parse(input), q = data.q.toLowerCase(), planned = plannedDates(db, ownerId);
   const items: WorkItem[] = [
     ...listProjects(db, ownerId).filter((p) => `${p.name} ${p.description}`.toLowerCase().includes(q) &&
       (!data.status || p.status === data.status) && !data.priority && !data.important && !data.urgent && (!data.projectId || p.id === data.projectId) &&
@@ -25,9 +36,9 @@ export function searchWorkspace(db: Pick<AppDatabase, "select">, ownerId: string
       (!data.important || t.important === (data.important === "unset" ? null : data.important === "true")) &&
       (!data.urgent || t.urgent === (data.urgent === "unset" ? null : data.urgent === "true")) &&
       (!data.projectId || (data.projectId === "inbox" ? !t.projectId : t.projectId === data.projectId)) &&
-       (!data.date || t.plannedDate === data.date || t.dueDate === data.date || (t.dueAt && dateInTimezone(t.dueAt, t.timezone!) === data.date))).map((t) => ({
+       (!data.date || planned.get(t.id)?.includes(data.date) || t.dueDate === data.date || (t.dueAt && dateInTimezone(t.dueAt, t.timezone!) === data.date))).map((t) => ({
       kind: "task" as const, id: t.id, title: t.title, href: `${t.projectId ? `/projects/${t.projectId}` : "/inbox"}?task=${t.id}`,
-      date: t.dueDate ?? t.dueAt ?? t.plannedDate, dateKind: t.dueDate || t.dueAt ? "deadline" as const : t.plannedDate ? "planned" as const : null,
+      date: t.dueDate ?? t.dueAt ?? planned.get(t.id)?.[0] ?? null, dateKind: t.dueDate || t.dueAt ? "deadline" as const : planned.has(t.id) ? "planned" as const : null,
       updatedAt: t.updatedAt,
     })),
   ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -38,12 +49,13 @@ export function homeData(db: Pick<AppDatabase, "select">, ownerId: string, timez
   const today = dateInTimezone(now, timezone), projects = listProjects(db, ownerId), tasks = listTasks(db, ownerId);
   const overdue = tasks.filter((t) => t.status !== "Done" && (t.dueDate ? t.dueDate < today : t.dueAt ? Date.parse(t.dueAt) < Date.parse(now) : false));
   const dueToday = tasks.filter((t) => t.status !== "Done" && (t.dueDate === today || Boolean(t.dueAt && dateInTimezone(t.dueAt, timezone) === today)));
-  const plannedToday = tasks.filter((t) => t.plannedDate === today);
-  const currentDay = tasks.filter((t) => t.plannedDate === today || t.dueDate === today ||
+  const planned = plannedDates(db, ownerId, timezone), isPlannedToday = (id: string) => Boolean(planned.get(id)?.includes(today));
+  const plannedToday = tasks.filter((t) => isPlannedToday(t.id));
+  const currentDay = tasks.filter((t) => isPlannedToday(t.id) || t.dueDate === today ||
     Boolean(t.dueAt && dateInTimezone(t.dueAt, timezone) === today));
   const todayTasks = [...new Map([...overdue, ...currentDay].map((t) => [t.id, t])).values()]
     .sort((a, b) => (a.status === "Done" ? 1 : 0) - (b.status === "Done" ? 1 : 0) ||
-      (a.dueDate ?? a.plannedDate ?? a.dueAt ?? "").localeCompare(b.dueDate ?? b.plannedDate ?? b.dueAt ?? "") ||
+      (a.dueDate ?? (isPlannedToday(a.id) ? today : null) ?? a.dueAt ?? "").localeCompare(b.dueDate ?? (isPlannedToday(b.id) ? today : null) ?? b.dueAt ?? "") ||
       a.position - b.position || a.createdAt.localeCompare(b.createdAt))
     .map((t) => ({ ...t, warnings: dependencyWarnings(db, ownerId, t.id) }));
   return {

@@ -80,15 +80,20 @@ export const task = sqliteTable("task", {
   // Physical SQLite default is still 'Backlog' (changing it needs a table rebuild, deferred to the later cleanup);
   // every app insert (createTask) sets status explicitly via the Zod default "To do".
   status: text("status", { enum: ["To do", "Doing", "Done"] }).notNull().default("To do"),
+  // dormant (v3): priority is not part of the v3 model.
   // ponytail: retain legacy priority for old snapshots/replays; remove only with a versioned history migration.
   priority: text("priority", { enum: ["Low", "Medium", "High"] }).notNull().default("Medium"),
   important: integer("important", { mode: "boolean" }),
+  // dormant (v3): urgent is not part of the v3 model.
   urgent: integer("urgent", { mode: "boolean" }),
+  // dormant (v3): planned dates are task-linked all-day events since migration 0008; kept for old snapshots.
   plannedDate: text("planned_date"),
   dueDate: text("due_date"),
   dueAt: text("due_at"),
   timezone: text("timezone"),
+  // dormant (v3): estimates are not part of the v3 model.
   estimateMinutes: integer("estimate_minutes"),
+  // dormant (v3): Blocked status folded into Doing; reason kept for history.
   blockerReason: text("blocker_reason").notNull().default(""),
   completedAt: text("completed_at"),
   position: integer("position").notNull().default(0),
@@ -122,6 +127,7 @@ export const event = sqliteTable("event", {
 
 export type Event = typeof event.$inferSelect;
 
+// dormant (v3): check-ins are not part of the v3 model; table kept for history.
 export const checkIn = sqliteTable("check_in", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().references(() => user.id),
@@ -135,6 +141,7 @@ export const checkIn = sqliteTable("check_in", {
   updatedAt: text("updated_at").notNull(),
 }, (t) => [index("check_in_owner_idx").on(t.ownerId)]);
 
+// dormant (v3): dependencies are not part of the v3 model; table kept for history.
 export const dependency = sqliteTable("dependency", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().references(() => user.id),

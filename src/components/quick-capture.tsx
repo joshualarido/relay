@@ -24,7 +24,6 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
   const identity = useRef({ payload: "", id: "" });
   const id = useId(), router = useRouter();
   const eventAvailable = Boolean(timezone);
-  const dateLabel = kind === "project" ? "Deadline" : "Planned work date";
   async function save(form: HTMLFormElement, title: string, date: string | null) {
     const payload = JSON.stringify({ kind, title, date });
     if (identity.current.payload !== payload) identity.current = { payload, id: crypto.randomUUID() };
@@ -34,7 +33,7 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(kind === "project"
           ? { name: title, deadline: date, mutationId: identity.current.id }
-          : { title, plannedDate: date, mutationId: identity.current.id }),
+          : { title, mutationId: identity.current.id }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.fields?.title?.join(" ") || result.fields?.name?.join(" ") || result.error);
@@ -60,7 +59,7 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
       }}>
         <div className="field"><label className="sr-only" htmlFor={`${id}-title`}>{kind === "project" ? "Project name" : kind === "event" ? "Event title" : "Quick capture"}</label>
           <input id={`${id}-title`} name="title" maxLength={500} required disabled={pending} placeholder={kind === "project" ? "Name a project" : kind === "event" ? "Name an event" : "Capture a task"} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} /></div>
-        {kind !== "event" && <div className="field"><label htmlFor={`${id}-date`}>{dateLabel}</label><input id={`${id}-date`} name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={pending} /></div>}
+        {kind === "project" && <div className="field"><label htmlFor={`${id}-date`}>Deadline</label><input id={`${id}-date`} name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={pending} /></div>}
         <Button type="submit" disabled={pending}>{pending ? "Saving..." : kind === "task" ? "Capture task" : kind === "project" ? "Create project" : "Set event details"}</Button>
         {error && <p id={`${id}-error`} className="error-message" role="alert">{error}</p>}{saved && <p role="status" className="muted">{kind === "project" ? "Project created." : "Task captured."}</p>}
       </form>}

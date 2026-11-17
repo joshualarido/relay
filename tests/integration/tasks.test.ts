@@ -35,17 +35,10 @@ describe("manual tasks", () => {
     expect(create({ dueAt: "2027-01-01T10:30:00+07:00", timezone: "Asia/Jakarta" }).dueAt).toBe("2027-01-01T03:30:00.000Z");
   });
 
-  it("stores planned work separately from task deadlines and clears it independently", () => {
-    const t = create({ plannedDate: "2027-02-10", dueDate: "2027-02-20", important: true, urgent: false });
-    expect(t).toMatchObject({ plannedDate: "2027-02-10", dueDate: "2027-02-20", important: true, urgent: false });
-    const moved = tasks.updateTask(w.db, w.alice.id, t.id, t.revision, {
-      plannedDate: "2027-02-12", mutationId: crypto.randomUUID(),
-    });
-    expect(moved).toMatchObject({ plannedDate: "2027-02-12", dueDate: "2027-02-20", important: true, urgent: false });
-    const cleared = tasks.updateTask(w.db, w.alice.id, t.id, moved.revision, {
-      plannedDate: null, mutationId: crypto.randomUUID(),
-    });
-    expect(cleared).toMatchObject({ plannedDate: null, dueDate: "2027-02-20", important: true, urgent: false });
+  it("no longer accepts plannedDate; planned work is a linked event (v3)", () => {
+    expect(() => create({ plannedDate: "2027-02-10" })).toThrow();
+    const t = create({ dueDate: "2027-02-20" });
+    expect(() => tasks.updateTask(w.db, w.alice.id, t.id, t.revision, { plannedDate: "2027-02-12", mutationId: crypto.randomUUID() })).toThrow();
   });
 
   it("completes/reopens without additional tasks, preserves history, and rejects stale edits", () => {

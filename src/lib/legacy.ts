@@ -20,8 +20,16 @@ export function normalizeProjectStatus(s: string): "Planned" | "Active" | "Pause
   return v;
 }
 
+// Unknown statuses pass through so a corrupt snapshot fails the revision comparison (409), not a 500.
+// plannedDate is dormant since migration 0008 nulled every planned_date (now linked events).
 export function normalizeSnapshot(s: Snapshot): Snapshot {
-  if (s.entityType === "task") return { ...s, record: { ...s.record, status: normalizeTaskStatus(s.record.status) } };
-  if (s.entityType === "project") return { ...s, record: { ...s.record, status: normalizeProjectStatus(s.record.status) } };
+  if (s.entityType === "task") {
+    const status = (taskMap[s.record.status] ?? s.record.status) as typeof s.record.status;
+    return { ...s, record: { ...s.record, status, plannedDate: null } };
+  }
+  if (s.entityType === "project") {
+    const status = (projectMap[s.record.status] ?? s.record.status) as typeof s.record.status;
+    return { ...s, record: { ...s.record, status } };
+  }
   return s;
 }

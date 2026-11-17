@@ -18,7 +18,6 @@ const fields = {
   priority: z.enum(priorities),
   important: z.boolean().nullable(),
   urgent: z.boolean().nullable(),
-  plannedDate: dateOnlySchema.nullable(),
   dueDate: dateOnlySchema.nullable(),
   dueAt: z.iso.datetime({ offset: true }).nullable(),
   timezone: timezoneSchema.nullable(),
@@ -30,7 +29,6 @@ const createSchema = z.object({
   ...fields, description: fields.description.default(""), projectId: fields.projectId.default(null),
   status: fields.status.default("To do"), priority: fields.priority.default("Medium"),
   important: fields.important.default(null), urgent: fields.urgent.default(null),
-  plannedDate: fields.plannedDate.default(null),
   dueDate: fields.dueDate.default(null), dueAt: fields.dueAt.default(null), timezone: fields.timezone.default(null),
   estimateMinutes: fields.estimateMinutes.default(null), blockerReason: fields.blockerReason.default(""),
   position: fields.position.default(0), mutationId: mutationIdSchema,
@@ -63,9 +61,9 @@ export function createTask(db: AppDatabase, ownerId: string, input: unknown): Ta
   validateDeadline(data);
   const hash = requestHash("task-create", null, data);
   return db.transaction((tx) => {
-    const { important, urgent, plannedDate, ...legacy } = data;
+    const { important, urgent, ...legacy } = data;
     const previous = replayMutation(tx, ownerId, mutationId, hash,
-      important === null && urgent === null && plannedDate === null ? requestHash("task-create", null, legacy) : undefined);
+      important === null && urgent === null ? requestHash("task-create", null, legacy) : undefined);
     if (previous) {
       const saved = previous.result as Task;
       return { ...saved, important: saved.important ?? null, urgent: saved.urgent ?? null };

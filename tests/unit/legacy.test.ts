@@ -15,4 +15,10 @@ describe("legacy status normalization", () => {
     expect(normalizeSnapshot(p).record).toMatchObject({ id: "p", status: "Done" });
     expect(normalizeSnapshot(e)).toBe(e);
   });
+  it("clears dormant plannedDate on task snapshots and passes unknown statuses through", () => {
+    const t = { entityType: "task", record: { id: "t", status: "Weird", plannedDate: "2026-11-20" } } as unknown as Snapshot;
+    const p = { entityType: "project", record: { id: "p", status: "Odd" } } as unknown as Snapshot;
+    expect(normalizeSnapshot(t).record).toMatchObject({ status: "Weird", plannedDate: null });
+    expect(normalizeSnapshot(p).record).toMatchObject({ status: "Odd" });
+  });
 });

@@ -39,7 +39,7 @@ export function TaskForm({ task, projects, projectId = null, warnings = [], init
           title: form.get("title"), description: form.get("description"), projectId: form.get("projectId") || null,
           status: form.get("status"),
           important: form.get("important") === "" ? null : form.get("important") === "true",
-          urgent: form.get("urgent") === "" ? null : form.get("urgent") === "true", plannedDate: form.get("plannedDate") || null, dueDate: form.get("dueDate") || null,
+          urgent: form.get("urgent") === "" ? null : form.get("urgent") === "true", dueDate: form.get("dueDate") || null,
           dueAt: form.get("dueAt") || null, timezone: form.get("dueAt") ? form.get("timezone") : null,
           estimateMinutes: form.get("estimateMinutes") ? Number(form.get("estimateMinutes")) : null,
           blockerReason: form.get("blockerReason"), ...(task ? { expectedRevision: task.revision } : {}),
@@ -69,7 +69,6 @@ export function TaskForm({ task, projects, projectId = null, warnings = [], init
             <select {...field(dimension)} defaultValue={task?.[dimension] == null ? "" : String(task[dimension])}><option value="">Unset</option><option value="true">Yes</option><option value="false">No</option></select>{errors(dimension)}</div>)}
         </div>
         <div className="form-grid">
-          <div className="field"><label htmlFor={`${prefix}-plannedDate`}>Planned work date</label><input {...field("plannedDate")} type="date" defaultValue={task?.plannedDate ?? ""} />{errors("plannedDate")}</div>
           <div className="field"><label htmlFor={`${prefix}-dueDate`}>Due date</label><input {...field("dueDate")} type="date" defaultValue={task?.dueDate ?? ""} />{errors("dueDate")}</div>
           <div className="field"><label htmlFor={`${prefix}-estimateMinutes`}>Effort (minutes)</label><input {...field("estimateMinutes")} type="number" min={1} max={1000000} step={1} defaultValue={task?.estimateMinutes ?? ""} />{errors("estimateMinutes")}</div>
         </div>

@@ -29,7 +29,6 @@ function TaskCard({ task, href, disabled, index, count, move, warnings }: {
       <button className="drag-handle" aria-label={`Drag ${task.title}`} disabled={disabled} {...attributes} {...listeners}><GripVertical size={18} /></button>
     </div>
     <p className="muted text-sm">{task.status} / {priorityLabel(task)}{task.estimateMinutes ? ` / ${task.estimateMinutes} min` : ""}</p>
-    {task.plannedDate && <p className="muted text-sm">Planned <time dateTime={task.plannedDate}>{task.plannedDate}</time></p>}
     {task.dueDate && <p className="muted text-sm">Due <time dateTime={task.dueDate}>{task.dueDate}</time></p>}
     {task.dueAt && <p className="muted text-sm">Due <time dateTime={task.dueAt}>{new Intl.DateTimeFormat("en-GB", { timeZone: task.timezone!, dateStyle: "medium", timeStyle: "short" }).format(new Date(task.dueAt))}</time> ({task.timezone})</p>}
     {task.blockerReason && <p className="project-description error-message">Blocker: {task.blockerReason}</p>}
@@ -92,7 +91,7 @@ export function TaskBoard({ tasks, projectId, warnings = {} }: { tasks: Task[]; 
   }
   const visible = tasks.filter((t) => `${t.title} ${t.description}`.toLowerCase().includes(search.toLowerCase()) &&
     (!status || t.status === status) && (!priority || priorityLabel(t) === priority) &&
-    (!date || t.plannedDate === date || t.dueDate === date || (t.dueAt && dateInTimezone(t.dueAt, t.timezone!) === date)));
+    (!date || t.dueDate === date || (t.dueAt && dateInTimezone(t.dueAt, t.timezone!) === date)));
   function cards(group: Task[]) {
     return <SortableContext items={group.map((t) => t.id)}>{group.map((t) => {
       const column = tasks.filter((v) => v.status === t.status);
@@ -105,7 +104,7 @@ export function TaskBoard({ tasks, projectId, warnings = {} }: { tasks: Task[]; 
       <div className="field"><label htmlFor="task-search">Search tasks</label><input id="task-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
       <div className="field"><label htmlFor="task-filter-status">Filter task status</label><select id="task-filter-status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option>{statuses.map((s) => <option key={s}>{s}</option>)}</select></div>
       <div className="field"><label htmlFor="task-filter-priority">Filter priority</label><select id="task-filter-priority" value={priority} onChange={(e) => setPriority(e.target.value)}><option value="">All quadrants</option>{quadrants.map((s) => <option key={s}>{s}</option>)}</select></div>
-      <div className="field"><label htmlFor="task-filter-date">Filter planned or due date</label><input id="task-filter-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+      <div className="field"><label htmlFor="task-filter-date">Filter due date</label><input id="task-filter-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
     </div>
     <p className="muted text-sm">Timed deadlines use each task&apos;s saved timezone.</p>
     {error && <p role="alert" className="error-message">{error}</p>}

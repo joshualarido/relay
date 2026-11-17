@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { createProject, archiveProject } from "../../src/lib/projects";
 import { createTask, updateTask } from "../../src/lib/tasks";
+import { createEvent } from "../../src/lib/events";
 import * as checkins from "../../src/lib/check-ins";
 import * as dependencies from "../../src/lib/dependencies";
 import * as workbench from "../../src/lib/workbench";
@@ -72,15 +73,23 @@ describe("manual workbench", () => {
     expect(home.overdue.map((v) => v.id)).not.toContain(t.id);
   });
 
-  it("derives a deduplicated Today set from planned dates and deadlines", () => {
+  const plan = (taskId: string, start: string, end: string, allDay = true) => createEvent(w.db, w.alice.id, { title: "Plan", taskId, start, end, allDay, timezone: "UTC", mutationId: crypto.randomUUID() });
+  it("derives a deduplicated Today set from linked events and deadlines", () => {
     const before = workbench.homeData(w.db, w.alice.id, "UTC", "2027-03-15T12:00:00Z");
-    const planned = task({ title: "Planned today", plannedDate: "2027-03-15", dueDate: "2027-03-20" });
+    const planned = task({ title: "Planned today", dueDate: "2027-03-20" });
+    plan(planned.id, "2027-03-15", "2027-03-16");
     const due = task({ title: "Due today", dueDate: "2027-03-15" });
-    const done = task({ title: "Done today", plannedDate: "2027-03-15", status: "Done" });
+    const done = task({ title: "Done today", status: "Done" });
+    plan(done.id, "2027-03-15T09:00:00Z", "2027-03-15T10:00:00Z", false);
+    const tomorrow = task({ title: "Planned tomorrow" });
+    plan(tomorrow.id, "2027-03-16", "2027-03-17");
     const overdue = task({ title: "Overdue", dueDate: "2027-03-14" });
     const home = workbench.homeData(w.db, w.alice.id, "UTC", "2027-03-15T12:00:00Z");
     const todayIds = home.todayTasks.map((v) => v.id);
     expect(todayIds).toEqual(expect.arrayContaining([planned.id, due.id, done.id, overdue.id]));
+    expect(todayIds).not.toContain(tomorrow.id);
+    expect(home.plannedToday.map((v) => v.id)).toEqual(expect.arrayContaining([planned.id, done.id]));
+    expect(home.plannedToday.map((v) => v.id)).not.toContain(tomorrow.id);
     expect(new Set(todayIds).size).toBe(todayIds.length);
     expect(home.todayProgress.done - before.todayProgress.done).toBe(1);
     expect(home.todayProgress.total - before.todayProgress.total).toBe(3);

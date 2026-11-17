@@ -18,9 +18,9 @@ import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useConfirmation } from "./confirm-dialog";
 
-type Kind = "planned" | "project" | "task" | "event";
-const labels = { planned: "Planned work", project: "Project deadline", task: "Task deadline", event: "Event" };
-const colors = { planned: "var(--planned)", project: "var(--project-deadline)", task: "var(--task-deadline)", event: "var(--event)" };
+type Kind = "project" | "task" | "event";
+const labels = { project: "Project deadline", task: "Task deadline", event: "Event" };
+const colors = { project: "var(--project-deadline)", task: "var(--task-deadline)", event: "var(--event)" };
 const views = { Month: "dayGridMonth", Week: "timeGridWeek", Day: "timeGridDay", Agenda: "listMonth" };
 
 export function ManualCalendar({ projects, tasks, events, timezone, weekStart, date, home = false }: {
@@ -29,7 +29,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
   const ref = useRef<CalendarRef>(null);
   const router = useRouter();
   const params = useSearchParams();
-  const [enabled, setEnabled] = useState<Record<Kind, boolean>>({ planned: true, project: true, task: true, event: true });
+  const [enabled, setEnabled] = useState<Record<Kind, boolean>>({ project: true, task: true, event: true });
   const [view, setView] = useState("Month");
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +37,6 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
   const { confirm, confirmation } = useConfirmation();
   const captureLabel = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: timezone });
   const records = [
-    ...tasks.filter((t) => t.plannedDate).map((t) => ({ kind: "planned" as const, id: t.id, title: t.title, start: t.plannedDate!, end: undefined, allDay: true, revision: t.revision, done: t.status === "Done" })),
     ...projects.filter((p) => p.deadline).map((p) => ({ kind: "project" as const, id: p.id, title: p.name, start: p.deadline!, end: undefined, allDay: true, revision: p.revision, done: false })),
     ...tasks.filter((t) => t.dueDate || t.dueAt).map((t) => ({ kind: "task" as const, id: t.id, title: t.title, start: (t.dueDate ?? t.dueAt)!, end: undefined, allDay: Boolean(t.dueDate), revision: t.revision, done: t.status === "Done" })),
     ...events.map((e) => ({ kind: "event" as const, id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, revision: e.revision, done: false })),
@@ -59,7 +58,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
       if (!await confirm({ title: "Reschedule item?", action: "Reschedule", description: `${labels[record.kind]} "${record.title}": ${record.start} to ${info.event.startStr} (${timezone}).` })) { info.revert(); return; }
       const start = record.allDay ? info.event.startStr.slice(0, 10) : info.event.start!.toISOString();
       const input = record.kind === "event" ? { reschedule: true, start } : record.kind === "project" ? { deadline: start }
-        : record.kind === "planned" ? { plannedDate: start } : record.allDay ? { dueDate: start } : { dueAt: start };
+        : record.allDay ? { dueDate: start } : { dueAt: start };
       const response = await fetch(`/api/${record.kind === "project" ? "projects" : record.kind === "event" ? "events" : "tasks"}/${record.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...input, expectedRevision: record.revision, mutationId: crypto.randomUUID() }),
@@ -72,7 +71,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
   }
   return <div className={`${home ? "home-calendar" : "section"} stack`}>
     <fieldset className="calendar-legend"><legend className="sr-only">Calendar filters and legend</legend>
-      {(["planned", "project", "task", "event"] as const).map((kind) => <label key={kind} className="checkbox-label"><input type="checkbox" checked={enabled[kind]} onChange={(e) => setEnabled({ ...enabled, [kind]: e.target.checked })} aria-label={`Show ${labels[kind].toLowerCase()}`} /><span style={{ background: colors[kind] }} className="status-dot" aria-hidden="true" />{labels[kind]}</label>)}
+      {(["project", "task", "event"] as const).map((kind) => <label key={kind} className="checkbox-label"><input type="checkbox" checked={enabled[kind]} onChange={(e) => setEnabled({ ...enabled, [kind]: e.target.checked })} aria-label={`Show ${labels[kind].toLowerCase()}`} /><span style={{ background: colors[kind] }} className="status-dot" aria-hidden="true" />{labels[kind]}</label>)}
     </fieldset>
     {!home && <div className="calendar-controls"><div className="flex flex-wrap gap-2">{Object.keys(views).map((name) => <Button key={name} variant="outline" aria-pressed={view === name} onClick={() => { setView(name); ref.current?.getApi().changeView(views[name as keyof typeof views]); }}>{name}</Button>)}</div>
       <form className="calendar-date" onSubmit={(e) => {
@@ -96,12 +95,12 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
         eventAllow={(span, moving) => span.allDay === moving?.allDay}
         events={records.filter((r) => enabled[r.kind]).map((r) => ({
           id: `${r.kind}:${r.id}`, title: r.title, start: r.start, end: r.end, allDay: r.allDay,
-           color: colors[r.kind], contrastColor: r.kind === "task" || r.kind === "planned" ? "var(--background)" : "#ffffff", extendedProps: { kind: r.kind, id: r.id, done: r.done },
+           color: colors[r.kind], contrastColor: r.kind === "task" ? "var(--background)" : "#ffffff", extendedProps: { kind: r.kind, id: r.id, done: r.done },
         }))}
         eventDrop={(info) => { void reschedule(info); }}
         eventContent={(info) => {
           const kind = info.event.extendedProps.kind as Kind, id = info.event.extendedProps.id as string;
-          return <Link href={href(kind, id)} scroll={false} className="calendar-record" data-calendar-record={`${kind}:${id}`} data-task-link={kind === "task" || kind === "planned" ? id : undefined}
+          return <Link href={href(kind, id)} scroll={false} className="calendar-record" data-calendar-record={`${kind}:${id}`} data-task-link={kind === "task" ? id : undefined}
             style={{ "--record-color": colors[kind], opacity: info.event.extendedProps.done ? .6 : 1 } as React.CSSProperties}
             aria-label={`${labels[kind]}: ${info.event.title}`}><span aria-hidden="true">{info.timeText && `${info.timeText} `}{labels[kind]}: {info.event.title}</span></Link>;
         }}

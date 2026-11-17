@@ -46,7 +46,6 @@ export function TaskPanel({ task, projects, tasks, checkIns, dependencies, focus
         <p className="muted">{task.status} / {priorityLabel(task)}</p>
         <p className="whitespace-pre-wrap">{task.description || "No description yet."}</p>
         {task.projectId ? <Link className="text-primary" href={`/projects/${task.projectId}`} onClick={(e) => { if (pending) e.preventDefault(); }}>{projects.find((p) => p.id === task.projectId)?.name ?? "Project"}</Link> : <p className="muted">Inbox (unassigned)</p>}
-        {task.plannedDate && <p>Planned for <time dateTime={task.plannedDate}>{task.plannedDate}</time></p>}
         {task.dueDate && <p>Due <time dateTime={task.dueDate}>{task.dueDate}</time> (date only)</p>}
         {task.dueAt && <p>Due <time dateTime={task.dueAt}>{new Intl.DateTimeFormat("en-GB", { timeZone: task.timezone!, dateStyle: "medium", timeStyle: "short" }).format(new Date(task.dueAt))}</time> ({task.timezone})</p>}
         {task.estimateMinutes && <p>Effort: {task.estimateMinutes} minutes</p>}

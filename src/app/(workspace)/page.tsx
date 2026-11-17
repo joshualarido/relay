@@ -29,6 +29,7 @@ export default async function HomePage({ searchParams }: {
   const allProjects = [...projects, ...listProjects(db, ownerId, true)];
   const session = await currentSession();
   const overdue = new Set(data.overdue.map((task) => task.id));
+  const plannedToday = new Set(data.plannedToday.map((task) => task.id));
   const currentDay = data.todayTasks.filter((task) => !overdue.has(task.id));
   const taskHref = (task: Task) => `${task.projectId ? `/projects/${task.projectId}` : "/inbox"}?task=${task.id}`;
   const dateText = (value: string) => value.length === 10
@@ -39,7 +40,7 @@ export default async function HomePage({ searchParams }: {
       <div className="today-task-check">{task.status === "Done" ? <span className="complete-mark" aria-label="Completed"><Check size={18} aria-hidden="true" /></span> : <TaskComplete task={task} />}</div>
       <div className="today-task-body"><Link className="task-title" data-task-link={task.id} href={taskHref(task)}>{task.title}</Link>
         <p className="muted text-sm">{label} / {projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"} / {priorityLabel(task)}</p>
-        <p className="muted text-sm">{task.plannedDate ? `Planned ${dateText(task.plannedDate)}` : ""}{task.plannedDate && (task.dueDate || task.dueAt) ? " / " : ""}{task.dueDate || task.dueAt ? `Due ${dateText((task.dueDate ?? task.dueAt)!)}` : ""}</p>
+        <p className="muted text-sm">{plannedToday.has(task.id) ? "Planned today" : ""}{plannedToday.has(task.id) && (task.dueDate || task.dueAt) ? " / " : ""}{task.dueDate || task.dueAt ? `Due ${dateText((task.dueDate ?? task.dueAt)!)}` : ""}</p>
         {(task.blockerReason || task.warnings.length > 0) && <p className="error-message text-sm">{task.blockerReason} {task.warnings.join(" ")}</p>}
       </div>
     </li>)}</ul> : <p className="muted">Nothing here yet. Capture a task or plan one on the calendar.</p>;
