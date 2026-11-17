@@ -77,6 +77,8 @@ export const task = sqliteTable("task", {
   projectId: text("project_id").references(() => project.id),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
+  // Physical SQLite default is still 'Backlog' (changing it needs a table rebuild, deferred to the later cleanup);
+  // every app insert (createTask) sets status explicitly via the Zod default "To do".
   status: text("status", { enum: ["To do", "Doing", "Done"] }).notNull().default("To do"),
   // ponytail: retain legacy priority for old snapshots/replays; remove only with a versioned history migration.
   priority: text("priority", { enum: ["Low", "Medium", "High"] }).notNull().default("Medium"),
