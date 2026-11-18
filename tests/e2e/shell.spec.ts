@@ -201,7 +201,7 @@ test("keyboard switches screens with a sliding transition, cached revisits and n
   const title = `Cached capture ${crypto.randomUUID().slice(0, 8)}`;
   await page.keyboard.press("n");
   const capture = page.getByRole("dialog", { name: "Capture" });
-  await capture.getByLabel("Capture type").selectOption("project");
+  await capture.getByRole("radio", { name: "Project" }).click();
   await capture.getByLabel("Project name").fill(title);
   await capture.getByRole("button", { name: "Create project" }).click();
   await expect(capture).toHaveCount(0);

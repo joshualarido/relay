@@ -50,7 +50,7 @@ export function CaptureProvider({ data, children }: { data: CaptureData; childre
           }}>
           <Dialog.Title className="text-xl font-semibold mb-6">Capture</Dialog.Title>
           <Dialog.Close asChild><Button variant="ghost" className="dialog-close" aria-label="Close capture" disabled={pending}><X size={20} /></Button></Dialog.Close>
-          <QuickCapture projects={data.projects} tasks={data.tasks} timezone={data.timezone} inlineConfirmation={false}
+          <QuickCapture timezone={data.timezone} inlineConfirmation={false}
             onPendingChange={setPending} onDone={() => setOpen(false)} />
         </Dialog.Content>
       </Dialog.Portal>

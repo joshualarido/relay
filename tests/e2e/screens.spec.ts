@@ -60,7 +60,18 @@ test("Today screen", async ({ page, request, baseURL }, info) => {
     await page.keyboard.press("n");
   }
   await expect(page.getByRole("dialog", { name: "Capture" })).toBeVisible();
-  await shot(page, `capture-${mobile ? 390 : 1440}-light`);
+  if (mobile) await shot(page, "capture-390-light");
+  else {
+    const dialog = page.getByRole("dialog", { name: "Capture" });
+    await dialog.getByLabel("Quick capture").fill("Call the landlord");
+    await shot(page, "capture-task");
+    await dialog.getByRole("radio", { name: "Project" }).click();
+    await dialog.getByLabel("Project name").fill("Plan the kitchen refresh");
+    await shot(page, "capture-project");
+    await dialog.getByRole("radio", { name: "Event" }).click();
+    await dialog.getByLabel("Event title").fill("Maya's birthday");
+    await shot(page, "capture-event");
+  }
 });
 
 test("Today empty day and Day clear", async ({ browser, baseURL }, info) => {

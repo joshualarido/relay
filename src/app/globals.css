@@ -267,16 +267,15 @@ progress::-moz-progress-bar { background: var(--primary); }
 .calendar-record time { color: var(--muted-foreground); margin-right: 3px; font-variant-numeric: tabular-nums; }
 
 .quick-capture { container: capture / inline-size; }
-.quick-capture-form { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.quick-capture-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .quick-capture-form .field { min-width: 0; }
-.quick-capture-form > p { grid-column: 1 / -1; font-size: .8125rem; }
-.quick-capture-form select { width: auto; min-width: 96px; }
-.quick-capture-form:has(input[type=date]) { grid-template-columns: auto minmax(0, 1fr) 150px auto; }
+.quick-capture-form > p, .capture-kinds { grid-column: 1 / -1; }
+.capture-kinds { display: flex; gap: 8px; }
+.capture-kinds button { min-height: 44px; flex: 0 1 auto; }
+.quick-capture-form button[type=submit] { min-height: 44px; }
 @container capture (max-width: 380px) {
-  .quick-capture-form, .quick-capture-form:has(input[type=date]) { grid-template-columns: auto minmax(0, 1fr); }
-  .quick-capture-form > :nth-child(2) { grid-column: 2; }
-  .quick-capture-form > .field:has(input[type=date]) { grid-column: 1 / -1; }
-  .quick-capture-form button[type=submit] { grid-column: 1 / -1; }
+  .quick-capture-form { grid-template-columns: minmax(0, 1fr); }
+  .capture-kinds button { flex: 1; }
 }
 .complete-mark { width: 36px; min-height: 36px; display: grid; place-items: center; color: var(--primary-foreground); border-radius: 50%; background: var(--primary); }
 
