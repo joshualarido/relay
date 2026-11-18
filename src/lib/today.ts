@@ -75,7 +75,7 @@ const duration = (minutes: number) => {
 // Pure: the one-line summary shown above the timeline.
 export function summarySentence(summary: TodaySummary, dayState: DayState) {
   if (dayState === "clear") return "Nothing left today";
-  if (summary.remaining === 0) return "Nothing planned today";
+  if (summary.remaining === 0) return dayState === "empty" ? "Nothing planned today" : "Nothing timed today";
   if (!summary.next) return `${plural(summary.remaining)} left today`;
   return `${plural(summary.remaining)} today · next: ${summary.next.title} in ${duration(summary.next.minutes)}`;
 }

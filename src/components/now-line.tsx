@@ -12,5 +12,5 @@ export function NowLine({ label }: { label: string }) {
     try { restoring = Number(sessionStorage.getItem(scrollKey)) > 0; } catch {}
     if (!restoring && window.scrollY === 0) ref.current?.scrollIntoView({ block: "center", behavior: "instant" });
   }, []);
-  return <li ref={ref} className="now-line" aria-label={`Now, ${label}`}><time className="now-line-label">{label}</time><span className="now-line-rule" aria-hidden="true" /></li>;
+  return <li ref={ref} className="now-line"><span className="sr-only">Now, </span><time className="now-line-label">{label}</time><span className="now-line-rule" aria-hidden="true" /></li>;
 }

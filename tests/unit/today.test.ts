@@ -127,6 +127,6 @@ describe("summarySentence", () => {
     expect(s(1, 3, null, "active")).toBe("1 thing left today");
     expect(s(0, 3, null, "clear")).toBe("Nothing left today");
     expect(s(0, 0, null, "empty")).toBe("Nothing planned today");
-    expect(s(0, 0, null, "active")).toBe("Nothing planned today");
+    expect(s(0, 0, null, "active")).toBe("Nothing timed today");
   });
 });

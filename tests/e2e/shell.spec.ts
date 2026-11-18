@@ -204,6 +204,8 @@ test("keyboard switches screens with a sliding transition, cached revisits and n
   await expect(page.getByRole("main").getByText(title).first()).toBeVisible();
   await page.keyboard.press("Control+ArrowLeft");
   await expect(page).toHaveURL(/\/$/);
+  // Mutations refresh the router; screens re-prefetch, so switching after a change still skips the skeleton.
+  expect(sawSkeleton).toBe(false);
 
   // The command palette's search field blocks shortcuts as well.
   await page.getByRole("button", { name: "Search and commands" }).first().click();

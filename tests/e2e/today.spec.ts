@@ -30,6 +30,10 @@ test("Today shows the now line, due tasks, catch-up with Undo, Day clear and the
     title: "Focus block", taskId: block.id, start: now.subtract({ minutes: 30 }).toInstant().toString(),
     end: now.add({ minutes: 30 }).toInstant().toString(), timezone: zone, mutationId: mutationId(),
   });
+  createEvent(workspace.db, owner, {
+    title: "Standup call", start: now.subtract({ minutes: 90 }).toInstant().toString(),
+    end: now.subtract({ minutes: 60 }).toInstant().toString(), timezone: zone, mutationId: mutationId(),
+  });
   const busyCookies = await workspace.helpers.getCookies({ userId: owner });
   const emptyCookies = await workspace.helpers.getCookies({ userId: workspace.bob.id });
   workspace.close();
@@ -38,7 +42,14 @@ test("Today shows the now line, due tasks, catch-up with Undo, Day clear and the
   try {
     const page = await context.newPage();
     await page.goto("/");
-    await expect(page.locator("li.now-line")).toHaveAttribute("aria-label", /^Now, \d\d:\d\d$/);
+    await expect(page.locator("li.now-line")).toHaveText(/^Now, \d\d:\d\d$/);
+    // A plain event in the timeline opens the event panel.
+    await page.getByRole("link", { name: "Standup call", exact: true }).click();
+    await expect(page).toHaveURL(/\?event=/);
+    const panel = page.getByRole("dialog", { name: "Event details" });
+    await expect(panel.getByRole("heading", { name: "Standup call" })).toBeVisible();
+    await panel.getByRole("button", { name: "Close event details" }).click();
+    await expect(panel).toHaveCount(0);
     const due = page.getByRole("region", { name: "Due today" });
     await expect(due.getByRole("link", { name: "Due today note", exact: true })).toBeVisible();
 

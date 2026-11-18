@@ -35,7 +35,7 @@ function CatchUpRow({ task, today, tomorrow, timezone }: { task: Task; today: st
       const response = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expectedRevision: task.revision, dueDate, ...(task.dueAt && { dueAt: null, timezone: null }), mutationId: crypto.randomUUID() }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) throw new Error(result.error || Object.values(result.fields ?? {}).flat().join(" ") || "Could not move task. Try again.");
       notifyMutation(response, () => router.refresh()); router.refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not move task. Try again."); }
     finally { setPending(false); }

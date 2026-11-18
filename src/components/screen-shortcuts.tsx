@@ -12,7 +12,23 @@ export function ScreenShortcuts() {
   const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => { SCREENS.forEach((s) => router.prefetch(s)); }, [router]);
+  // router.refresh() and the prefetch stale time invalidate cached screens; re-prefetch each one when that happens
+  // "full" fetches the dynamic page, not just the loading shell, so the switch never shows the skeleton.
+  useEffect(() => {
+    let cancelled = false;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const last = new Map<string, number>();
+    // kind "full" is in the public AppRouterInstance.prefetch type (its enum is internal); it matches <Link prefetch>.
+    const options = (href: string) => ({ kind: "full", onInvalidate: () => schedule(href) }) as unknown as Parameters<typeof router.prefetch>[1];
+    const prefetch = (href: string) => { if (cancelled) return; last.set(href, Date.now()); router.prefetch(href, options(href)); };
+    // An invalidation right after a prefetch is deferred, so re-prefetching can never loop hot.
+    const schedule = (href: string) => {
+      const timer = setTimeout(() => { timers.delete(timer); prefetch(href); }, Math.max(0, 1000 - (Date.now() - (last.get(href) ?? 0))));
+      timers.add(timer);
+    };
+    SCREENS.forEach(prefetch);
+    return () => { cancelled = true; timers.forEach(clearTimeout); };
+  }, [router]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
