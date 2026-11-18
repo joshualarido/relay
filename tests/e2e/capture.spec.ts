@@ -7,7 +7,10 @@ test("N opens Capture, a task saves with an Open link and Undo removes it", asyn
 
   // N typed into a plain field is just text.
   await page.goto("/settings");
-  await page.getByLabel("Timezone").focus();
+  const timezone = page.getByLabel("Timezone");
+  await expect(timezone).toBeVisible();
+  await timezone.focus();
+  await expect(timezone).toBeFocused();
   await page.keyboard.press("n");
   await expect(page.getByRole("dialog", { name: "Capture" })).toHaveCount(0);
 

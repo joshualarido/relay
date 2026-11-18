@@ -1,13 +1,15 @@
 import { test, expect } from "@playwright/test";
 
-test("manual Home capture, search/palette and Focus persist without AI", async ({ page, request }, info) => {
+test("manual capture, search/palette and Focus persist without AI", async ({ page, request }, info) => {
   const errors: string[] = [], ai: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (r) => { if (/\/api\/chat|\/api\/ai|openai|anthropic/.test(r.url())) ai.push(r.url()); });
   const title = `Manual capture ${crypto.randomUUID().slice(0, 6)}`;
   await page.goto("/");
-  await page.getByLabel("Quick capture", { exact: true }).fill(title);
-  await page.getByRole("button", { name: "Capture task", exact: true }).click();
+  await page.keyboard.press("n");
+  const capture = page.getByRole("dialog", { name: "Capture", exact: true });
+  await capture.getByLabel("Quick capture", { exact: true }).fill(title);
+  await capture.getByRole("button", { name: "Capture task", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Add task", exact: true })).toHaveCount(0);
   if (info.project.name === "mobile") await page.getByRole("button", { name: "Search and commands" }).click();
   else await page.keyboard.press("Control+k");

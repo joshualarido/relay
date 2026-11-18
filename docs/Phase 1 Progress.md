@@ -45,6 +45,18 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Task 4: feat(today): timeline data and summary
 - Task 5: feat(today): single timeline with now line, catch-up and Day clear
 - Task 6: feat(capture): Capture button and N shortcut
+- Task 8a: test(v3): Today flow and tests updated for the new Today
+
+## Checks
+
+Task 8a full run (2026-11-18, after test repair):
+
+- `npm run typecheck`: pass
+- `npm run lint`: pass
+- `npx vitest run`: 15 files, 99 tests passed
+- `npm run build`: pass; the configured real database files (db, -wal, -shm) had identical size and mtime before and after the build
+- `RELAY_TEST_SERVER=production npm run test:e2e` (desktop + mobile): 89 passed, 12 skipped, 1 failed (`capture.spec.ts` N shortcut: settings field not yet visible when focused in production; test now waits for visibility, rerun alone passed). The known FullCalendar drag test passed in this production run.
+- Dev-server pre-run (`npm run test:e2e`, before repair): 44 failed, all from removed Home UI, plus `foundation.spec.ts` (needs `next start` build) and a dev-server ECONNRESET in `tasks.spec.ts`; both passed in the production run.
 
 ## Next action
 

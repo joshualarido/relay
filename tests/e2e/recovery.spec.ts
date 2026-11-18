@@ -5,8 +5,10 @@ test("captured loose task can be opened from its notice, and toast Undo removes 
   page.on("pageerror", (error) => errors.push(error.message));
   const name = `Recover ${crypto.randomUUID().slice(0, 6)}`;
   await page.goto("/");
-  await page.getByLabel("Quick capture", { exact: true }).fill(name);
-  await page.getByRole("button", { name: "Capture task", exact: true }).click();
+  await page.keyboard.press("n");
+  const capture = page.getByRole("dialog", { name: "Capture", exact: true });
+  await capture.getByLabel("Quick capture", { exact: true }).fill(name);
+  await capture.getByRole("button", { name: "Capture task", exact: true }).click();
   const open = page.getByRole("link", { name: "Open captured task", exact: true });
   const task = (await (await request.get("/api/tasks")).json()).find((t: { title: string }) => t.title === name);
   await expect(open).toHaveAttribute("href", `/inbox?task=${task.id}`);
