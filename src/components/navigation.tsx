@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "radix-ui";
+import { motion, MotionConfig } from "motion/react";
 import { House, FolderKanban, CalendarDays, Menu, X, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
@@ -40,7 +41,7 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
     setCollapsed(next);
     document.cookie = `relay-sidebar=${next ? "collapsed" : "expanded"}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
   }
-  const content = <div className="nav-content">
+  const content = (scope: string) => <div className="nav-content">
     <div className="nav-title"><Link href="/" className="wordmark" aria-label="Relay home" onClick={() => setOpen(false)}>relay<span aria-hidden="true">.</span></Link>
       <Button variant="ghost" className="sidebar-toggle" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={toggle}>
         {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
@@ -50,15 +51,18 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
       setOpen(false); setSearchOpen(true);
     }}><Search size={17} aria-hidden="true" /><span className="nav-label">Search <kbd>Ctrl K</kbd></span></Button>
     <nav aria-label="Workspace">
-      {links.map(({ href, label, icon: Icon }, i) => <Link key={href} href={href}
-        className={cn("nav-link", (href === "/" ? pathname === "/" : pathname.startsWith(href)) && "active")} aria-label={label} title={`${label} (${i + 1})`}
-        aria-current={(href === "/" ? pathname === "/" : pathname.startsWith(href)) ? "page" : undefined}
-        onClick={() => setOpen(false)}><Icon size={18} aria-hidden="true" /><span className="nav-label">{label}</span></Link>)}
+      {links.map(({ href, label, icon: Icon }, i) => {
+        const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+        return <Link key={href} href={href} className={cn("nav-link", active && "active")} aria-label={label} title={`${label} (${i + 1})`}
+          aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}>
+          {active && <motion.span layoutId={`nav-indicator-${scope}`} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.18, ease: "easeOut" }} />}
+          <Icon size={18} aria-hidden="true" /><span className="nav-label">{label}</span></Link>;
+      })}
     </nav>
     <AccountMenu name={name} onNavigate={() => setOpen(false)} />
   </div>;
-  return <SidebarContext.Provider value={{ collapsed, toggle }}><div className="workspace-shell" data-collapsed={collapsed}>
-    <aside className="desktop-sidebar">{content}</aside>
+  return <MotionConfig reducedMotion="user"><SidebarContext.Provider value={{ collapsed, toggle }}><div className="workspace-shell" data-collapsed={collapsed}>
+    <aside className="desktop-sidebar">{content("desktop")}</aside>
     <header className="mobile-header">
       <Link href="/" className="wordmark">relay<span aria-hidden="true">.</span></Link>
       <Button variant="ghost" aria-label="Search and commands" onClick={(e) => { returnFocus.current = e.currentTarget; setSearchOpen(true); }}><Search size={20} /></Button>
@@ -69,7 +73,7 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
           <Dialog.Content className="mobile-sidebar" aria-describedby={undefined}>
             <Dialog.Title className="sr-only">Workspace navigation</Dialog.Title>
             <Dialog.Close asChild><Button className="close-nav" variant="ghost" aria-label="Close navigation"><X size={22} /></Button></Dialog.Close>
-            {content}
+            {content("mobile")}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
@@ -77,5 +81,5 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
     {children}
     <ScreenShortcuts />
     <CommandPalette projects={projects} open={searchOpen} onOpenChange={setSearchOpen} returnFocus={returnFocus} />
-  </div></SidebarContext.Provider>;
+  </div></SidebarContext.Provider></MotionConfig>;
 }

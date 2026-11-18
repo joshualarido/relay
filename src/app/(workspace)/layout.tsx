@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { currentSession } from "@/lib/auth";
 import { Navigation } from "@/components/navigation";
+import { ScreenTransition } from "@/components/screen-transition";
 import { MutationNotices } from "@/components/mutation-notice";
 import { getDatabase } from "@/lib/db";
 import { listProjects } from "@/lib/projects";
@@ -14,6 +15,6 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   const collapsed = (await cookies()).get("relay-sidebar")?.value === "collapsed";
   return <><Navigation name={session.user.name} initialCollapsed={collapsed}
     projects={listProjects(getDatabase(), session.user.id).map(({ id, name }) => ({ id, name }))}>
-    <main className="workspace-main" id="main" tabIndex={-1}>{children}</main>
+    <main className="workspace-main" id="main" tabIndex={-1}><ScreenTransition>{children}</ScreenTransition></main>
   </Navigation><MutationNotices /></>;
 }

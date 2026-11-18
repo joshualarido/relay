@@ -170,3 +170,59 @@ test("shared dark text, muted, error and action tokens meet readable contrast", 
   });
   for (const pair of ratios) expect(pair.ratio, `${pair.text} on ${pair.background}`).toBeGreaterThanOrEqual(pair.text === "--control-border" ? 3 : 4.5);
 });
+
+test("keyboard switches screens with a sliding transition, cached revisits and no shortcut while typing", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop keyboard shortcuts");
+  const nav = page.getByRole("navigation", { name: "Workspace" });
+  const current = () => nav.locator("[aria-current=page]");
+  const skeleton = page.getByRole("status", { name: "Loading workspace" });
+  await page.goto("/");
+  await expect(current()).toHaveText("Today");
+  await page.keyboard.press("Control+ArrowRight");
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(current()).toHaveText("Projects");
+  await page.keyboard.press("Control+ArrowRight");
+  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(current()).toHaveText("Calendar");
+  await expect(nav.locator(".nav-indicator")).toHaveCount(1);
+  // Every screen has now been visited: revisits paint from the router cache without the skeleton.
+  let sawSkeleton = false;
+  await page.exposeFunction("relaySkeleton", () => { sawSkeleton = true; });
+  await page.evaluate(() => new MutationObserver(() => {
+    if (document.querySelector("[aria-label='Loading workspace']")) (window as unknown as { relaySkeleton: () => void }).relaySkeleton();
+  }).observe(document.body, { childList: true, subtree: true }));
+  await page.keyboard.press("Control+ArrowLeft");
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(current()).toHaveText("Projects");
+  await page.keyboard.press("Control+ArrowLeft");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(current()).toHaveText("Today");
+  await expect(skeleton).toHaveCount(0);
+  expect(sawSkeleton).toBe(false);
+  // The slide leaves no transform behind, so fixed panels inside the page stay viewport-sized.
+  await expect.poll(() => page.locator(".screen-transition").evaluate((el) => getComputedStyle(el).transform)).toBe("none");
+
+  // Typing in a plain input does not switch screens.
+  const capture = page.getByLabel("Quick capture");
+  const title = `Cached capture ${crypto.randomUUID().slice(0, 8)}`;
+  await capture.fill(title);
+  await page.keyboard.press("Control+ArrowLeft");
+  await page.keyboard.press("Control+ArrowRight");
+  await expect(page).toHaveURL(/\/$/);
+  // A capture made on Today shows on the already-cached Projects screen (mutations call router.refresh()).
+  await page.getByLabel("Capture type").selectOption("project");
+  await page.getByLabel("Project name").fill(title);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Project created." })).toBeVisible();
+  await page.keyboard.press("Control+ArrowRight");
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByRole("main").getByText(title).first()).toBeVisible();
+  await page.keyboard.press("Control+ArrowLeft");
+  await expect(page).toHaveURL(/\/$/);
+
+  // The command palette's search field blocks shortcuts as well.
+  await page.getByRole("button", { name: "Search and commands" }).first().click();
+  await page.getByRole("dialog", { name: "Search and commands", exact: true }).getByLabel("Search workspace").fill("x");
+  await page.keyboard.press("Control+ArrowRight");
+  await expect(page).toHaveURL(/\/$/);
+});

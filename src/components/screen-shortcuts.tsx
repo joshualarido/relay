@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { SCREENS, isShortcutBlocked, neighbor, screenIndex } from "@/lib/screens";
 
 const isMac = () => /mac/i.test((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform);
-const scrollKey = (i: number) => `relay-scroll-${i}`;
+const scrollKey = (path: string) => `relay-scroll-${path}`;
 
 /** Keyboard screen switching (Ctrl+←/→, macOS ⌘⌥←/→, and 1/2/3), prefetch, and per-screen scroll memory. */
 export function ScreenShortcuts() {
@@ -47,12 +47,12 @@ export function ScreenShortcuts() {
     lastY.current = 0;
     if (i >= 0) {
       let y = 0;
-      try { y = Number(sessionStorage.getItem(scrollKey(i))) || 0; } catch {}
+      try { y = Number(sessionStorage.getItem(scrollKey(pathname))) || 0; } catch {}
       if (y) frame = requestAnimationFrame(() => { window.scrollTo(0, y); lastY.current = window.scrollY; });
     }
     return () => {
       cancelAnimationFrame(frame);
-      if (i >= 0) try { sessionStorage.setItem(scrollKey(i), String(lastY.current)); } catch {}
+      if (i >= 0) try { sessionStorage.setItem(scrollKey(pathname), String(lastY.current)); } catch {}
     };
   }, [pathname]);
 

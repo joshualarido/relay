@@ -13,7 +13,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 
 - [x] 1. Branch and docs
 - [x] 2. Screen order, shortcuts and view-state memory
-- [ ] 3. Slide transition and sliding active indicator
+- [x] 3. Slide transition and sliding active indicator
 - [ ] 4. Today data (pure and tested)
 - [ ] 5. Today screen
 - [ ] 6. Capture button and `N`
@@ -27,13 +27,18 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Capture dialog closes on save; the confirmation (plus an Open link for loose tasks) moves into the Undo toast.
 - Screen shortcuts: `neighbor` returns null at the ends (no wrap) and from unknown paths; `1/2/3` still jump from anywhere. Guard `isShortcutBlocked` lives in `src/lib/screens.ts` for reuse by `N` (Task 6).
 - Scroll memory keys window scroll per screen in `sessionStorage`; the calendar week and expanded project state are restored by their own state in later phases.
+- Task 3: `ScreenTransition` (enter-only, keyed by pathname so a new key press remounts and cancels; first load is not animated; unknown direction = 150 ms fade; reduced motion = 100 ms fade). Motion leaves `transform: none` at rest (asserted in e2e) so fixed side panels are not trapped. `.workspace-main` gets `overflow-x: clip` because the 24 px slide-in briefly widened the page (caught by the existing scrollWidth assertion).
+- Sliding indicator: one `motion.span` per nav scope (`nav-indicator-desktop` / `-mobile`) carries the active fill; `.nav-link.active` keeps only the colour and accent icon. `MotionConfig reducedMotion="user"` makes it jump under reduced motion.
+- Caching: `experimental.staleTimes.dynamic = 30` (still the documented name in Next 16.4; works alongside `force-dynamic`). Screens prefetched via `router.prefetch` use the `static` period (5 min default). Mutations still call `router.refresh()`, which drops the client router cache, so other screens refetch. Verified in e2e: a project created from Today's quick capture shows on the already-visited Projects screen, and revisits show no `Loading workspace` skeleton (dev server).
+- Scroll memory is now keyed by pathname (`/projects` and `/projects/abc` have separate slots).
 - Screenshots come only from isolated test databases.
 
 ## Commits
 
 - Task 1: docs: Phase 1 plan and product purpose
 - Task 2: feat(shell): screen order, keyboard shortcuts, prefetch
+- Task 3: feat(shell): directional slide, sliding indicator, cached screens
 
 ## Next action
 
-Task 3: slide transition and sliding active indicator.
+Task 4: Today data (pure and tested).
