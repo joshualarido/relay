@@ -120,6 +120,8 @@ Review findings and fixes:
 
 Checks: typecheck and lint clean; `npx vitest run` 15 files, 101 tests passed; edited specs on desktop (capture, shell) 13 passed, 1 skipped (mobile-only). `npm run build` passed. Full e2e in production mode (`RELAY_E2E_FULL=1 RELAY_TEST_SERVER=production npm run test:e2e`, desktop + mobile): 91 passed, 13 skipped, 0 failed. The real database (relay.db and -shm/-wal) was unchanged in size and modified time before and after. Screenshots refreshed: capture-task, capture-project, capture-event.
 
+Follow-up: Capture type buttons now span the dialog width as three equal columns, stacked full width (44px) at 760px and below; keys and semantics unchanged. Screenshots refreshed: capture-task/project/event, capture-390-light.
+
 ## How to test it
 
 - Start your own dev server as usual (`npm run dev`, http://127.0.0.1:3000) and sign in.

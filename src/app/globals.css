@@ -270,13 +270,13 @@ progress::-moz-progress-bar { background: var(--primary); }
 .quick-capture-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .quick-capture-form .field { min-width: 0; }
 .quick-capture-form > p, .capture-kinds { grid-column: 1 / -1; }
-.capture-kinds { display: flex; gap: 8px; }
-.capture-kinds button { min-height: 44px; flex: 0 1 auto; }
+.capture-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.capture-kinds button { min-height: 44px; width: 100%; }
 .quick-capture-form button[type=submit] { min-height: 44px; }
 @container capture (max-width: 380px) {
   .quick-capture-form { grid-template-columns: minmax(0, 1fr); }
-  .capture-kinds button { flex: 1; }
 }
+@media (max-width: 760px) { .capture-kinds { grid-template-columns: minmax(0, 1fr); } }
 .complete-mark { width: 36px; min-height: 36px; display: grid; place-items: center; color: var(--primary-foreground); border-radius: 50%; background: var(--primary); }
 
 /* Today: one timeline of the day */
