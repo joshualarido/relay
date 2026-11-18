@@ -14,7 +14,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - [x] 1. Branch and docs
 - [x] 2. Screen order, shortcuts and view-state memory
 - [x] 3. Slide transition and sliding active indicator
-- [ ] 4. Today data (pure and tested)
+- [x] 4. Today data (pure and tested)
 - [ ] 5. Today screen
 - [ ] 6. Capture button and `N`
 - [ ] 7. Mobile bottom tab bar
@@ -32,13 +32,15 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Caching: `experimental.staleTimes.dynamic = 30` (still the documented name in Next 16.4; works alongside `force-dynamic`). Screens prefetched via `router.prefetch` use the `static` period (5 min default). Mutations still call `router.refresh()`, which drops the client router cache, so other screens refetch. Verified in e2e: a project created from Today's quick capture shows on the already-visited Projects screen, and revisits show no `Loading workspace` skeleton (dev server).
 - Scroll memory is now keyed by pathname (`/projects` and `/projects/abc` have separate slots).
 - Screenshots come only from isolated test databases.
+- Task 4: `todayTimeline` keeps a crossing-midnight event's real start/end (UI clamps). Minutes to next = ceil. Done tasks due today with no event today count toward total (so finishing the only due task gives "clear"). A day with only all-day events is "active" with 0 counted. TDD: RED (module missing) -> GREEN 11/11.
 
 ## Commits
 
 - Task 1: docs: Phase 1 plan and product purpose
 - Task 2: feat(shell): screen order, keyboard shortcuts, prefetch
 - Task 3: feat(shell): directional slide, sliding indicator, cached screens
+- Task 4: feat(today): timeline data and summary
 
 ## Next action
 
-Task 4: Today data (pure and tested).
+Task 5: Today screen (render `todayTimeline` + `summarySentence` from `src/lib/today.ts`; see task-4-report.md for types).
