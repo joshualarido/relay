@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
 import { AccountMenu } from "./auth-controls";
+import { ScreenShortcuts } from "./screen-shortcuts";
 
 const SidebarContext = createContext({ collapsed: false, toggle: () => {} });
 
@@ -49,8 +50,8 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
       setOpen(false); setSearchOpen(true);
     }}><Search size={17} aria-hidden="true" /><span className="nav-label">Search <kbd>Ctrl K</kbd></span></Button>
     <nav aria-label="Workspace">
-      {links.map(({ href, label, icon: Icon }) => <Link key={href} href={href}
-        className={cn("nav-link", (href === "/" ? pathname === "/" : pathname.startsWith(href)) && "active")} aria-label={label} title={label}
+      {links.map(({ href, label, icon: Icon }, i) => <Link key={href} href={href}
+        className={cn("nav-link", (href === "/" ? pathname === "/" : pathname.startsWith(href)) && "active")} aria-label={label} title={`${label} (${i + 1})`}
         aria-current={(href === "/" ? pathname === "/" : pathname.startsWith(href)) ? "page" : undefined}
         onClick={() => setOpen(false)}><Icon size={18} aria-hidden="true" /><span className="nav-label">{label}</span></Link>)}
     </nav>
@@ -74,6 +75,7 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
       </Dialog.Root>
     </header>
     {children}
+    <ScreenShortcuts />
     <CommandPalette projects={projects} open={searchOpen} onOpenChange={setSearchOpen} returnFocus={returnFocus} />
   </div></SidebarContext.Provider>;
 }
