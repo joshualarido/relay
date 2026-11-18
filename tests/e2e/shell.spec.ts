@@ -187,6 +187,13 @@ test("keyboard switches screens with a sliding transition, cached revisits and n
   await expect(current()).toHaveText("Today");
   await expect(skeleton).toHaveCount(0);
   expect(sawSkeleton).toBe(false);
+  // Ctrl+Arrow loops: Today <- Calendar and Calendar -> Today.
+  await page.keyboard.press("Control+ArrowLeft");
+  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(current()).toHaveText("Calendar");
+  await page.keyboard.press("Control+ArrowRight");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(current()).toHaveText("Today");
   // The slide leaves no transform behind, so fixed panels inside the page stay viewport-sized.
   await expect.poll(() => page.locator(".screen-transition").evaluate((el) => getComputedStyle(el).transform)).toBe("none");
 

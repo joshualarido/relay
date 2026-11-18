@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { direction } from "@/lib/screens";
+import { direction, takeDirectionHint, type Direction } from "@/lib/screens";
 
 const OFFSET = 24;
 
@@ -17,10 +17,10 @@ export function ScreenTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const reduce = useReducedMotion();
   // Previous pathname, tracked with the "adjust state during render" pattern.
-  const [route, setRoute] = useState<{ current: string; from: string | null }>({ current: pathname, from: null });
-  if (route.current !== pathname) setRoute({ current: pathname, from: route.current });
+  const [route, setRoute] = useState<{ current: string; from: string | null; dir: Direction | null }>({ current: pathname, from: null, dir: null });
+  if (route.current !== pathname) setRoute({ current: pathname, from: route.current, dir: direction(route.current, pathname, takeDirectionHint()) });
   const from = route.current === pathname ? route.from : route.current;
-  const dir = from === null ? null : direction(from, pathname);
+  const dir = route.current === pathname ? route.dir : direction(route.current, pathname);
   const initial = from === null ? false
     : reduce || !dir ? { opacity: 0 }
     : { opacity: 0, x: dir === "right" ? OFFSET : -OFFSET };

@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { SCREENS, isShortcutBlocked, neighbor, screenIndex } from "@/lib/screens";
+import { SCREENS, hintDirection, isShortcutBlocked, neighbor, screenIndex } from "@/lib/screens";
 
 const isMac = () => /mac/i.test((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform);
 const scrollKey = (path: string) => `relay-scroll-${path}`;
@@ -37,7 +37,8 @@ export function ScreenShortcuts() {
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         const mac = isMac();
         const ok = mac ? e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
-        if (ok) to = neighbor(location.pathname, e.key === "ArrowRight" ? "right" : "left");
+        const side = e.key === "ArrowRight" ? "right" : "left";
+        if (ok) { to = neighbor(location.pathname, side); if (to && to !== location.pathname) hintDirection(side); }
       } else if (["1", "2", "3"].includes(e.key) && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         to = SCREENS[Number(e.key) - 1];
       }

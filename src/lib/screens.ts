@@ -9,17 +9,23 @@ export function screenIndex(pathname: string): number {
   return SCREENS.findIndex((s, i) => i > 0 && (pathname === s || pathname.startsWith(`${s}/`)));
 }
 
-/** Adjacent screen, or null at either end (no wrap) or from an unknown path. */
+/** Adjacent screen, looping at either end (Calendar -> Today, Today -> Calendar); null from an unknown path. */
 export function neighbor(pathname: string, side: Direction): Screen | null {
   const i = screenIndex(pathname);
   if (i < 0) return null;
-  return SCREENS[i + (side === "right" ? 1 : -1)] ?? null;
+  return SCREENS[(i + (side === "right" ? 1 : -1) + SCREENS.length) % SCREENS.length];
 }
 
+/** Direction of the last keyboard switch, so a wrap slides the way the key points. Consumed once by the transition. */
+let pendingDirection: Direction | null = null;
+export function hintDirection(side: Direction) { pendingDirection = side; }
+export function takeDirectionHint(): Direction | null { const d = pendingDirection; pendingDirection = null; return d; }
+
 /** Direction of travel between two screens, or null when either is unknown or they match. */
-export function direction(from: string, to: string): Direction | null {
+export function direction(from: string, to: string, hint: Direction | null = null): Direction | null {
   const a = screenIndex(from), b = screenIndex(to);
   if (a < 0 || b < 0 || a === b) return null;
+  if (hint && neighbor(from, hint) === SCREENS[b]) return hint; // keyboard wrap follows the key pressed
   return b > a ? "right" : "left";
 }
 

@@ -11,11 +11,11 @@ describe("screens", () => {
     expect(screenIndex("/settings")).toBe(-1);
     expect(screenIndex("/projectsx")).toBe(-1);
   });
-  it("finds neighbors without wrapping", () => {
+  it("finds neighbors, looping at both ends", () => {
     expect(neighbor("/", "right")).toBe("/projects");
     expect(neighbor("/projects/abc", "left")).toBe("/");
-    expect(neighbor("/", "left")).toBeNull();
-    expect(neighbor("/calendar", "right")).toBeNull();
+    expect(neighbor("/", "left")).toBe("/calendar");
+    expect(neighbor("/calendar", "right")).toBe("/");
     expect(neighbor("/settings", "right")).toBeNull();
   });
   it("derives slide direction", () => {
@@ -23,5 +23,13 @@ describe("screens", () => {
     expect(direction("/calendar", "/projects/x")).toBe("left");
     expect(direction("/projects", "/projects/x")).toBeNull();
     expect(direction("/settings", "/")).toBeNull();
+  });
+  it("uses the key direction for a wrap and the index otherwise", () => {
+    expect(direction("/calendar", "/", "right")).toBe("right");
+    expect(direction("/", "/calendar", "left")).toBe("left");
+    expect(direction("/calendar", "/")).toBe("left");
+    expect(direction("/", "/calendar")).toBe("right");
+    expect(direction("/", "/projects", "right")).toBe("right");
+    expect(direction("/", "/calendar", "right")).toBe("right");
   });
 });
