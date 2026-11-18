@@ -9,6 +9,7 @@ import { summarySentence, todayTimeline } from "@/lib/today";
 import { TaskComplete } from "@/components/task-complete";
 import { TodayTimeline } from "@/components/today-timeline";
 import { CatchUp } from "@/components/catch-up";
+import { DayClear } from "@/components/day-clear";
 import { TaskSelection } from "@/components/task-selection";
 import { EventSelection } from "@/components/event-selection";
 
@@ -29,7 +30,7 @@ export default async function TodayPage({ searchParams }: {
     <header className="today-header">
       <div><h1>Today</h1><p className="today-summary"><span>{dateLabel}</span> · <span>{summarySentence(day.summary, day.dayState)}</span></p></div>
     </header>
-    {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} />}
+    {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
     {day.dueUnscheduled.length > 0 && <section className="today-section" aria-labelledby="due-today-heading">
       <h2 id="due-today-heading">Due today</h2>
       <ul className="today-list">{day.dueUnscheduled.map((task) => <li className="today-row" key={task.id}>
@@ -40,10 +41,7 @@ export default async function TodayPage({ searchParams }: {
       </li>)}</ul>
     </section>}
     {day.dayState === "empty" ? <p className="today-empty">Nothing planned today</p>
-      : day.dayState === "clear" ? <div className="day-clear" role="status">
-        <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><circle cx="12" cy="12" r="10.5" /><path d="M7 12.5l3.2 3.2L17 9" /></svg>
-        <p>Day clear</p>
-      </div>
+      : day.dayState === "clear" ? <DayClear day={day.today} />
       : <TodayTimeline items={day.items} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
     {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={listTasks(db, ownerId, true)} timezone={timezone} />
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} focus={Boolean(query.focus)} projects={allProjects} />}

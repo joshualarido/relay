@@ -309,16 +309,16 @@ progress::-moz-progress-bar { background: var(--primary); }
 .now-line-rule { position: absolute; left: calc(var(--time-col) + 12px); right: 0; top: -1px; height: 2px; border-radius: 1px; background: var(--primary); }
 .catch-up-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0; border: 0; background: none; color: var(--muted-foreground); font: inherit; cursor: pointer; }
 .catch-up-toggle:hover { color: var(--foreground); }
-.catch-up-count { color: var(--destructive); font-weight: 500; }
+.catch-up-count { color: var(--foreground); font-weight: 500; }
 .catch-up-toggle svg { transition: transform 150ms ease-out; }
 .catch-up-toggle[aria-expanded=true] svg { transform: rotate(180deg); }
 .catch-up-actions, .catch-up-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .catch-up-pick input { width: auto; }
 .day-clear { display: flex; align-items: center; gap: 12px; padding: 24px 0; font-size: 1.0625rem; font-weight: 600; }
 .day-clear svg { fill: none; stroke: var(--primary); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.day-clear path { stroke-dasharray: 16; stroke-dashoffset: 16; animation: draw-check 200ms ease-out 100ms forwards; }
+.day-clear.is-new path { stroke-dasharray: 16; stroke-dashoffset: 16; animation: draw-check 200ms ease-out 100ms forwards; }
 @keyframes draw-check { to { stroke-dashoffset: 0; } }
-@media (prefers-reduced-motion: reduce) { .day-clear path { animation: none; stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .day-clear.is-new path { animation: none; stroke-dashoffset: 0; } }
 @media (max-width: 760px) {
   .timeline-row, .timeline-row:has(.complete-task) { grid-template-columns: 74px 16px minmax(0, 1fr) 36px; gap: 4px 10px; }
   .now-line { --time-col: 74px; }
