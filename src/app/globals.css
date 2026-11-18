@@ -80,6 +80,8 @@ label { font-weight: 500; font-size: .8125rem; }
 ::selection { background: color-mix(in srgb, var(--primary) 30%, transparent); }
 input, textarea { caret-color: var(--primary); }
 kbd { font-size: .6875rem; color: var(--muted-foreground); font-family: inherit; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; line-height: 1.5; }
+/* On a filled button the hint takes the button's ink, or it vanishes into the accent. */
+.bg-primary kbd { color: inherit; border-color: color-mix(in srgb, currentColor 45%, transparent); }
 progress { accent-color: var(--primary); width: 100%; height: 4px; border: 0; border-radius: 4px; overflow: hidden; }
 progress::-webkit-progress-bar { background: var(--secondary); }
 progress::-webkit-progress-value { background: var(--primary); border-radius: 4px; }
@@ -170,6 +172,7 @@ progress::-moz-progress-bar { background: var(--primary); }
 .dialog-overlay { position: fixed; inset: 0; background: var(--overlay); z-index: var(--z-overlay); }
 .form-dialog { position: fixed; inset: 16px; margin: auto; width: min(560px, calc(100vw - 32px)); height: fit-content; max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; box-shadow: var(--shadow-float); z-index: var(--z-dialog); }
 .form-dialog > h2:first-child, .form-dialog h2 { font-size: 1.0625rem; }
+.capture-dialog > h2 { margin-bottom: 16px; }
 .dialog-close { position: absolute; top: 12px; right: 12px; padding: 8px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
@@ -279,7 +282,7 @@ progress::-moz-progress-bar { background: var(--primary); }
 
 /* Today: one timeline of the day */
 .today-page { max-width: 880px; }
-.today-header { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-end; margin-bottom: 32px; }
+.today-header { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; margin-bottom: 32px; }
 .today-summary { margin-top: 6px; color: var(--muted-foreground); }
 .today-section + .today-section, .today-section + .today-empty, .today-section + .day-clear { margin-top: 36px; }
 .today-section > h2 { font-size: .9375rem; line-height: 1.3; font-weight: 600; margin-bottom: 8px; }
@@ -321,6 +324,8 @@ progress::-moz-progress-bar { background: var(--primary); }
   .timeline-row, .timeline-row:has(.complete-task) { grid-template-columns: 74px 16px minmax(0, 1fr) 36px; gap: 4px 10px; }
   .now-line { --time-col: 74px; }
   .catch-up-row { grid-template-columns: minmax(0, 1fr); }
+  /* Ghost buttons keep their hit area; their labels line up with the task title. */
+  .catch-up-actions { margin-left: -14px; }
   .timeline-time { font-size: .75rem; }
 }
 
@@ -344,7 +349,7 @@ progress::-moz-progress-bar { background: var(--primary); }
   .tab-capture span { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: var(--primary); color: var(--primary-foreground); }
   .tab-capture:hover span { opacity: .9; }
   /* The centre + is the mobile Capture action; keep one primary button per screen. */
-  .today-header > [data-capture-trigger] { display: none; }
+  .today-header > [data-capture-trigger], .today-empty > [data-capture-trigger] { display: none; }
   .page { padding: 20px 16px; }
   .page > .section + .section { margin-top: 28px; padding-top: 24px; }
   .settings-grid { grid-template-columns: 1fr; gap: 32px; }

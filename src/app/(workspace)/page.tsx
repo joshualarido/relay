@@ -29,8 +29,8 @@ export default async function TodayPage({ searchParams }: {
 
   return <div className="page today-page">
     <header className="today-header">
-      <div><h1>Today</h1><p className="today-summary"><span>{dateLabel}</span> · <span>{summarySentence(day.summary, day.dayState)}</span></p></div>
-      <CaptureButton />
+      <div><h1>Today</h1><p className="today-summary"><span>{dateLabel}</span>{day.dayState === "active" && <> · <span>{summarySentence(day.summary, day.dayState)}</span></>}</p></div>
+      {day.dayState !== "empty" && <CaptureButton />}
     </header>
     {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
     {day.dueUnscheduled.length > 0 && <section className="today-section" aria-labelledby="due-today-heading">
@@ -42,7 +42,7 @@ export default async function TodayPage({ searchParams }: {
         <Link className="today-quiet-action" href="/calendar">Schedule<span className="sr-only"> {task.title}</span></Link>
       </li>)}</ul>
     </section>}
-    {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton variant="outline" /></div>
+    {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
       : day.dayState === "clear" ? <DayClear day={day.today} />
       : <TodayTimeline items={day.items} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
     {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={listTasks(db, ownerId, true)} timezone={timezone} />

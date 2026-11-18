@@ -58,6 +58,24 @@ Task 8a full run (2026-11-18, after test repair):
 - `RELAY_TEST_SERVER=production npm run test:e2e` (desktop + mobile): 89 passed, 12 skipped, 1 failed (`capture.spec.ts` N shortcut: settings field not yet visible when focused in production; test now waits for visibility, rerun alone passed). The known FullCalendar drag test passed in this production run.
 - Dev-server pre-run (`npm run test:e2e`, before repair): 44 failed, all from removed Home UI, plus `foundation.spec.ts` (needs `next start` build) and a dev-server ECONNRESET in `tasks.spec.ts`; both passed in the production run.
 
+## Impeccable critique
+
+Degraded run: single context (task forbids subagents); detector/live overlay not run; evidence = Playwright screenshots on the isolated test server (docs/phase1-screens/). Operate mode, Today + shell, 1440/1366/390, light and dark.
+
+Scores (Nielsen, 0-4): status 4, real world 4, control 3, consistency 3, error prevention 3, recognition 4, efficiency 3, minimalist 3 -> 4 after fixes, recovery 3, help n/a. Total 30/36 before, 31/36 after.
+
+5-second test. 1440x900: date, "5 things today, next: Draft the tomato post in 36 min", the now line between Dentist and the next block, 1 overdue - pass. 390x844: same summary under the title and the whole timeline above the fold - pass.
+
+Fixed (one commit):
+- Capture button key hint "N" invisible on the accent fill (empty box): `.bg-primary kbd` takes the button ink.
+- Empty day said "Nothing planned today" twice and showed two Capture buttons (primary + outline): summary hidden on empty and clear days; only the in-line Capture shows (primary); on mobile the tab-bar + is the one Capture.
+- Day clear said "Nothing left today" above "Day clear": summary hidden on clear days.
+- Capture dialog title glued to the field row (unlayered `h2 { margin: 0 }` beats the `mb-6` utility): 16px gap.
+- Mobile catch-up move buttons indented past the task title: aligned to the title edge.
+- Header Capture button sat low against the title block: vertically centred.
+
+Not fixed (by design, not clutter): complete circle sits left in Due today but right in the timeline (row layouts from Task 4; a move is a layout change, not a clutter fix); `.form-dialog h2` margin bug in other dialogs is outside Today/shell scope; Undo toast is visible in the Day-clear shot (required notification).
+
 ## Next action
 
 Task 8. Task 8 must repair e2e that relied on the old Today (see task-5-report.md; phase13.spec Home tests still fail on mobile for that reason).
