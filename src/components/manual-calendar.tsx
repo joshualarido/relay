@@ -1,7 +1,7 @@
 "use client";
 
 import "temporal-polyfill/global";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import FullCalendar, { type CalendarRef, type EventDropInfo } from "@fullcalendar/react";
@@ -17,7 +17,6 @@ import { ChevronLeft, ChevronRight, CircleCheck, Clock, Flag } from "lucide-reac
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useConfirmation } from "./confirm-dialog";
-import { captureKindEvent } from "./quick-capture";
 
 type Kind = "project" | "task" | "event";
 const labels = { project: "Project deadline", task: "Task deadline", event: "Event" };
@@ -25,8 +24,8 @@ const colors = { project: "var(--project-deadline)", task: "var(--task-deadline)
 const icons = { project: Flag, task: CircleCheck, event: Clock };
 const views = { Month: "dayGridMonth", Week: "timeGridWeek", Day: "timeGridDay", Agenda: "listMonth" };
 
-export function ManualCalendar({ projects, tasks, events, timezone, weekStart, date, home = false }: {
-  projects: Project[]; tasks: Task[]; events: Event[]; timezone: string; weekStart: number; date: string; home?: boolean;
+export function ManualCalendar({ projects, tasks, events, timezone, weekStart, date }: {
+  projects: Project[]; tasks: Task[]; events: Event[]; timezone: string; weekStart: number; date: string;
 }) {
   const ref = useRef<CalendarRef>(null);
   const router = useRouter();
@@ -36,14 +35,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  // Tasks are captured without a date, so the day hint promises a capture date only for Project and Event.
-  const [captureKind, setCaptureKind] = useState("task");
-  useEffect(() => {
-    const listen = (e: globalThis.Event) => setCaptureKind(String((e as CustomEvent).detail));
-    window.addEventListener(captureKindEvent, listen); return () => window.removeEventListener(captureKindEvent, listen);
-  }, []);
   const { confirm, confirmation } = useConfirmation();
-  const captureLabel = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: timezone });
   const records = [
     ...projects.filter((p) => p.deadline).map((p) => ({ kind: "project" as const, id: p.id, title: p.name, start: p.deadline!, end: undefined, allDay: true, revision: p.revision, done: false })),
     ...tasks.filter((t) => t.dueDate || t.dueAt).map((t) => ({ kind: "task" as const, id: t.id, title: t.title, start: (t.dueDate ?? t.dueAt)!, end: undefined, allDay: Boolean(t.dueDate), revision: t.revision, done: t.status === "Done" })),
@@ -52,11 +44,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
   function href(kind: Kind, id: string) {
     if (kind === "project") return `/projects/${id}`;
     const query = new URLSearchParams(params); query.delete("task"); query.delete("event"); query.set(kind === "event" ? "event" : "task", id);
-    return `${home ? "/" : "/calendar"}?${query}`;
-  }
-  function chooseDate(value: string) {
-    const query = new URLSearchParams(params); query.set("captureDate", value); query.set("date", value);
-    router.replace(`/?${query}`, { scroll: false });
+    return `/calendar?${query}`;
   }
   async function reschedule(info: EventDropInfo) {
     const record = records.find((r) => `${r.kind}:${r.id}` === info.event.id);
@@ -77,17 +65,17 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
     } catch (failure) { info.revert(); setError(failure instanceof Error ? failure.message : "Could not save. The original dates have been restored."); }
     finally { setPending(false); }
   }
-  return <div className={`${home ? "home-calendar" : "section"} stack`}>
+  return <div className="section stack">
     <fieldset className="calendar-legend"><legend className="sr-only">Calendar filters and legend</legend>
       {(["project", "task", "event"] as const).map((kind) => <label key={kind} className="checkbox-label"><input type="checkbox" checked={enabled[kind]} onChange={(e) => setEnabled({ ...enabled, [kind]: e.target.checked })} aria-label={`Show ${labels[kind].toLowerCase()}`} /><span style={{ background: colors[kind] }} className="status-dot" aria-hidden="true" />{labels[kind]}</label>)}
     </fieldset>
-    {!home && <div className="calendar-controls"><div className="view-switch" role="group" aria-label="Calendar view">{Object.keys(views).map((name) => <Button key={name} variant="ghost" aria-pressed={view === name} onClick={() => { setView(name); ref.current?.getApi().changeView(views[name as keyof typeof views]); }}>{name}</Button>)}</div>
+    <div className="calendar-controls"><div className="view-switch" role="group" aria-label="Calendar view">{Object.keys(views).map((name) => <Button key={name} variant="ghost" aria-pressed={view === name} onClick={() => { setView(name); ref.current?.getApi().changeView(views[name as keyof typeof views]); }}>{name}</Button>)}</div>
       <form className="calendar-date" onSubmit={(e) => {
         e.preventDefault(); const value = String(new FormData(e.currentTarget).get("date"));
         ref.current?.getApi().gotoDate(value);
         const query = new URLSearchParams(params); query.set("date", value); router.replace(`/calendar?${query}`, { scroll: false });
       }}><label className="sr-only" htmlFor="calendar-date">Go to date</label><input id="calendar-date" name="date" type="date" defaultValue={date} required /><Button type="submit" variant="outline">Go</Button></form>
-    </div>}
+    </div>
     <div className="calendar-controls items-center"><h2 aria-live="polite">{title}</h2><div className="flex gap-2">
       <Button variant="outline" aria-label="Previous period" onClick={() => ref.current?.getApi().prev()}><ChevronLeft size={18} /></Button>
       <Button variant="outline" aria-label="Next period" onClick={() => ref.current?.getApi().next()}><ChevronRight size={18} /></Button>
@@ -97,7 +85,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
     <div className="calendar-frame" data-color-scheme="dark" aria-busy={pending} role="region" aria-label="Calendar grid; scroll horizontally on narrow screens" tabIndex={0}>
       <FullCalendar ref={ref} plugins={[dayGrid, timeGrid, list, interaction, classic]} initialView="dayGridMonth" initialDate={date}
         timeZone={timezone} firstDay={weekStart} headerToolbar={false} datesSet={(info) => setTitle(info.view.title)}
-        height={home ? "100%" : "auto"} editable={!pending} eventDurationEditable={false} dayMaxEvents={home ? 2 : false}
+        height="auto" editable={!pending} eventDurationEditable={false} dayMaxEvents={false}
         eventAllow={(span, moving) => span.allDay === moving?.allDay}
         events={records.filter((r) => enabled[r.kind]).map((r) => ({
           id: `${r.kind}:${r.id}`, title: r.title, start: r.start, end: r.end, allDay: r.allDay,
@@ -110,13 +98,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
             style={{ "--record-color": colors[kind], opacity: info.event.extendedProps.done ? .6 : 1 } as React.CSSProperties}
             aria-label={`${labels[kind]}: ${info.event.title}`}><Icon size={12} aria-hidden="true" /><span aria-hidden="true">{info.timeText && <time>{info.timeText}</time>}{info.event.title}</span></Link>;
         }}
-        dayCellClass={(info) => info.isToday ? "calendar-today" : ""}
-        navLinks={home} navLinkClass="calendar-day-capture" navLinkHint={(_text, day) => `${captureKind === "task" ? "Go to" : "Capture on"} ${captureLabel.format(day)}`}
-        navLinkDayClick={(_day, jsEvent) => {
-          const value = (jsEvent.target as HTMLElement | null)?.closest("[data-date]")?.getAttribute("data-date");
-          if (value) chooseDate(value.slice(0, 10));
-        }}
-        dateClick={(info) => { if (home) chooseDate(info.dateStr); }} />
+        dayCellClass={(info) => info.isToday ? "calendar-today" : ""} />
     </div>
     {confirmation}
   </div>;

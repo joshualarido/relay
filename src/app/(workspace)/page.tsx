@@ -1,60 +1,50 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarDays, Check } from "lucide-react";
+import { Temporal } from "temporal-polyfill";
 import { requireUserId } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
 import { getPreferences } from "@/lib/preferences";
 import { listProjects } from "@/lib/projects";
 import { listTasks } from "@/lib/tasks";
-import { listEvents } from "@/lib/events";
-import { dateInTimezone, dateOnlySchema } from "@/lib/dates";
-import { homeData } from "@/lib/workbench";
-import { taskHref } from "@/lib/links";
-import { QuickCapture } from "@/components/quick-capture";
-import { ManualCalendar } from "@/components/manual-calendar";
+import { summarySentence, todayTimeline } from "@/lib/today";
 import { TaskComplete } from "@/components/task-complete";
+import { TodayTimeline } from "@/components/today-timeline";
+import { CatchUp } from "@/components/catch-up";
 import { TaskSelection } from "@/components/task-selection";
 import { EventSelection } from "@/components/event-selection";
 
-export default async function HomePage({ searchParams }: {
-  searchParams: Promise<{ task?: string; focus?: string; event?: string; date?: string; captureDate?: string }>;
+export default async function TodayPage({ searchParams }: {
+  searchParams: Promise<{ task?: string; focus?: string; event?: string }>;
 }) {
   const ownerId = await requireUserId(), db = getDatabase(), query = await searchParams;
-  const preferences = getPreferences(db, ownerId), timezone = preferences.timezone;
-  const data = homeData(db, ownerId, timezone);
-  const today = dateInTimezone(new Date().toISOString(), timezone);
-  const date = dateOnlySchema.safeParse(query.date).success ? query.date! : today;
-  const captureDate = dateOnlySchema.safeParse(query.captureDate).success ? query.captureDate! : "";
+  const timezone = getPreferences(db, ownerId).timezone;
+  const day = todayTimeline(db, ownerId, timezone);
+  const start = Temporal.PlainDate.from(day.today).toZonedDateTime({ timeZone: timezone });
+  const tomorrow = start.add({ days: 1 });
   const projects = listProjects(db, ownerId);
   const allProjects = [...projects, ...listProjects(db, ownerId, true)];
-  const overdue = new Set(data.overdue.map((task) => task.id));
-  const plannedToday = new Set(data.plannedToday.map((task) => task.id));
-  const currentDay = data.todayTasks.filter((task) => !overdue.has(task.id));
-  const dateText = (value: string) => value.length === 10
-    ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`))
-    : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: timezone }).format(new Date(value));
-  function taskRows(tasks: typeof data.todayTasks, label: string) {
-    return tasks.length ? <ul className="work-list divided-list">{tasks.map((task) => <li className={`today-task${task.status === "Done" ? " is-done" : ""}`} key={task.id}>
-      <div className="today-task-check">{task.status === "Done" ? <span className="complete-mark" aria-label="Completed"><Check size={18} aria-hidden="true" /></span> : <TaskComplete task={task} />}</div>
-      <div className="today-task-body"><Link className="task-title" data-task-link={task.id} href={taskHref(task)}>{task.title}</Link>
-        <p className="today-meta"><span>{projects.find((project) => project.id === task.projectId)?.name ?? "Inbox"}</span>
-          {plannedToday.has(task.id) && <span>Planned today</span>}
-          {(task.dueDate || task.dueAt) && <span className={label === "Overdue" ? "error-message" : undefined}>Due {dateText((task.dueDate ?? task.dueAt)!)}</span>}</p>
+  const projectName = (id: string | null) => projects.find((p) => p.id === id)?.name;
+  const dateLabel = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${day.today}T12:00:00Z`));
+
+  return <div className="page today-page">
+    <header className="today-header">
+      <div><h1>Today</h1><p className="today-summary"><span>{dateLabel}</span> · <span>{summarySentence(day.summary, day.dayState)}</span></p></div>
+    </header>
+    {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} />}
+    {day.dueUnscheduled.length > 0 && <section className="today-section" aria-labelledby="due-today-heading">
+      <h2 id="due-today-heading">Due today</h2>
+      <ul className="today-list">{day.dueUnscheduled.map((task) => <li className="today-row" key={task.id}>
+        <TaskComplete task={task} />
+        <div className="today-row-body"><Link className="task-title" data-task-link={task.id} href={`/?task=${task.id}`} scroll={false}>{task.title}</Link>
+          {projectName(task.projectId) && <span className="today-meta">{projectName(task.projectId)}</span>}</div>
+        <Link className="today-quiet-action" href="/calendar">Schedule<span className="sr-only"> {task.title}</span></Link>
+      </li>)}</ul>
+    </section>}
+    {day.dayState === "empty" ? <p className="today-empty">Nothing planned today</p>
+      : day.dayState === "clear" ? <div className="day-clear" role="status">
+        <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><circle cx="12" cy="12" r="10.5" /><path d="M7 12.5l3.2 3.2L17 9" /></svg>
+        <p>Day clear</p>
       </div>
-    </li>)}</ul> : <p className="muted">Nothing here yet. Capture a task or plan one on the calendar.</p>;
-  }
-  return <div className="page home-page">
-    <header className="home-heading"><div><h1>Today</h1><p>{new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${today}T12:00:00Z`))}</p></div><Link className="home-calendar-link" href="/calendar"><CalendarDays size={15} aria-hidden="true" />Open calendar</Link></header>
-    <div className="home-workbench">
-      <div className="home-left">
-        <section className="section quick-capture-card"><QuickCapture projects={projects} tasks={data.tasks} timezone={timezone} initialDate={captureDate} /></section>
-        <section className="section today-card" aria-labelledby="today-tasks-heading">
-          <div className="card-heading"><h2 id="today-tasks-heading">Today&apos;s tasks</h2><span className="progress-count">{data.todayProgress.done}/{data.todayProgress.total} complete</span></div>
-          {data.overdue.length > 0 && <section className="today-group" aria-labelledby="overdue-heading"><div className="today-group-heading"><h3 id="overdue-heading"><AlertTriangle size={16} aria-hidden="true" />Overdue</h3><span className="badge badge-danger">{data.overdue.length}</span></div>{taskRows(data.todayTasks.filter((task) => overdue.has(task.id)), "Overdue")}</section>}
-          <section className="today-group" aria-labelledby="today-heading"><div className="today-group-heading"><h3 id="today-heading">Planned and due today</h3><span className="muted text-sm">{currentDay.length} tasks</span></div>{taskRows(currentDay, "Today")}</section>
-        </section>
-      </div>
-      <ManualCalendar home projects={projects} tasks={data.tasks} events={listEvents(db, ownerId)} timezone={timezone} weekStart={preferences.weekStart} date={date} />
-    </div>
+      : <TodayTimeline items={day.items} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
     {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={listTasks(db, ownerId, true)} timezone={timezone} />
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} focus={Boolean(query.focus)} projects={allProjects} />}
   </div>;

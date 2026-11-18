@@ -15,7 +15,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - [x] 2. Screen order, shortcuts and view-state memory
 - [x] 3. Slide transition and sliding active indicator
 - [x] 4. Today data (pure and tested)
-- [ ] 5. Today screen
+- [x] 5. Today screen
 - [ ] 6. Capture button and `N`
 - [ ] 7. Mobile bottom tab bar
 - [ ] 8. Tests, Impeccable critique and final review
@@ -33,6 +33,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Scroll memory is now keyed by pathname (`/projects` and `/projects/abc` have separate slots).
 - Screenshots come only from isolated test databases.
 - Task 4: `todayTimeline` keeps a crossing-midnight event's real start/end (UI clamps). Minutes to next = ceil. Done tasks due today with no event today count toward total (so finishing the only due task gives "clear"). A day with only all-day events is "active" with 0 counted. TDD: RED (module missing) -> GREEN 11/11.
+- Task 5: Today is one window-scrolling list (no grid): catch-up line, "Due today" group (Schedule links to `/calendar`), timeline with time column ("All day", "until 01:00", "from 23:00" for midnight-crossing), type icon + sr-only text, TaskComplete on task blocks. Now line is a client row (useSyncExternalStore, 30 s tick, hidden outside [earliest timed start, latest timed end]); scrolls itself into view only when no scroll position is stored. Header sentence is server-rendered (fresh on refresh). No Capture button yet (Task 6). Removed `home` from ManualCalendar, `captureKindEvent`, `date`/`captureDate` on `/`, and all `.home-*`/`.today-*`/`.quick-capture-card`/`.calendar-day-capture`/`.progress-count` CSS. Screenshots via `RELAY_SCREENSHOTS=1 npx playwright test screens` (light, 1440x900 + 390x844).
 
 ## Commits
 
@@ -40,7 +41,8 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Task 2: feat(shell): screen order, keyboard shortcuts, prefetch
 - Task 3: feat(shell): directional slide, sliding indicator, cached screens
 - Task 4: feat(today): timeline data and summary
+- Task 5: feat(today): single timeline with now line, catch-up and Day clear
 
 ## Next action
 
-Task 5: Today screen (render `todayTimeline` + `summarySentence` from `src/lib/today.ts`; see task-4-report.md for types).
+Task 6: Capture button (header right slot on Today + empty state) and `N`. Task 8 must repair e2e that relied on the old Today (see task-5-report.md).

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Project, Task } from "@/lib/db/schema";
@@ -8,9 +8,6 @@ import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { EventForm } from "./event-form";
 import { taskHref } from "@/lib/links";
-
-// Tells the Home calendar which capture type is selected, so its day hint only offers a capture date when the type uses one.
-export const captureKindEvent = "relay:capture-kind";
 
 type CaptureKind = "task" | "project" | "event";
 
@@ -23,8 +20,6 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [openHref, setOpenHref] = useState("");
-  // Only the Home capture (the one given a timezone) sits beside the calendar; the palette capture must not override it.
-  useEffect(() => { if (timezone) window.dispatchEvent(new CustomEvent(captureKindEvent, { detail: kind })); }, [kind, timezone]);
   const [eventDraft, setEventDraft] = useState<{ title: string; date: string } | null>(null);
   // A calendar date click updates only the date field; the typed title, type and drafts survive.
   const [date, setDate] = useState(initialDate), [shownDate, setShownDate] = useState(initialDate);
