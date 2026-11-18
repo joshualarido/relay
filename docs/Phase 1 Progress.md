@@ -18,7 +18,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - [x] 5. Today screen
 - [x] 6. Capture button and `N`
 - [x] 7. Mobile bottom tab bar (commit: see `feat(shell): mobile bottom tab bar`)
-- [ ] 8. Tests, Impeccable critique and final review
+- [x] 8. Tests, Impeccable critique and final review
 
 ## Decisions / rulings
 
@@ -46,6 +46,9 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Task 5: feat(today): single timeline with now line, catch-up and Day clear
 - Task 6: feat(capture): Capture button and N shortcut
 - Task 8a: test(v3): Today flow and tests updated for the new Today
+- Task 8b: 9f39c43 fix(today): Impeccable critique fixes and final screenshots
+- Task 8c: f8f2ba4 fix(v3): final review — re-prefetch after refresh, tab cue, a11y
+- Task 8d: docs(v3): Phase 1 hand-off
 
 ## Checks
 
@@ -76,6 +79,39 @@ Fixed (one commit):
 
 Not fixed (by design, not clutter): complete circle sits left in Due today but right in the timeline (row layouts from Task 4; a move is a layout change, not a clutter fix); `.form-dialog h2` margin bug in other dialogs is outside Today/shell scope; Undo toast is visible in the Day-clear shot (required notification).
 
+## Final review (orchestrator review of worker output, not certification)
+
+- Important: after `router.refresh()` or the prefetch stale time, the prefetched screens were invalidated, so a screen switch showed the "Loading workspace" skeleton. Fixed: `ScreenShortcuts` re-prefetches each screen from the documented `onInvalidate` callback (prefetching guide, "Extending or ejecting Link"), with `kind: "full"` (in the public `AppRouterInstance.prefetch` type; no internal import) and a 1 s floor per screen so an immediate invalidation cannot loop hot. `shell.spec.ts` asserts no skeleton when switching after a mutation.
+- Important: mobile active tab was colour-only. Fixed: weight 600 plus a `--secondary` pill behind the icon; targets stay 44 px (checked in today-390-light.png).
+- Minor: now line's `aria-label` on an `li` replaced by sr-only "Now, " text. Fixed.
+- Minor: catch-up move error fell back to an empty message on field errors. Fixed (field messages, then a default).
+- Minor: no test that a timeline event opens its panel. Fixed: `today.spec.ts` clicks an event, checks `?event=` and the Event details dialog.
+- Minor: an active day with only all-day items said "Nothing planned today". Fixed: "Nothing timed today" (unit test updated).
+
+## Final checks (2026-11-18)
+
+- `npm run typecheck`: pass; `npm run lint`: pass; `npx vitest run`: 15 files, 99 tests passed
+- `npm run build`: pass (the phase's one production build, reused for the full suite; no code changed in between)
+- `RELAY_TEST_SERVER=production npx playwright test tests/e2e/shell.spec.ts tests/e2e/today.spec.ts --project=desktop`: 12 passed, 1 skipped
+- `RELAY_TEST_SERVER=production npm run test:e2e` (desktop + mobile; `RELAY_E2E_FULL` is not read anywhere): 90 passed, 12 skipped, 0 failed (3.5 min)
+- Real database `relay/data/relay.db`: size 155648 and mtime 2026-11-18 07:38:31 unchanged before and after all runs
+- Screenshots refreshed via `RELAY_SCREENSHOTS=1 npx playwright test tests/e2e/screens.spec.ts` (docs/phase1-screens/, 390 and desktop shots)
+
+## Open decisions
+
+- (a) The mobile + sits in the 3rd of 4 tab columns, not truly centred. Accept, or switch to a 5-slot grid / floating +?
+- (b) Complete circle left in Due today vs right in the timeline, and the title margin in other dialogs: deferred to Phase 2.
+
+## How to test it
+
+- Start your own dev server as usual (`npm run dev`, http://127.0.0.1:3000) and sign in.
+- Today on desktop: summary line, single timeline with the now line, Due today, clicking an event opens its panel.
+- Catch-up: open "N overdue · Review", move a task to today/tomorrow, then Undo from the toast.
+- Capture: press N, and use the Capture button (or the mobile +); the title saves literally.
+- Screen shortcuts: 1/2/3, and Ctrl+Left/Right (Cmd+Alt+arrows on Mac); switching after a change shows no skeleton.
+- Phone width (~390 px): bottom tab bar, the active tab has a bold label and a pill behind its icon; + opens Capture.
+- Dark mode: repeat a quick look at Today and the tab bar.
+
 ## Next action
 
-Task 8. Task 8 must repair e2e that relied on the old Today (see task-5-report.md; phase13.spec Home tests still fail on mobile for that reason).
+User manual verification. No local database reset was authorised or done. Merging needs the user's OK.
