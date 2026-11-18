@@ -25,6 +25,9 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Overdue: `dueDate < today`, or a timed `dueAt` whose owner-zone date `< today`. A timed deadline earlier today stays "due today".
 - Event "done": task blocks are done when their task is Done; plain timed events when `end <= now`; plain all-day events are informational.
 - Capture dialog closes on save; the confirmation (plus an Open link for loose tasks) moves into the Undo toast.
+- Capture type: click Task / Project / Event, or use the arrow keys, Home and End; reopening resets to Task.
+- Name-only capture: save one of each type with just a name. An Event is all-day today (Calendar has no date-click, so no other date).
+- Ctrl+Left on Today goes to Calendar and Ctrl+Right on Calendar goes to Today, sliding in the direction of the key.
 - Screen shortcuts: `neighbor` returns null at the ends (no wrap) and from unknown paths; `1/2/3` still jump from anywhere. Guard `isShortcutBlocked` lives in `src/lib/screens.ts` for reuse by `N` (Task 6).
 - Scroll memory keys window scroll per screen in `sessionStorage`; the calendar week and expanded project state are restored by their own state in later phases.
 - Task 3: `ScreenTransition` (enter-only, keyed by pathname so a new key press remounts and cancels; first load is not animated; unknown direction = 150 ms fade; reduced motion = 100 ms fade). Motion leaves `transform: none` at rest (asserted in e2e) so fixed side panels are not trapped. `.workspace-main` gets `overflow-x: clip` because the 24 px slide-in briefly widened the page (caught by the existing scrollWidth assertion).
@@ -101,6 +104,21 @@ Not fixed (by design, not clutter): complete circle sits left in Due today but r
 
 - (a) The mobile + sits in the 3rd of 4 tab columns, not truly centred. Accept, or switch to a 5-slot grid / floating +?
 - (b) Complete circle left in Due today vs right in the timeline, and the title margin in other dialogs: deferred to Phase 2.
+
+## Revision round (review revisions)
+
+Requested changes (the Deadline-removal item was dropped): (1) Capture gets inline Task / Project / Event type buttons, a radio group with arrow keys, Home/End and a reset to Task on reopen; (2) name-only capture for every type; (3) Event saves at once as an all-day event today in the owner's timezone; (4) Ctrl+Left on Today goes to Calendar and Ctrl+Right on Calendar goes to Today, sliding the way the key points.
+
+Commits: 993ce80 (screen switching loops), 97cba28 (inline type toggle, name-only capture), 506715f (review fixes).
+
+Review findings and fixes:
+- Event missing from palette capture: fixed. The palette now receives the timezone, `timezone` is required, and the heading reads "Capture". Asserted in e2e.
+- Slide hint mutated during render: fixed. The hint is `{ to, side }`, read purely, matched only by destination, overwritten by the next key and cleared in an effect after navigation commits (so a later click cannot reuse it).
+- Dead `projects`/`tasks` in CaptureData: fixed; the layout no longer loads tasks for it.
+- Dead `initialDate`: removed. The Calendar has no date-click handler, and none was invented.
+- Retry identity now includes the event `start`. e2e asserts start is today in the owner's zone and end the next day. Radiogroup handles Home/End.
+
+Checks: typecheck and lint clean; `npx vitest run` 15 files, 101 tests passed; edited specs on desktop (capture, shell) 13 passed, 1 skipped (mobile-only). `npm run build` passed. Full e2e in production mode (`RELAY_E2E_FULL=1 RELAY_TEST_SERVER=production npm run test:e2e`, desktop + mobile): 91 passed, 13 skipped, 0 failed. The real database (relay.db and -shm/-wal) was unchanged in size and modified time before and after. Screenshots refreshed: capture-task, capture-project, capture-event.
 
 ## How to test it
 
