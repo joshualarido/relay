@@ -202,18 +202,15 @@ test("keyboard switches screens with a sliding transition, cached revisits and n
   // The slide leaves no transform behind, so fixed panels inside the page stay viewport-sized.
   await expect.poll(() => page.locator(".screen-transition").evaluate((el) => getComputedStyle(el).transform)).toBe("none");
 
-  // Typing in a plain input does not switch screens.
-  const capture = page.getByLabel("Quick capture");
-  const title = `Cached capture ${crypto.randomUUID().slice(0, 8)}`;
-  await capture.fill(title);
-  await page.keyboard.press("Control+ArrowLeft");
-  await page.keyboard.press("Control+ArrowRight");
-  await expect(page).toHaveURL(/\/$/);
   // A capture made on Today shows on the already-cached Projects screen (mutations call router.refresh()).
-  await page.getByLabel("Capture type").selectOption("project");
-  await page.getByLabel("Project name").fill(title);
-  await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Project created." })).toBeVisible();
+  const title = `Cached capture ${crypto.randomUUID().slice(0, 8)}`;
+  await page.keyboard.press("n");
+  const capture = page.getByRole("dialog", { name: "Capture" });
+  await capture.getByLabel("Capture type").selectOption("project");
+  await capture.getByLabel("Project name").fill(title);
+  await capture.getByRole("button", { name: "Create project" }).click();
+  await expect(capture).toHaveCount(0);
+  await expect(page.getByText("Project created.")).toBeVisible();
   await page.keyboard.press("Control+ArrowRight");
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByRole("main").getByText(title).first()).toBeVisible();

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
 import { AccountMenu } from "./auth-controls";
 import { ScreenShortcuts } from "./screen-shortcuts";
+import { CaptureProvider, type CaptureData } from "./capture-dialog";
 
 const SidebarContext = createContext({ collapsed: false, toggle: () => {} });
 
@@ -27,8 +28,8 @@ const links = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
 ];
 
-export function Navigation({ name, initialCollapsed, projects, children }: {
-  name: string; initialCollapsed: boolean; projects: { id: string; name: string }[]; children: ReactNode;
+export function Navigation({ name, initialCollapsed, projects, capture, children }: {
+  name: string; initialCollapsed: boolean; projects: { id: string; name: string }[]; capture: CaptureData; children: ReactNode;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -61,7 +62,7 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
     </nav>
     <AccountMenu name={name} onNavigate={() => setOpen(false)} />
   </div>;
-  return <MotionConfig reducedMotion="user"><SidebarContext.Provider value={{ collapsed, toggle }}><div className="workspace-shell" data-collapsed={collapsed}>
+  return <MotionConfig reducedMotion="user"><SidebarContext.Provider value={{ collapsed, toggle }}><CaptureProvider data={capture}><div className="workspace-shell" data-collapsed={collapsed}>
     <aside className="desktop-sidebar">{content("desktop")}</aside>
     <header className="mobile-header">
       <Link href="/" className="wordmark">relay<span aria-hidden="true">.</span></Link>
@@ -81,5 +82,5 @@ export function Navigation({ name, initialCollapsed, projects, children }: {
     {children}
     <ScreenShortcuts />
     <CommandPalette projects={projects} open={searchOpen} onOpenChange={setSearchOpen} returnFocus={returnFocus} />
-  </div></SidebarContext.Provider></MotionConfig>;
+  </div></CaptureProvider></SidebarContext.Provider></MotionConfig>;
 }

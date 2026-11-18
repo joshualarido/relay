@@ -296,7 +296,7 @@ progress::-moz-progress-bar { background: var(--primary); }
 .today-row .error-message { grid-column: 1 / -1; }
 .today-quiet-action { font-size: .8125rem; color: var(--muted-foreground); padding: 10px 4px; }
 .today-quiet-action:hover { color: var(--primary); }
-.today-empty { color: var(--muted-foreground); }
+.today-empty { color: var(--muted-foreground); display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .timeline-row, .timeline-row:has(.complete-task) { grid-template-columns: 104px 16px minmax(0, 1fr) 36px; }
 .timeline-time { font-size: .8125rem; color: var(--muted-foreground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .timeline-icon { color: var(--muted-foreground); }

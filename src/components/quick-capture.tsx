@@ -11,9 +11,11 @@ import { taskHref } from "@/lib/links";
 
 type CaptureKind = "task" | "project" | "event";
 
-export function QuickCapture({ projects = [], tasks = [], timezone, initialDate = "", onSaved, onPendingChange, onOpen }: {
+export function QuickCapture({ projects = [], tasks = [], timezone, initialDate = "", onSaved, onPendingChange, onOpen, onDone, inlineConfirmation = true }: {
   projects?: Project[]; tasks?: Task[]; timezone?: string; initialDate?: string;
   onSaved?: () => void; onPendingChange?: (pending: boolean) => void; onOpen?: () => void;
+  /** Called after a save, or when the inline event form closes; the Capture dialog closes on it. */
+  onDone?: () => void; inlineConfirmation?: boolean;
 }) {
   const [kind, setKind] = useState<CaptureKind>("task");
   const [pending, setPending] = useState(false);
@@ -42,8 +44,10 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
       if (!response.ok) throw new Error(result.fields?.title?.join(" ") || result.fields?.name?.join(" ") || result.error);
       form.reset(); setDate(initialDate); identity.current = { payload: "", id: "" }; setSaved(true); onSaved?.();
       // Inbox is not in navigation, so a loose task is reachable from this notice.
-      if (kind === "task" && !result.projectId) setOpenHref(taskHref(result));
-      notifyMutation(response, () => router.refresh()); router.refresh();
+      const href = kind === "task" && !result.projectId ? taskHref(result) : undefined;
+      if (href) setOpenHref(href);
+      notifyMutation(response, () => router.refresh(), { message: kind === "project" ? "Project created." : "Task captured.", openHref: href });
+      router.refresh(); onDone?.();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save. Your input is preserved."); }
     finally { setPending(false); onPendingChange?.(false); }
   }
@@ -53,7 +57,7 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
     </select></>;
   return <div className="quick-capture stack">
     <h2 className="sr-only">Quick capture</h2>
-    {eventDraft && timezone ? <EventForm initialOpen initialTitle={eventDraft.title} initialDate={eventDraft.date} projects={projects} tasks={tasks} timezone={timezone} onClose={() => setEventDraft(null)} />
+    {eventDraft && timezone ? <EventForm initialOpen initialTitle={eventDraft.title} initialDate={eventDraft.date} projects={projects} tasks={tasks} timezone={timezone} onClose={() => { setEventDraft(null); onDone?.(); }} />
       : <form className="quick-capture-form" onSubmit={async (e) => {
         e.preventDefault();
         const form = e.currentTarget, data = new FormData(form), title = String(data.get("title") || "");
@@ -65,7 +69,7 @@ export function QuickCapture({ projects = [], tasks = [], timezone, initialDate 
           <input id={`${id}-title`} name="title" maxLength={500} required disabled={pending} placeholder={kind === "project" ? "Name a project" : kind === "event" ? "Name an event" : "Capture a task"} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} /></div>
         {kind === "project" && <div className="field"><label htmlFor={`${id}-date`}>Deadline</label><input id={`${id}-date`} name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={pending} /></div>}
         <Button type="submit" disabled={pending}>{pending ? "Saving..." : kind === "task" ? "Capture task" : kind === "project" ? "Create project" : "Set event details"}</Button>
-        {error && <p id={`${id}-error`} className="error-message" role="alert">{error}</p>}{saved && <p role="status" className="muted"><span>{kind === "project" ? "Project created." : "Task captured."}</span>{kind === "task" && openHref && <> <Link className="text-primary" href={openHref} onClick={onOpen}>Open<span className="sr-only"> captured task</span></Link></>}</p>}
+        {error && <p id={`${id}-error`} className="error-message" role="alert">{error}</p>}{saved && inlineConfirmation && <p role="status" className="muted"><span>{kind === "project" ? "Project created." : "Task captured."}</span>{kind === "task" && openHref && <> <Link className="text-primary" href={openHref} onClick={onOpen}>Open<span className="sr-only"> captured task</span></Link></>}</p>}
       </form>}
   </div>;
 }

@@ -16,7 +16,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - [x] 3. Slide transition and sliding active indicator
 - [x] 4. Today data (pure and tested)
 - [x] 5. Today screen
-- [ ] 6. Capture button and `N`
+- [x] 6. Capture button and `N`
 - [ ] 7. Mobile bottom tab bar
 - [ ] 8. Tests, Impeccable critique and final review
 
@@ -34,6 +34,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Screenshots come only from isolated test databases.
 - Task 4: `todayTimeline` keeps a crossing-midnight event's real start/end (UI clamps). Minutes to next = ceil. Done tasks due today with no event today count toward total (so finishing the only due task gives "clear"). A day with only all-day events is "active" with 0 counted. TDD: RED (module missing) -> GREEN 11/11.
 - Task 5: Today is one window-scrolling list (no grid): catch-up line, "Due today" group (Schedule links to `/calendar`), timeline with time column ("All day", "until 01:00", "from 23:00" for midnight-crossing), type icon + sr-only text, TaskComplete on task blocks. Now line is a client row (useSyncExternalStore, 30 s tick, hidden outside [earliest timed start, latest timed end]); scrolls itself into view only when no scroll position is stored. Header sentence is server-rendered (fresh on refresh). No Capture button yet (Task 6). Removed `home` from ManualCalendar, `captureKindEvent`, `date`/`captureDate` on `/`, and all `.home-*`/`.today-*`/`.quick-capture-card`/`.calendar-day-capture`/`.progress-count` CSS. Screenshots via `RELAY_SCREENSHOTS=1 npx playwright test screens` (light, 1440x900 + 390x844).
+- Task 6: one `CaptureProvider` (src/components/capture-dialog.tsx) inside Navigation hosts the Radix Capture dialog, the `N` listener (no modifiers/repeat, `isShortcutBlocked`) and `useCapture().open(trigger?)` for Task 7. Layout loads projects/tasks/timezone for it. `CaptureButton` in the Today header (primary) and the empty state (outline). `notifyMutation(response, refresh, { message, openHref })`; QuickCapture gains `onDone` and `inlineConfirmation` (palette unchanged). Closing the inline event form also closes the dialog. Focus returns to the trigger or prior focus. e2e: tests/e2e/capture.spec.ts (task check via toast Open link + API, since a dateless task is not on Today); shell.spec cache test now captures via the dialog.
 
 ## Commits
 
@@ -42,7 +43,8 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Task 3: feat(shell): directional slide, sliding indicator, cached screens
 - Task 4: feat(today): timeline data and summary
 - Task 5: feat(today): single timeline with now line, catch-up and Day clear
+- Task 6: feat(capture): Capture button and N shortcut
 
 ## Next action
 
-Task 6: Capture button (header right slot on Today + empty state) and `N`. Task 8 must repair e2e that relied on the old Today (see task-5-report.md).
+Task 7: mobile bottom tab bar; its `+` calls `useCapture().open(e.currentTarget)`. Task 8 must repair e2e that relied on the old Today (see task-5-report.md).
