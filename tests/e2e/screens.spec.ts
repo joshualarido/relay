@@ -32,3 +32,11 @@ test("Today screen", async ({ page, request, baseURL }, info) => {
   await page.waitForTimeout(300);
   await page.screenshot({ path: `docs/phase1-screens/today-${info.project.name}.png`, fullPage: false });
 });
+
+test("Projects screen on mobile", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "mobile only");
+  await page.goto("/projects");
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: "docs/phase1-screens/projects-mobile.png", fullPage: false });
+});

@@ -162,14 +162,12 @@ progress::-moz-progress-bar { background: var(--primary); }
 .workspace-shell[data-collapsed=true] .desktop-sidebar .nav-title { padding: 0; justify-content: center; }
 .workspace-shell[data-collapsed=true] .desktop-sidebar .nav-link,
 .workspace-shell[data-collapsed=true] .desktop-sidebar .palette-trigger { justify-content: center; padding: 10px; }
-.mobile-header { display: none; }
+.mobile-header, .tab-bar { display: none; }
 .skip-link { position: fixed; left: 16px; top: -100px; padding: 10px; background: var(--primary); color: var(--primary-foreground); border-radius: 8px; z-index: var(--z-dialog); }
 .skip-link:focus { top: 12px; }
 
 /* Floating layers: the only elements with a shadow. */
 .dialog-overlay { position: fixed; inset: 0; background: var(--overlay); z-index: var(--z-overlay); }
-.mobile-sidebar { position: fixed; inset: 0 auto 0 0; width: min(300px, 88vw); background: var(--background); border-right: 1px solid var(--border); box-shadow: var(--shadow-float); z-index: var(--z-dialog); }
-.close-nav { position: absolute; top: 14px; right: 10px; }
 .form-dialog { position: fixed; inset: 16px; margin: auto; width: min(560px, calc(100vw - 32px)); height: fit-content; max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; box-shadow: var(--shadow-float); z-index: var(--z-dialog); }
 .form-dialog > h2:first-child, .form-dialog h2 { font-size: 1.0625rem; }
 .dialog-close { position: absolute; top: 12px; right: 12px; padding: 8px; }
@@ -331,13 +329,26 @@ progress::-moz-progress-bar { background: var(--primary); }
 @media (max-width: 760px) {
   .desktop-sidebar { display: none; }
   .workspace-main { margin-left: 0; }
-  .mobile-header { height: 57px; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--border); background: var(--background); }
+  .mobile-header { height: 52px; display: flex; align-items: center; gap: 4px; padding: 4px 8px 4px 16px; border-bottom: 1px solid var(--border); background: var(--background); }
+  .mobile-header .wordmark { margin-right: auto; }
+  .mobile-header .header-search { min-width: 44px; min-height: 44px; padding: 10px; }
+  .mobile-header .nav-footer { width: auto; margin: 0; padding: 8px; min-width: 44px; justify-content: center; }
+  .mobile-header .nav-footer .nav-label { display: none; }
+  /* Bottom tab bar: chrome, not a floating layer, so a hairline and no shadow. */
+  .workspace-shell { --tab-bar-height: 60px; }
+  .workspace-main { padding-bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom)); }
+  .tab-bar { position: fixed; inset: auto 0 0 0; z-index: var(--z-overlay); display: grid; grid-template-columns: repeat(4, 1fr); height: calc(var(--tab-bar-height) + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom); border-top: 1px solid var(--border); background: var(--background); }
+  .tab-link, .tab-capture { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 44px; color: var(--muted-foreground); font-size: .6875rem; font-weight: 500; transition: color .15s ease-out; }
+  .tab-link.active { color: var(--primary); }
+  .tab-capture { border: 0; background: none; cursor: pointer; }
+  .tab-capture span { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: var(--primary); color: var(--primary-foreground); }
+  .tab-capture:hover span { opacity: .9; }
+  /* The centre + is the mobile Capture action; keep one primary button per screen. */
+  .today-header > [data-capture-trigger] { display: none; }
   .page { padding: 20px 16px; }
   .page > .section + .section { margin-top: 28px; padding-top: 24px; }
   .settings-grid { grid-template-columns: 1fr; gap: 32px; }
   .project-overview { grid-template-columns: 1fr; gap: 24px; }
-  .mobile-sidebar .sidebar-toggle { display: none; }
-  .mobile-sidebar .nav-title { padding-right: 36px; }
   .page-heading { margin-bottom: 24px; }
   h1 { font-size: 1.5rem; }
   .form-dialog { padding: 24px 18px; }

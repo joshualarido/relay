@@ -40,19 +40,17 @@ test("an expired signed cookie is denied by the running application's session bo
   } finally { await context.close(); }
 });
 
-test("authenticated shell follows the system theme, is navigable, responsive, and shows exactly three screens", async ({ page }, info) => {
+test("authenticated shell follows the system theme, is navigable, responsive, and shows exactly three screens", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Today" })).toBeVisible();
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
   const nav = page.getByRole("navigation", { name: "Workspace" });
   await expect(nav.getByRole("link")).toHaveText(["Today", "Projects", "Calendar"]);
   await nav.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
   expect(await page.locator("html").evaluate((el) => getComputedStyle(el).colorScheme)).toBe(await page.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("button", { name: /^Account menu/ }).click();
   await page.getByRole("menuitem", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/settings$/);
@@ -68,13 +66,11 @@ test("old History and Chat bookmarks land on Today", async ({ page }) => {
   }
 });
 
-test("a search result for a loose task opens its panel while Inbox is hidden", async ({ page, request, baseURL }, info) => {
+test("a search result for a loose task opens its panel while Inbox is hidden", async ({ page, request, baseURL }) => {
   const title = `Loose search ${crypto.randomUUID()}`;
   expect((await request.post("/api/tasks", { headers: { origin: baseURL! }, data: { title, mutationId: crypto.randomUUID() } })).ok()).toBe(true);
   await page.goto("/");
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Inbox" })).toHaveCount(0);
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Close navigation" }).click();
   await page.getByRole("button", { name: "Search and commands" }).first().click();
   const palette = page.getByRole("dialog", { name: "Search and commands", exact: true });
   await palette.getByLabel("Search workspace").fill(title);
@@ -99,19 +95,11 @@ test("preferences persist after reload and remain owner-isolated", async ({ page
   } finally { await bob.close(); }
 });
 
-test("keyboard focus, mobile menu Escape, and reduced motion remain usable", async ({ page }, info) => {
+test("keyboard focus and reduced motion remain usable", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/settings");
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
-  if (info.project.name === "mobile") {
-    const trigger = page.getByRole("button", { name: "Open navigation" });
-    await trigger.focus();
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("dialog", { name: "Workspace navigation" })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(trigger).toBeFocused();
-  }
   await page.getByLabel("Timezone").fill("Not/AZone");
   await page.getByRole("button", { name: "Save preferences" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Check the highlighted fields." })).toBeVisible();
@@ -222,4 +210,17 @@ test("keyboard switches screens with a sliding transition, cached revisits and n
   await page.getByRole("dialog", { name: "Search and commands", exact: true }).getByLabel("Search workspace").fill("x");
   await page.keyboard.press("Control+ArrowRight");
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("mobile tab bar navigates the three screens and + opens Capture", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "mobile only");
+  await page.goto("/");
+  const bar = page.getByRole("navigation", { name: "Workspace" });
+  for (const [name, url] of [["Projects", /\/projects$/], ["Calendar", /\/calendar$/], ["Today", /\/$/]] as const) {
+    await bar.getByRole("link", { name, exact: true }).click();
+    await expect(page).toHaveURL(url);
+    await expect(bar.getByRole("link", { name, exact: true })).toHaveAttribute("aria-current", "page");
+  }
+  await bar.getByRole("button", { name: "Capture" }).click();
+  await expect(page.getByRole("dialog", { name: "Capture" })).toBeVisible();
 });

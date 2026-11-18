@@ -17,7 +17,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - [x] 4. Today data (pure and tested)
 - [x] 5. Today screen
 - [x] 6. Capture button and `N`
-- [ ] 7. Mobile bottom tab bar
+- [x] 7. Mobile bottom tab bar (commit: see `feat(shell): mobile bottom tab bar`)
 - [ ] 8. Tests, Impeccable critique and final review
 
 ## Decisions / rulings
@@ -35,6 +35,7 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 - Task 4: `todayTimeline` keeps a crossing-midnight event's real start/end (UI clamps). Minutes to next = ceil. Done tasks due today with no event today count toward total (so finishing the only due task gives "clear"). A day with only all-day events is "active" with 0 counted. TDD: RED (module missing) -> GREEN 11/11.
 - Task 5: Today is one window-scrolling list (no grid): catch-up line, "Due today" group (Schedule links to `/calendar`), timeline with time column ("All day", "until 01:00", "from 23:00" for midnight-crossing), type icon + sr-only text, TaskComplete on task blocks. Now line is a client row (useSyncExternalStore, 30 s tick, hidden outside [earliest timed start, latest timed end]); scrolls itself into view only when no scroll position is stored. Header sentence is server-rendered (fresh on refresh). No Capture button yet (Task 6). Removed `home` from ManualCalendar, `captureKindEvent`, `date`/`captureDate` on `/`, and all `.home-*`/`.today-*`/`.quick-capture-card`/`.calendar-day-capture`/`.progress-count` CSS. Screenshots via `RELAY_SCREENSHOTS=1 npx playwright test screens` (light, 1440x900 + 390x844).
 - Task 6: one `CaptureProvider` (src/components/capture-dialog.tsx) inside Navigation hosts the Radix Capture dialog, the `N` listener (no modifiers/repeat, `isShortcutBlocked`) and `useCapture().open(trigger?)` for Task 7. Layout loads projects/tasks/timezone for it. `CaptureButton` in the Today header (primary) and the empty state (outline). `notifyMutation(response, refresh, { message, openHref })`; QuickCapture gains `onDone` and `inlineConfirmation` (palette unchanged). Closing the inline event form also closes the dialog. Focus returns to the trigger or prior focus. e2e: tests/e2e/capture.spec.ts (task check via toast Open link + API, since a dateless task is not on Today); shell.spec cache test now captures via the dialog.
+- Task 7: hamburger drawer removed. At <= 760px (existing breakpoint kept; switching to 768 would ripple through all mobile rules) a slim header holds wordmark, search and compact `AccountMenu` (Settings is in it); a fixed bottom `nav aria-label="Workspace"` has Today, Projects, accent + (Capture), Calendar in 4 equal columns, accent active state, aria-current, 44px targets, safe-area padding, hairline, no shadow. `.workspace-main` gets bottom padding; sonner `mobileOffset` clears the bar; Today header CaptureButton hidden on mobile (+ is the primary). e2e: new tab-bar test in shell.spec; drawer steps removed from shell/phase13 specs. Screens: docs/phase1-screens/today-mobile.png, projects-mobile.png.
 
 ## Commits
 
@@ -47,4 +48,4 @@ Branch `v3/phase-1-today-opus`, base `v3/phase-1-design` @ `465b217`. Plan: `doc
 
 ## Next action
 
-Task 7: mobile bottom tab bar; its `+` calls `useCapture().open(e.currentTarget)`. Task 8 must repair e2e that relied on the old Today (see task-5-report.md).
+Task 8. Task 8 must repair e2e that relied on the old Today (see task-5-report.md; phase13.spec Home tests still fail on mobile for that reason).

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { toast, Toaster } from "sonner";
 
 export function MutationNotices() {
-  return <Toaster theme="dark" closeButton duration={7000} style={{ pointerEvents: "auto", zIndex: "var(--z-toast)", fontFamily: "inherit" }} toastOptions={{
+  return <Toaster theme="dark" closeButton duration={7000} mobileOffset={{ bottom: "calc(76px + env(safe-area-inset-bottom))" }} style={{ pointerEvents: "auto", zIndex: "var(--z-toast)", fontFamily: "inherit" }} toastOptions={{
     style: { background: "var(--card)", color: "var(--foreground)", borderColor: "var(--border)" },
   }} />;
 }

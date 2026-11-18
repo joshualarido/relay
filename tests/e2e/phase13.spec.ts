@@ -240,10 +240,8 @@ async function todayInWorkspace(request: APIRequestContext) {
 }
 
 async function openPalette(page: Page, mobile: boolean) {
-  if (mobile) {
-    await page.getByRole("button", { name: "Open navigation" }).click();
-    await page.getByRole("dialog", { name: "Workspace navigation" }).getByRole("button", { name: "Search and commands" }).click();
-  } else await page.getByRole("button", { name: "Search and commands" }).click();
+  void mobile;
+  await page.getByRole("button", { name: "Search and commands" }).first().click();
   return page.getByRole("dialog", { name: "Search and commands", exact: true });
 }
 
