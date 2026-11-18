@@ -68,7 +68,7 @@ export function Navigation({ name, initialCollapsed, projects, capture, children
     {children}
     <TabBar pathname={pathname} />
     <ScreenShortcuts />
-    <CommandPalette projects={projects} open={searchOpen} onOpenChange={setSearchOpen} returnFocus={returnFocus} />
+    <CommandPalette timezone={capture.timezone} projects={projects} open={searchOpen} onOpenChange={setSearchOpen} returnFocus={returnFocus} />
   </div></CaptureProvider></SidebarContext.Provider></MotionConfig>;
 }
 

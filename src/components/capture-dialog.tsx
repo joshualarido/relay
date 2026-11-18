@@ -3,12 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "radix-ui";
 import { Plus, X } from "lucide-react";
-import type { Project, Task } from "@/lib/db/schema";
 import { isShortcutBlocked } from "@/lib/screens";
 import { Button } from "./ui/button";
 import { QuickCapture } from "./quick-capture";
 
-export type CaptureData = { projects: Project[]; tasks: Task[]; timezone: string };
+export type CaptureData = { timezone: string };
 
 const CaptureContext = createContext<{ open: (trigger?: HTMLElement | null) => void }>({ open: () => {} });
 

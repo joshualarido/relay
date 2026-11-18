@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SCREENS, direction, neighbor, screenIndex } from "@/lib/screens";
+import { SCREENS, clearDirectionHint, direction, hintDirection, neighbor, peekDirectionHint, screenIndex } from "@/lib/screens";
 
 describe("screens", () => {
   it("has a fixed order", () => expect(SCREENS).toEqual(["/", "/projects", "/calendar"]));
@@ -24,12 +24,21 @@ describe("screens", () => {
     expect(direction("/projects", "/projects/x")).toBeNull();
     expect(direction("/settings", "/")).toBeNull();
   });
-  it("uses the key direction for a wrap and the index otherwise", () => {
-    expect(direction("/calendar", "/", "right")).toBe("right");
-    expect(direction("/", "/calendar", "left")).toBe("left");
+  it("uses the key direction only for the hinted destination, as a pure read", () => {
+    const hint = { to: "/", side: "right" as const };
+    expect(direction("/calendar", "/", hint)).toBe("right");
+    expect(direction("/calendar", "/", hint)).toBe("right");
+    expect(direction("/", "/calendar", { to: "/calendar", side: "left" })).toBe("left");
     expect(direction("/calendar", "/")).toBe("left");
     expect(direction("/", "/calendar")).toBe("right");
-    expect(direction("/", "/projects", "right")).toBe("right");
-    expect(direction("/", "/calendar", "right")).toBe("right");
+    expect(direction("/projects", "/calendar", hint)).toBe("right");
+    expect(direction("/", "/projects", { to: "/calendar", side: "left" })).toBe("right");
+  });
+  it("stores, peeks and clears the hint", () => {
+    hintDirection("right", "/");
+    expect(peekDirectionHint()).toEqual({ to: "/", side: "right" });
+    expect(peekDirectionHint()).toEqual({ to: "/", side: "right" });
+    clearDirectionHint();
+    expect(peekDirectionHint()).toBeNull();
   });
 });

@@ -16,16 +16,19 @@ export function neighbor(pathname: string, side: Direction): Screen | null {
   return SCREENS[(i + (side === "right" ? 1 : -1) + SCREENS.length) % SCREENS.length];
 }
 
-/** Direction of the last keyboard switch, so a wrap slides the way the key points. Consumed once by the transition. */
-let pendingDirection: Direction | null = null;
-export function hintDirection(side: Direction) { pendingDirection = side; }
-export function takeDirectionHint(): Direction | null { const d = pendingDirection; pendingDirection = null; return d; }
+export type DirectionHint = { to: string; side: Direction };
+
+/** Last keyboard switch, so a wrap slides the way the key points. Pure to read; overwritten by the next key, cleared after navigation commits. */
+let directionHint: DirectionHint | null = null;
+export function hintDirection(side: Direction, to: string) { directionHint = { to, side }; }
+export function peekDirectionHint(): DirectionHint | null { return directionHint; }
+export function clearDirectionHint() { directionHint = null; }
 
 /** Direction of travel between two screens, or null when either is unknown or they match. */
-export function direction(from: string, to: string, hint: Direction | null = null): Direction | null {
+export function direction(from: string, to: string, hint: DirectionHint | null = null): Direction | null {
   const a = screenIndex(from), b = screenIndex(to);
   if (a < 0 || b < 0 || a === b) return null;
-  if (hint && neighbor(from, hint) === SCREENS[b]) return hint; // keyboard wrap follows the key pressed
+  if (hint && hint.to === to) return hint.side; // keyboard wrap follows the key pressed
   return b > a ? "right" : "left";
 }
 

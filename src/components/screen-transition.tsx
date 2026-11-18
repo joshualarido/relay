@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { direction, takeDirectionHint, type Direction } from "@/lib/screens";
+import { direction, clearDirectionHint, peekDirectionHint, type Direction } from "@/lib/screens";
 
 const OFFSET = 24;
 
@@ -18,7 +18,9 @@ export function ScreenTransition({ children }: { children: ReactNode }) {
   const reduce = useReducedMotion();
   // Previous pathname, tracked with the "adjust state during render" pattern.
   const [route, setRoute] = useState<{ current: string; from: string | null; dir: Direction | null }>({ current: pathname, from: null, dir: null });
-  if (route.current !== pathname) setRoute({ current: pathname, from: route.current, dir: direction(route.current, pathname, takeDirectionHint()) });
+  if (route.current !== pathname) setRoute({ current: pathname, from: route.current, dir: direction(route.current, pathname, peekDirectionHint()) });
+  // Hint is cleared once the new screen has committed (not during render, so StrictMode double render is safe).
+  useEffect(() => { clearDirectionHint(); }, [pathname]);
   const from = route.current === pathname ? route.from : route.current;
   const dir = route.current === pathname ? route.dir : direction(route.current, pathname);
   const initial = from === null ? false

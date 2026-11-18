@@ -38,7 +38,7 @@ export function ScreenShortcuts() {
         const mac = isMac();
         const ok = mac ? e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
         const side = e.key === "ArrowRight" ? "right" : "left";
-        if (ok) { to = neighbor(location.pathname, side); if (to && to !== location.pathname) hintDirection(side); }
+        if (ok) { to = neighbor(location.pathname, side); if (to && to !== location.pathname) hintDirection(side, to); }
       } else if (["1", "2", "3"].includes(e.key) && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         to = SCREENS[Number(e.key) - 1];
       }

@@ -85,8 +85,22 @@ test("Capture type is a radio group; project and event capture need only a name"
   await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText("Event captured.")).toBeVisible();
-  const events = (await (await page.request.get("/api/events")).json()) as { title: string; allDay: boolean; start: string }[];
+  const events = (await (await page.request.get("/api/events")).json()) as { title: string; allDay: boolean; start: string; end?: string }[];
   const saved = events.find((e) => e.title === event);
   expect(saved?.allDay).toBe(true);
-  expect(saved?.start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  const zone = ((await (await page.request.get("/api/preferences")).json()) as { timezone: string }).timezone;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date());
+  const next = new Date(`${today}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1);
+  expect(saved?.start).toBe(today);
+  expect(saved?.end).toBe(next.toISOString().slice(0, 10));
+
+  // The command palette's capture offers Event too, and Home/End move through the types.
+  await page.getByRole("button", { name: "Search and commands" }).click();
+  const palette = page.getByRole("dialog", { name: "Search and commands", exact: true });
+  await expect(palette.getByRole("radio", { name: "Event" })).toBeVisible();
+  await palette.getByRole("radio", { name: "Task" }).focus();
+  await page.keyboard.press("End");
+  await expect(palette.getByRole("radio", { name: "Event" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Home");
+  await expect(palette.getByRole("radio", { name: "Task" })).toHaveAttribute("aria-checked", "true");
 });
