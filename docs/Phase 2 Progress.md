@@ -24,7 +24,7 @@ Commits: `e60d22a` (logic and tests), `54b9ccc` (split view), `14b0797` (polish,
 - `npx playwright test tests/e2e/projects.spec.ts --project=desktop` (dev server, isolated test DB): 3 passed, 1 skipped (the screenshot test runs only with `RELAY_SCREENSHOTS=1`). It covers acceptance 1 (create a project, add 5 tasks, mouse drags, keyboard drag and Esc cancel, drag the project Planned → Active, Undo, refresh and check that everything persists), acceptance 4 (a loose task under No project, a standalone event with no links, the details sheet and focus return) and that `/inbox` returns 404.
 - Not run (as instructed): the full e2e suite, mobile e2e, and the production build.
 
-## Test it by hand (http://localhost:3001/projects)
+## Test it by hand (http://localhost:3000/projects)
 
 1. Click **+** next to "Projects" (or press Ctrl+N; see open decision 3). Type a name and press Enter. It lands in Planned and opens its board.
 2. Type five tasks into **+ Add task** under To do.
@@ -68,4 +68,4 @@ URL assertions were updated in `shell.spec`, `recovery.spec`, `calendar.spec` an
 
 ## Local test server
 
-`http://localhost:3001` runs `next dev` with your `.env` OAuth settings, `BETTER_AUTH_URL=http://localhost:3001`, and `DATABASE_URL` set to a private copy of your database (`data/relay-phase2-test.db`, made with SQLite backup, integrity ok). Changes there never reach `data/relay.db`.
+`http://localhost:3000` runs `next dev` with your `.env` OAuth settings (Google only accepts the registered localhost:3000 redirect), and `DATABASE_URL` set to a private copy of your database (`data/relay-phase2-test.db`, made with SQLite backup, integrity ok). Changes there never reach `data/relay.db`.
