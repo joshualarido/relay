@@ -62,7 +62,7 @@ test("unified calendar labels/colors and all-day exclusive ranges, owner boundar
   await expect(page.getByRole("dialog", { name: "Task details" })).toBeVisible();
   await page.getByRole("button", { name: "Close task details" }).click();
   await page.getByRole("link", { name: `Project deadline: ${p.name}`, exact: true }).first().click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${p.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/projects\\?project=${p.id}$`));
   await expect(page.getByRole("link", { name: e.title, exact: true })).toBeVisible();
   const bob = await browser.newContext({ baseURL, storageState: join(process.env.RELAY_TEST_DIR!, "bob.json") });
   try { expect((await bob.request.get(`/api/events/${e.id}`)).status()).toBe(404); }

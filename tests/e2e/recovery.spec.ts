@@ -11,7 +11,7 @@ test("captured loose task can be opened from its notice, and toast Undo removes 
   await capture.getByRole("button", { name: "Capture task", exact: true }).click();
   const open = page.getByRole("link", { name: "Open captured task", exact: true });
   const task = (await (await request.get("/api/tasks")).json()).find((t: { title: string }) => t.title === name);
-  await expect(open).toHaveAttribute("href", `/inbox?task=${task.id}`);
+  await expect(open).toHaveAttribute("href", `/projects?project=none&task=${task.id}`);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(page.getByText("Change undone.", { exact: true })).toBeVisible();
   expect((await (await request.get("/api/tasks")).json()).some((t: { title: string }) => t.title === name)).toBe(false);

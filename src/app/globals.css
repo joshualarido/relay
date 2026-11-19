@@ -373,7 +373,10 @@ progress::-moz-progress-bar { background: var(--primary); }
 .grip { cursor: grab; touch-action: none; }
 /* Per-row tools appear on hover or keyboard focus where hover exists; touch keeps the ⋯ visible and drags by long press. */
 @media (hover: hover) {
-  .row-tools { opacity: 0; transition: opacity .15s ease-out; }
+  /* Hidden tools take no room, so titles and progress bars use the full row; shown, they sit over the row's end. */
+  .task-card { position: relative; }
+  .row-tools { position: absolute; top: 4px; right: 4px; padding: 0; border-radius: 8px; background: inherit; opacity: 0; transition: opacity .15s ease-out; }
+  .project-row .row-tools { top: 6px; }
   .project-row:hover .row-tools, .project-row:focus-within .row-tools, .task-card:hover .row-tools, .task-card:focus-within .row-tools, .row-tools:has([data-state=open]) { opacity: 1; }
 }
 @media (hover: none) { .grip:not(:focus-visible) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } }
@@ -386,7 +389,7 @@ progress::-moz-progress-bar { background: var(--primary); }
 .board-back { display: none; }
 .board-head { display: flex; flex-direction: column; gap: 6px; }
 .board-title-row { display: flex; align-items: center; gap: 12px; }
-.board-title { font-size: 1.625rem; line-height: 1.2; font-weight: 600; letter-spacing: -.02em; min-width: 0; overflow-wrap: anywhere; }
+.board-title { flex: 1 1 auto; font-size: 1.625rem; line-height: 1.2; font-weight: 600; letter-spacing: -.02em; min-width: 0; overflow-wrap: anywhere; }
 .board-progress { margin-left: auto; font-size: .8125rem; color: var(--muted-foreground); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .board-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
 .board-meta { display: inline-flex; align-items: center; gap: 6px; font-size: .8125rem; color: var(--muted-foreground); }

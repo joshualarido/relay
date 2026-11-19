@@ -61,7 +61,7 @@ test("populated manual workspace stays coherent, accessible and persistent acros
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-  for (const [route, heading] of [["/", "Today"], ["/projects", "Projects"], ["/inbox", "Inbox"], ["/calendar?date=2027-03-15", "Calendar"]]) {
+  for (const [route, heading] of [["/", "Today"], ["/projects", "Projects"], ["/calendar?date=2027-03-15", "Calendar"]]) {
     const began = performance.now();
     await page.goto(route);
     await expect(page.getByRole("heading", { level: 1, name: heading, exact: true })).toBeVisible();

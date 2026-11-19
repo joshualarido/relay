@@ -124,3 +124,60 @@ test("acceptance 4: a loose task under No project and a standalone event", async
 test("the Inbox route is gone", async ({ page }) => {
   expect((await page.goto("/inbox"))!.status()).toBe(404);
 });
+
+// Phase screenshots on the isolated test server. Run: RELAY_SCREENSHOTS=1 npx playwright test projects --project=desktop -g screenshots
+test("screenshots", async ({ page, request, baseURL }) => {
+  test.skip(!process.env.RELAY_SCREENSHOTS, "Set RELAY_SCREENSHOTS to capture phase screenshots.");
+  test.setTimeout(90_000);
+  const dir = "docs/phase2-screens";
+  const post = async (path: string, data: object) => {
+    const response = await request.post(path, { headers: { origin: baseURL! }, data: { ...data, mutationId: crypto.randomUUID() } });
+    expect(response.ok()).toBe(true); return response.json();
+  };
+  const { timezone } = await (await request.get("/api/preferences")).json();
+  const day = (offset: number) => new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(Date.now() + offset * 86_400_000);
+  const blog = await post("/api/projects", { name: "Garden blog", status: "Active", description: "Weekly posts about the vegetable patch.", deadline: day(12) });
+  const flat = await post("/api/projects", { name: "Move flat", status: "Active", deadline: day(30) });
+  await post("/api/projects", { name: "Learn Portuguese", status: "Planned" });
+  await post("/api/projects", { name: "Bike rebuild", status: "Paused" });
+  await post("/api/projects", { name: "Tax return 2025", status: "Done" });
+  const tasks: [string, string, object?][] = [
+    ["Draft the tomato post", "Doing", { dueDate: day(2), important: true }], ["Photograph the raised beds", "To do", { dueDate: day(5) }],
+    ["Outline the compost series", "To do"], ["Reply to reader comments", "To do"], ["Pick a new theme", "Done"], ["Set up the newsletter", "Done"],
+  ];
+  for (const [i, [title, status, extra]] of tasks.entries()) await post("/api/tasks", { title, status, projectId: blog.id, position: i, ...extra });
+  await post("/api/tasks", { title: "Book the van", projectId: flat.id, dueDate: day(-1) });
+  await post("/api/tasks", { title: "Buy stamps", projectId: null });
+  const start = new Date(Date.now() + 2 * 86_400_000); start.setUTCMinutes(0, 0, 0);
+  await post("/api/events", { title: "Interview the allotment club", start: start.toISOString(), end: new Date(start.getTime() + 3_600_000).toISOString(), timezone, projectId: blog.id });
+
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto(`/projects?project=${blog.id}`);
+    await expect(page.locator(".board-title")).toHaveText("Garden blog");
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${dir}/projects-1440-${scheme}.png` });
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await card(page, "Reply to reader comments").hover();
+  await page.getByRole("button", { name: "Actions for Reply to reader comments" }).click();
+  await page.getByRole("menuitem", { name: "Move to project" }).hover();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${dir}/projects-menu.png` });
+  await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Draft the tomato post", exact: true }).click();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${dir}/projects-sheet.png` });
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${dir}/projects-1366.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/projects");
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${dir}/projects-390-list.png` });
+  await page.getByRole("button", { name: /^Garden blog/ }).click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${dir}/projects-390-board.png`, fullPage: true });
+});

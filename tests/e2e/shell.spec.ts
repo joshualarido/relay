@@ -76,8 +76,8 @@ test("a search result for a loose task opens its panel while Inbox is hidden", a
   await palette.getByLabel("Search workspace").fill(title);
   await palette.getByRole("button", { name: "Search", exact: true }).click();
   await palette.getByRole("link", { name: title }).click();
-  await expect(page).toHaveURL(/\/inbox\?task=/);
-  await expect(page.getByRole("dialog", { name: "Task details" }).getByRole("heading", { name: title })).toBeVisible();
+  await expect(page).toHaveURL(/\/projects\?project=none&task=/);
+  await expect(page.getByRole("dialog", { name: title })).toBeVisible();
 });
 
 test("preferences persist after reload and remain owner-isolated", async ({ page, browser, baseURL }, info) => {
