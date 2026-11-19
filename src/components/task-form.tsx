@@ -60,7 +60,7 @@ export function TaskForm({ task, projects, projectId = null, initialOpen = false
 <fieldset disabled={pending} className="contents">
         <div className="field"><label htmlFor={`${prefix}-title`}>Task title</label><input {...field("title")} defaultValue={task?.title} required maxLength={500} />{errors("title")}</div>
         <div className="field"><label htmlFor={`${prefix}-description`}>Task description</label><textarea {...field("description")} defaultValue={task?.description} rows={3} maxLength={20000} />{errors("description")}</div>
-        <div className="field"><label htmlFor={`${prefix}-projectId`}>Project</label><select {...field("projectId")} defaultValue={task?.projectId ?? projectId ?? ""}><option value="">Inbox (unassigned)</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.archivedAt ? " (archived)" : ""}</option>)}</select>{errors("projectId")}</div>
+        <div className="field"><label htmlFor={`${prefix}-projectId`}>Project</label><select {...field("projectId")} defaultValue={task?.projectId ?? projectId ?? ""}><option value="">No project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.archivedAt ? " (archived)" : ""}</option>)}</select>{errors("projectId")}</div>
         <div className="form-grid">
           <div className="field"><label htmlFor={`${prefix}-status`}>Task status</label><select {...field("status")} defaultValue={task?.status ?? "To do"}>{statuses.map((s) => <option key={s}>{s}</option>)}</select>{errors("status")}</div>
           <div className="field"><label htmlFor={`${prefix}-important`}>Important</label>

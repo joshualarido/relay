@@ -1,16 +1,18 @@
-import Link from "next/link";
 import { requireUserId } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
-import { getProjectProgress, listProjects } from "@/lib/projects";
-import { ProjectBoard } from "@/components/project-board";
-import { ProjectForm } from "@/components/project-form";
+import { listProjects } from "@/lib/projects";
+import { listTasks } from "@/lib/tasks";
+import { listEvents } from "@/lib/events";
+import { getPreferences } from "@/lib/preferences";
+import { dateInTimezone } from "@/lib/dates";
+import { ProjectsView } from "@/components/projects/projects-view";
 
-export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ archived?: string }> }) {
-  const userId = await requireUserId();
-  const archived = (await searchParams).archived === "true";
-  const projects = listProjects(getDatabase(), userId, archived);
-  return <div className="page"><header className="page-heading"><div><h1>{archived ? "Archived projects" : "Projects"}</h1></div><ProjectForm /></header>
-    <div className="mb-6 flex gap-5"><Link className={!archived ? "text-primary" : "muted"} href="/projects">All projects</Link><Link className={archived ? "text-primary" : "muted"} href="/projects?archived=true">Archived projects</Link></div>
-    <ProjectBoard projects={projects} archived={archived} progress={Object.fromEntries(projects.map((p) => [p.id, getProjectProgress(getDatabase(), userId, p.id).percent]))} />
-  </div>;
+export default async function ProjectsPage() {
+  const ownerId = await requireUserId(), db = getDatabase();
+  const timezone = getPreferences(db, ownerId).timezone;
+  const now = new Date().toISOString(), today = dateInTimezone(now, timezone);
+  const projects = [...listProjects(db, ownerId), ...listProjects(db, ownerId, true)];
+  // Only events not yet over are shown on the board; the rest stay on the Calendar.
+  const events = listEvents(db, ownerId, true).filter((e) => e.allDay ? e.end > today : Date.parse(e.end) > Date.parse(now));
+  return <ProjectsView projects={projects} tasks={listTasks(db, ownerId, true)} events={events} timezone={timezone} now={now} />;
 }

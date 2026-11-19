@@ -54,7 +54,7 @@ export function QuickCapture({ timezone, onSaved, onPendingChange, onOpen, onDon
       const result = await response.json();
       if (!response.ok) throw new Error(result.fields?.title?.join(" ") || result.fields?.name?.join(" ") || result.error);
       form.reset(); identity.current = { payload: "", id: "" }; setSaved(true); onSaved?.();
-      // Inbox is not in navigation, so a loose task is reachable from this notice.
+      // The notice links straight to the new task on its board (No project for loose tasks).
       const href = kind === "task" && !result.projectId ? taskHref(result) : undefined;
       if (href) setOpenHref(href);
       notifyMutation(response, () => router.refresh(), { message: messages[kind], openHref: href });

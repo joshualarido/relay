@@ -10,7 +10,7 @@ import type { DeletionPreview } from "@/lib/lifecycle";
 import { EventForm } from "./event-form";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
-import { taskHref } from "@/lib/links";
+import { projectHref, taskHref } from "@/lib/links";
 
 export function EventPanel({ event, projects, tasks, timezone }: { event: Event | null; projects: Project[]; tasks: Task[]; timezone: string }) {
   const router = useRouter(), path = usePathname(), search = useSearchParams();
@@ -40,7 +40,7 @@ export function EventPanel({ event, projects, tasks, timezone }: { event: Event 
         <p>Start <time dateTime={event.start}>{display(event.start)}</time><br />End <time dateTime={event.end}>{display(event.end)}</time>{event.allDay && " (exclusive)"}</p>
         <p className="muted">{event.allDay ? "All day" : "Timed event"} / {event.timezone}</p>
         {event.location && (/^https?:\/\//i.test(event.location) ? <a className="text-primary break-all" href={event.location} target="_blank" rel="noopener noreferrer">{event.location}</a> : <p>{event.location}</p>)}
-        {event.projectId && <Link className="text-primary" href={`/projects/${event.projectId}`}>{projects.find((p) => p.id === event.projectId)?.name ?? "Project"}</Link>}
+        {event.projectId && <Link className="text-primary" href={projectHref(event.projectId)}>{projects.find((p) => p.id === event.projectId)?.name ?? "Project"}</Link>}
         {event.taskId && <Link className="text-primary" href={taskHref(tasks.find((t) => t.id === event.taskId) ?? { id: event.taskId, projectId: null })}>{tasks.find((t) => t.id === event.taskId)?.title ?? "Task"}</Link>}
         <div className="flex flex-wrap gap-3"><EventForm event={event} projects={projects} tasks={tasks} timezone={timezone} />
           <Button variant="destructive" disabled={pending} onClick={async () => {

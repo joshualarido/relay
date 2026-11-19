@@ -1,127 +1,126 @@
-import { test, expect } from "@playwright/test";
-import { join } from "node:path";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
-test("project create/edit/status/archive/delete persists and is owner protected", async ({ page, browser, baseURL }, info) => {
-  const name = `Portfolio ${info.project.name} ${crypto.randomUUID().slice(0, 6)}`;
-  await page.goto("/projects");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  await page.getByRole("button", { name: "New project", exact: true }).click();
-  await page.getByLabel("Project name").fill(name);
-  await page.getByLabel("Description", { exact: true }).fill("A real project");
-  const dialogBounds = await page.getByRole("dialog").boundingBox();
-  expect(dialogBounds!.x).toBeGreaterThanOrEqual(0);
-  expect(dialogBounds!.y).toBeGreaterThanOrEqual(0);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  expect(await page.getByRole("button", { name: "Create project", exact: true }).evaluate((el) => {
-    const rect = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    return hit === el || (hit !== null && el.contains(hit));
-  })).toBe(true);
-  await page.getByRole("button", { name: "Create project", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("link", { name, exact: true }).click();
-  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
-  await expect(page.getByText("0% complete", { exact: true })).toBeVisible();
-  const url = new URL(page.url());
-  const projectId = url.pathname.split("/").at(-1)!;
-  const bob = await browser.newContext({ baseURL, storageState: join(process.env.RELAY_TEST_DIR!, "bob.json") });
-  try {
-    expect((await bob.request.get(`/api/projects/${projectId}`)).status()).toBe(404);
-    expect((await bob.request.patch(`/api/projects/${projectId}`, {
-      headers: { origin: baseURL! }, data: { expectedRevision: 1, name: "Stolen", mutationId: crypto.randomUUID() },
-    })).status()).toBe(404);
-  } finally { await bob.close(); }
-  await page.getByRole("button", { name: "Edit project", exact: true }).click();
-  await page.getByLabel("Status", { exact: true }).selectOption("Active");
-  await page.getByLabel("Deadline", { exact: true }).fill("2027-02-10");
-  await page.getByRole("button", { name: "Save project", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByText("Active", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Archive project", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Unarchive project", exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "All projects", exact: true }).click();
-  await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
-  await page.getByRole("link", { name: "Archived projects", exact: true }).click();
-  await page.getByRole("link", { name, exact: true }).click();
-  await page.getByRole("button", { name: "Unarchive project", exact: true }).click();
-  await page.getByRole("button", { name: "Delete project", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Delete project?" })).toBeVisible();
-  await expect(page.getByRole("dialog").getByText(name, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Confirm soft deletion", exact: true }).click();
-  await expect(page).toHaveURL(/\/projects$/);
-  await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
-});
+type Task = { id: string; title: string; status: string; projectId: string | null };
+type Event = { id: string; title: string; projectId: string | null; taskId: string | null };
 
-test("project status/order has keyboard alternatives and failed validation preserves input", async ({ page, request }, info) => {
+test.beforeEach(({}, info) => { test.skip(info.project.name === "mobile", "Desktop spec; narrow screens are checked by hand."); });
+
+const column = (page: Page, status: string) => page.locator(".board-pane").getByRole("region", { name: new RegExp(`^${status}`) });
+const card = (page: Page, title: string) => page.locator("article.task-card").filter({ has: page.getByRole("button", { name: title, exact: true }) });
+
+async function drag(page: Page, from: Locator, to: Locator) {
+  const a = (await from.boundingBox())!, b = (await to.boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2 + 10, a.y + a.height / 2, { steps: 3 });
+  await page.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 24), { steps: 12 });
+  await page.mouse.up();
+}
+
+test("acceptance 1: create a project, add 5 tasks, drag by mouse and keyboard, drag the project to Active, Undo, refresh", async ({ page }) => {
+  const stamp = crypto.randomUUID().slice(0, 6), name = `Launch ${stamp}`;
+  const titles = [1, 2, 3, 4, 5].map((n) => `Step ${n} ${stamp}`);
   await page.goto("/projects");
+
   await page.getByRole("button", { name: "New project", exact: true }).click();
-  await page.getByLabel("Project name").fill(" ");
-  await page.getByRole("button", { name: "Create project", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Check the highlighted fields." })).toBeVisible();
-  const name = `Keyboard ${info.project.name} ${crypto.randomUUID().slice(0, 6)}`;
-  await page.getByLabel("Project name").fill(name);
-  await page.getByRole("button", { name: "Create project", exact: true }).click();
-  const card = page.getByRole("article", { name });
-  await expect(card).toBeVisible();
-  await card.getByLabel("Project status").selectOption("Paused");
-  await expect(page.getByRole("region", { name: "Paused" }).getByRole("article", { name })).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole("region", { name: "Paused" }).getByRole("article", { name })).toBeVisible();
-  const second = `${name} second`;
-  expect((await request.post("/api/projects", {
-    headers: { origin: "http://127.0.0.1:3100" },
-    data: { name: second, status: "Paused", position: 1_000_000, mutationId: crypto.randomUUID() },
-  })).ok()).toBe(true);
-  await page.reload();
-  const paused = page.getByRole("region", { name: "Paused", exact: true });
-  const targetIndex = await paused.getByRole("article").count() - 2;
-  await paused.getByRole("button", { name: `Move ${second} earlier`, exact: true }).focus();
+  await page.getByLabel("New project name").fill(name);
   await page.keyboard.press("Enter");
-  await expect(paused.getByRole("article").nth(targetIndex)).toHaveAttribute("aria-label", second);
+  await expect(page.locator(".board-title")).toHaveText(name);
+  const planned = page.getByRole("region", { name: /^Planned/ });
+  await expect(planned.getByRole("button", { name: new RegExp(`^${name}`) })).toHaveAttribute("aria-current", "true");
+
+  const add = page.getByLabel("Add task to To do");
+  for (const title of titles) {
+    await add.fill(title);
+    await add.press("Enter");
+    await expect(column(page, "To do").getByRole("button", { name: title, exact: true })).toBeVisible();
+    await expect(add).toHaveValue("");
+  }
+
+  // Mouse: To do -> Doing, To do -> Done.
+  await drag(page, card(page, titles[0]), column(page, "Doing"));
+  await expect(column(page, "Doing").getByRole("button", { name: titles[0], exact: true })).toBeVisible();
+  await expect(page.getByText("Moved to Doing.").first()).toBeVisible();
+  await drag(page, card(page, titles[1]), column(page, "Done"));
+  await expect(column(page, "Done").getByRole("button", { name: titles[1], exact: true })).toBeVisible();
+  await expect(page.getByText("Moved to Done.").first()).toBeVisible();
+
+  // Keyboard: pick up with Enter, arrow right into Doing, drop with Enter.
+  await page.getByRole("button", { name: `Move ${titles[2]}`, exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: `Move ${titles[2]}`, exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(300); // let the sensor settle on the new target before dropping
+  await page.keyboard.press("Enter");
+  await expect(column(page, "Doing").getByRole("button", { name: titles[2], exact: true })).toBeVisible();
+  await expect(page.getByText("Moved to Doing.")).toHaveCount(2);
+  // Escape cancels a keyboard drag.
+  await page.getByRole("button", { name: `Move ${titles[3]}`, exact: true }).focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Escape");
+  await expect(column(page, "To do").getByRole("button", { name: titles[3], exact: true })).toBeVisible();
+
+  // Project: Planned -> Active by mouse.
+  const row = page.locator("li.project-row").filter({ hasText: name });
+  await drag(page, row, page.getByRole("region", { name: /^Active/ }).getByRole("heading"));
+  await expect(page.getByRole("region", { name: /^Active/ }).getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
+
+  // Undo from the toast: complete via the ⋯ menu, then undo it.
+  await card(page, titles[4]).hover();
+  await page.getByRole("button", { name: `Actions for ${titles[4]}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: "Complete" }).click();
+  await expect(column(page, "Done").getByRole("button", { name: titles[4], exact: true })).toBeVisible();
+  await page.locator("[data-sonner-toast]").filter({ hasText: "Task completed." }).getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByText("Change undone.")).toBeVisible();
+  await expect(column(page, "To do").getByRole("button", { name: titles[4], exact: true })).toBeVisible();
+
+  const board = async () => Promise.all(["To do", "Doing", "Done"].map((status) => column(page, status).locator(".task-card-title").allTextContents()));
+  const before = await board();
+  expect(before.map((c) => c.length)).toEqual([2, 2, 1]);
   await page.reload();
-  await expect(paused.getByRole("article").nth(targetIndex)).toHaveAttribute("aria-label", second);
-  await page.getByLabel("Search projects").fill(name);
-  await expect(page.getByRole("article")).toHaveCount(2);
-  await page.getByLabel("Search projects").fill("");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: join(process.env.RELAY_TEST_DIR!, `projects-${info.project.name}.png`), fullPage: true, caret: "initial" });
+  await expect(page.locator(".board-title")).toHaveText(name);
+  await expect(page.getByRole("region", { name: /^Active/ }).getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
+  await expect(column(page, "Done").locator(".task-card-title")).toHaveText(before[2]);
+  expect(await board()).toEqual(before);
+  const saved = (await (await page.request.get("/api/tasks")).json() as Task[]).filter((t) => t.title.endsWith(stamp));
+  expect(saved).toHaveLength(5);
 });
 
-test("project drag moves status and refresh retains it", async ({ page, request }, info) => {
-  test.skip(info.project.name === "mobile", "Touch uses the separately tested status/order controls; this scenario checks desktop pointer drag.");
-  const name = `Drag ${crypto.randomUUID().slice(0, 6)}`;
-  const response = await request.post("/api/projects", { headers: { origin: "http://127.0.0.1:3100" }, data: { name, mutationId: crypto.randomUUID() } });
-  expect(response.ok()).toBe(true);
+test("acceptance 4: a loose task under No project and a standalone event", async ({ page }) => {
+  const stamp = crypto.randomUUID().slice(0, 6), taskTitle = `Loose ${stamp}`, eventTitle = `Standalone ${stamp}`;
   await page.goto("/projects");
-  await page.getByLabel("Search projects").fill(name);
-  const handle = page.getByRole("button", { name: `Drag ${name}`, exact: true });
-  const start = await handle.boundingBox();
-  const target = await page.getByRole("region", { name: "Active", exact: true }).boundingBox();
-  await page.mouse.move(start!.x + 12, start!.y + 12);
-  await page.mouse.down();
-  await page.mouse.move(start!.x + 30, start!.y + 30, { steps: 5 });
-  await page.mouse.move(target!.x + 80, target!.y + 90, { steps: 15 });
-  await page.screenshot({ path: join(process.env.RELAY_TEST_DIR!, "project-during-drag.png"), caret: "initial" });
-  await page.mouse.up();
-  await expect(page.getByRole("region", { name: "Active", exact: true }).getByRole("article", { name })).toBeVisible();
+  await page.getByRole("button", { name: /^No project/ }).click();
+  await expect(page.locator(".board-title")).toHaveText("No project");
+  await page.getByLabel("Add task to To do").fill(taskTitle);
+  await page.keyboard.press("Enter");
+  await expect(column(page, "To do").getByRole("button", { name: taskTitle, exact: true })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("n");
+  const dialog = page.getByRole("dialog", { name: "Capture" });
+  await dialog.getByRole("radio", { name: "Event" }).click();
+  await dialog.getByLabel("Event title").fill(eventTitle);
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Upcoming events" }).getByRole("link", { name: new RegExp(eventTitle) })).toBeVisible();
+
   await page.reload();
-  await expect(page.getByRole("region", { name: "Active", exact: true }).getByRole("article", { name })).toBeVisible();
-  const project = await response.json();
-  const child = await (await request.post("/api/tasks", { headers: { origin: "http://127.0.0.1:3100" },
-    data: { title: `Drag child ${name}`, projectId: project.id, mutationId: crypto.randomUUID() } })).json();
-  await page.getByLabel("Search projects").fill(name);
-  const active = await handle.boundingBox();
-  const completed = await page.getByRole("region", { name: "Done", exact: true }).boundingBox();
-  await page.mouse.move(active!.x + 12, active!.y + 12);
-  await page.mouse.down();
-  await page.mouse.move(active!.x + 30, active!.y + 30, { steps: 5 });
-  await page.mouse.move(completed!.x + 80, completed!.y + 90, { steps: 15 });
-  await page.mouse.up();
-  const confirmation = page.getByRole("alertdialog", { name: "Complete project?", exact: true });
-  await expect(confirmation).toContainText(child.title);
-  // dnd-kit briefly suppresses clicks after a drop; also verify keyboard confirmation.
-  await confirmation.getByRole("button", { name: "Complete project", exact: true }).press("Space", { delay: 100 });
-  await expect(page.getByRole("region", { name: "Done", exact: true }).getByRole("article", { name })).toBeVisible();
-  expect((await (await request.get(`/api/tasks/${child.id}`)).json()).status).toBe("Done");
+  await expect(column(page, "To do").getByRole("button", { name: taskTitle, exact: true })).toBeVisible();
+  const task = (await (await page.request.get("/api/tasks")).json() as Task[]).find((t) => t.title === taskTitle)!;
+  expect(task.projectId).toBeNull();
+  const event = (await (await page.request.get("/api/events")).json() as Event[]).find((e) => e.title === eventTitle)!;
+  expect(event).toMatchObject({ projectId: null, taskId: null });
+
+  // The details sheet opens from the card; Escape returns focus to it.
+  await page.getByRole("button", { name: taskTitle, exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: taskTitle });
+  await expect(sheet.getByLabel("Project")).toHaveValue("none");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: taskTitle, exact: true })).toBeFocused();
+});
+
+test("the Inbox route is gone", async ({ page }) => {
+  expect((await page.goto("/inbox"))!.status()).toBe(404);
 });

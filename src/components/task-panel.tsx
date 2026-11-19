@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { projectHref } from "@/lib/links";
 import { useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -38,7 +39,7 @@ export function TaskPanel({ task, projects, focus }: { task: Task | null; projec
         <h2 className="text-xl break-words">{task.title}</h2>
         <p className="muted">{task.status}{task.important ? " / Important" : ""}</p>
         <p className="whitespace-pre-wrap">{task.description || "No description yet."}</p>
-        {task.projectId ? <Link className="text-primary" href={`/projects/${task.projectId}`} onClick={(e) => { if (pending) e.preventDefault(); }}>{projects.find((p) => p.id === task.projectId)?.name ?? "Project"}</Link> : <p className="muted">Inbox (unassigned)</p>}
+        {task.projectId ? <Link className="text-primary" href={projectHref(task.projectId)} onClick={(e) => { if (pending) e.preventDefault(); }}>{projects.find((p) => p.id === task.projectId)?.name ?? "Project"}</Link> : <Link className="text-primary" href={projectHref(null)}>No project</Link>}
         {task.dueDate && <p>Due <time dateTime={task.dueDate}>{task.dueDate}</time> (date only)</p>}
         {task.dueAt && <p>Due <time dateTime={task.dueAt}>{new Intl.DateTimeFormat("en-GB", { timeZone: task.timezone!, dateStyle: "medium", timeStyle: "short" }).format(new Date(task.dueAt))}</time> ({task.timezone})</p>}
         {task.completedAt && <p className="muted">Completed at <time dateTime={task.completedAt}>{task.completedAt}</time></p>}

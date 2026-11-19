@@ -4,7 +4,7 @@ import { listProjects, getProjectProgress, projectStatuses } from "./projects";
 import { listTasks, taskStatuses } from "./tasks";
 import { dateInTimezone, dateOnlySchema } from "./dates";
 import { listEvents } from "./events";
-import { taskHref } from "./links";
+import { projectHref, taskHref } from "./links";
 
 // Planned work is a non-deleted event linked to the task: an all-day event's date, or a timed event's start day in `timezone`
 // (the event's own zone when omitted). Returns each task's planned dates in ascending order.
@@ -29,7 +29,7 @@ export function searchWorkspace(db: Pick<AppDatabase, "select">, ownerId: string
     ...listProjects(db, ownerId).filter((p) => `${p.name} ${p.description}`.toLowerCase().includes(q) &&
       (!data.status || p.status === data.status) && !data.important && (!data.projectId || p.id === data.projectId) &&
       (!data.date || p.deadline === data.date)).map((p) => ({
-      kind: "project" as const, id: p.id, title: p.name, href: `/projects/${p.id}`, date: p.deadline, dateKind: p.deadline ? "deadline" as const : null, updatedAt: p.updatedAt,
+      kind: "project" as const, id: p.id, title: p.name, href: projectHref(p.id), date: p.deadline, dateKind: p.deadline ? "deadline" as const : null, updatedAt: p.updatedAt,
     })),
     ...listTasks(db, ownerId).filter((t) => `${t.title} ${t.description}`.toLowerCase().includes(q) &&
       (!data.status || t.status === data.status) &&

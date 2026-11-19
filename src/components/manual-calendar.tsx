@@ -1,6 +1,7 @@
 "use client";
 
 import "temporal-polyfill/global";
+import { projectHref } from "@/lib/links";
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -42,7 +43,7 @@ export function ManualCalendar({ projects, tasks, events, timezone, weekStart, d
     ...events.map((e) => ({ kind: "event" as const, id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, revision: e.revision, done: false })),
   ];
   function href(kind: Kind, id: string) {
-    if (kind === "project") return `/projects/${id}`;
+    if (kind === "project") return projectHref(id);
     const query = new URLSearchParams(params); query.delete("task"); query.delete("event"); query.set(kind === "event" ? "event" : "task", id);
     return `/calendar?${query}`;
   }
