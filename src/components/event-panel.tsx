@@ -49,6 +49,7 @@ export function EventPanel({
   const search = useSearchParams();
   const workspace = useWorkspace();
   const [localEvent, setLocalEvent] = useState(event);
+  const [open, setOpen] = useState(true);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -56,9 +57,12 @@ export function EventPanel({
   const isHttpLink = Boolean(current?.location && /^https?:\/\//i.test(current.location.trim()));
 
   function close() {
-    const query = new URLSearchParams(search);
-    query.delete("event");
-    router.replace(`${path}${query.size ? `?${query}` : ""}`, { scroll: false });
+    setOpen(false);
+    window.setTimeout(() => {
+      const query = new URLSearchParams(search);
+      query.delete("event");
+      router.replace(`${path}${query.size ? `?${query}` : ""}`, { scroll: false });
+    }, 155);
   }
 
   async function patch(fields: Record<string, unknown>, message: string) {
@@ -117,7 +121,7 @@ export function EventPanel({
     : "";
 
   return (
-    <Dialog.Root open onOpenChange={(open) => { if (!open && !pending) close(); }}>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !pending) close(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="sheet-overlay" />
         <Dialog.Content className="detail-sheet" aria-describedby={undefined}>

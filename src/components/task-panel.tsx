@@ -27,16 +27,20 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
   const search = useSearchParams();
   const workspace = useWorkspace();
   const [localTask, setLocalTask] = useState(task);
+  const [open, setOpen] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
   const current = localTask;
 
   function close() {
-    const query = new URLSearchParams(search);
-    query.delete("task");
-    query.delete("focus");
-    router.replace(`${path}${query.size ? `?${query}` : ""}`, { scroll: false });
+    setOpen(false);
+    window.setTimeout(() => {
+      const query = new URLSearchParams(search);
+      query.delete("task");
+      query.delete("focus");
+      router.replace(`${path}${query.size ? `?${query}` : ""}`, { scroll: false });
+    }, 155);
   }
 
   async function patch(fields: Record<string, unknown>, message: string) {
@@ -85,7 +89,7 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
   const dateValue = current?.startAt ? current.startAt.slice(0, 10) : current?.dueDate ?? "";
 
   return (
-    <Dialog.Root open onOpenChange={(open) => { if (!open && !pending) close(); }}>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !pending) close(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="sheet-overlay" />
         <Dialog.Content
