@@ -313,7 +313,9 @@ progress::-moz-progress-bar { background: var(--primary); }
 .schedule-item[data-picked=true] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 16%, var(--background)); }
 .schedule-item-grip { color: var(--muted-foreground); flex-shrink: 0; }
 .schedule-item-project-icon { color: var(--project-deadline); flex-shrink: 0; }
-.schedule-item-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.schedule-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.schedule-item-title { overflow-wrap: anywhere; font-weight: 500; }
+.schedule-item-project { font-size: .72rem; color: var(--muted-foreground); overflow-wrap: anywhere; }
 .schedule-item-due { display: inline-flex; align-items: center; gap: 3px; font-size: .72rem; color: var(--muted-foreground); white-space: nowrap; flex-shrink: 0; }
 .schedule-item-due svg { color: var(--task-deadline); }
 .schedule-empty { padding: 2px 0; }

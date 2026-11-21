@@ -68,6 +68,15 @@ export function SchedulePanel({
     const startY = anchorPos ? anchorPos.y + 12 : 96;
     return clampPanel(startX, startY, width, height);
   });
+  const [prevAnchor, setPrevAnchor] = useState(anchorPos);
+  if (anchorPos && anchorPos !== prevAnchor) {
+    setPrevAnchor(anchorPos);
+    if (typeof window !== "undefined") {
+      const width = 320;
+      const height = Math.min(500, window.innerHeight - 32);
+      setPos(clampPanel(anchorPos.x + 12, anchorPos.y + 12, width, height));
+    }
+  }
   const panelRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -287,43 +296,43 @@ export function SchedulePanel({
             datelessTaskGroups.length === 0 ? (
               <p className="muted text-sm schedule-empty">All open tasks have deadlines.</p>
             ) : (
-              datelessTaskGroups.map((group) => (
-                <div key={`dl-${group.key}`} className="schedule-group">
-                  <h4 className="schedule-group-title">{group.name}</h4>
-                  <ul className="schedule-list">
-                    <AnimatePresence initial={false}>
-                      {group.tasks.map((task) => {
-                        const idx = runningIndex++;
-                        const item: ScheduleItem = { kind: "task", source: "dateless-task", id: task.id, title: task.title, task };
-                        const isPicked = pickedItem?.source === "dateless-task" && pickedItem.id === task.id;
-                        return (
-                          <motion.li
-                            key={`dl-${task.id}`}
-                            layout={!reduce}
-                            initial={false}
-                            exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: 0 }}
-                            transition={{ duration: reduce ? 0 : 0.18, ease: "easeOut" }}
+              <ul className="schedule-list">
+                <AnimatePresence initial={false}>
+                  {datelessTaskGroups.flatMap((group) =>
+                    group.tasks.map((task) => {
+                      const idx = runningIndex++;
+                      const item: ScheduleItem = { kind: "task", source: "dateless-task", id: task.id, title: task.title, task };
+                      const isPicked = pickedItem?.source === "dateless-task" && pickedItem.id === task.id;
+                      return (
+                        <motion.li
+                          key={`dl-${task.id}`}
+                          layout={!reduce}
+                          initial={false}
+                          exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: 0 }}
+                          transition={{ duration: reduce ? 0 : 0.18, ease: "easeOut" }}
+                        >
+                          <button
+                            type="button"
+                            className="schedule-item"
+                            data-schedule-item={`dateless-task:${task.id}`}
+                            data-picked={isPicked ? "true" : undefined}
+                            data-selected={idx === safeIndex ? "true" : undefined}
+                            onMouseEnter={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
+                            onFocus={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
+                            onPointerDown={(e) => onPointerDragStart(item, e)}
                           >
-                            <button
-                              type="button"
-                              className="schedule-item"
-                              data-schedule-item={`dateless-task:${task.id}`}
-                              data-picked={isPicked ? "true" : undefined}
-                              data-selected={idx === safeIndex ? "true" : undefined}
-                              onMouseEnter={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
-                              onFocus={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
-                              onPointerDown={(e) => onPointerDragStart(item, e)}
-                            >
-                              <CalendarDays size={13} aria-hidden="true" className="schedule-item-deadline-icon" />
+                            <CalendarDays size={13} aria-hidden="true" className="schedule-item-deadline-icon" />
+                            <span className="schedule-item-body">
                               <span className="schedule-item-title">{task.title}</span>
-                            </button>
-                          </motion.li>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </ul>
-                </div>
-              ))
+                              <span className="schedule-item-project">{group.name}</span>
+                            </span>
+                          </button>
+                        </motion.li>
+                      );
+                    }),
+                  )}
+                </AnimatePresence>
+              </ul>
             )
           )}
         </section>
@@ -344,52 +353,52 @@ export function SchedulePanel({
             unscheduledTaskGroups.length === 0 ? (
               <p className="muted text-sm schedule-empty">No unscheduled tasks.</p>
             ) : (
-              unscheduledTaskGroups.map((group) => (
-                <div key={group.key} className="schedule-group">
-                  <h4 className="schedule-group-title">{group.name}</h4>
-                  <ul className="schedule-list">
-                    <AnimatePresence initial={false}>
-                      {group.tasks.map((task) => {
-                        const idx = runningIndex++;
-                        const item: ScheduleItem = { kind: "task", source: "unscheduled-task", id: task.id, title: task.title, task };
-                        const due = task.dueDate ?? (task.dueAt ? dateInTimezone(task.dueAt, timezone) : null);
-                        const isPicked = pickedItem?.source === "unscheduled-task" && pickedItem.id === task.id;
-                        const isHighlighted = highlightedTaskId === task.id;
-                        return (
-                          <motion.li
-                            key={task.id}
-                            layout={!reduce}
-                            initial={false}
-                            exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: 0 }}
-                            transition={{ duration: reduce ? 0 : 0.18, ease: "easeOut" }}
+              <ul className="schedule-list">
+                <AnimatePresence initial={false}>
+                  {unscheduledTaskGroups.flatMap((group) =>
+                    group.tasks.map((task) => {
+                      const idx = runningIndex++;
+                      const item: ScheduleItem = { kind: "task", source: "unscheduled-task", id: task.id, title: task.title, task };
+                      const due = task.dueDate ?? (task.dueAt ? dateInTimezone(task.dueAt, timezone) : null);
+                      const isPicked = pickedItem?.source === "unscheduled-task" && pickedItem.id === task.id;
+                      const isHighlighted = highlightedTaskId === task.id;
+                      return (
+                        <motion.li
+                          key={task.id}
+                          layout={!reduce}
+                          initial={false}
+                          exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: 0 }}
+                          transition={{ duration: reduce ? 0 : 0.18, ease: "easeOut" }}
+                        >
+                          <button
+                            type="button"
+                            className="schedule-item"
+                            data-schedule-item={`task:${task.id}`}
+                            data-highlighted={isHighlighted ? "true" : undefined}
+                            data-picked={isPicked ? "true" : undefined}
+                            data-selected={idx === safeIndex ? "true" : undefined}
+                            onMouseEnter={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
+                            onFocus={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
+                            onPointerDown={(e) => onPointerDragStart(item, e)}
                           >
-                            <button
-                              type="button"
-                              className="schedule-item"
-                              data-schedule-item={`task:${task.id}`}
-                              data-highlighted={isHighlighted ? "true" : undefined}
-                              data-picked={isPicked ? "true" : undefined}
-                              data-selected={idx === safeIndex ? "true" : undefined}
-                              onMouseEnter={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
-                              onFocus={() => { setUserMovedSelection(true); setActiveIndex(idx); }}
-                              onPointerDown={(e) => onPointerDragStart(item, e)}
-                            >
-                              <GripVertical size={13} aria-hidden="true" className="schedule-item-grip" />
+                            <GripVertical size={13} aria-hidden="true" className="schedule-item-grip" />
+                            <span className="schedule-item-body">
                               <span className="schedule-item-title">{task.title}</span>
-                              {due && (
-                                <span className="schedule-item-due">
-                                  <CalendarDays size={11} aria-hidden="true" />
-                                  <time dateTime={due}>{shortDate(due)}</time>
-                                </span>
-                              )}
-                            </button>
-                          </motion.li>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </ul>
-                </div>
-              ))
+                              <span className="schedule-item-project">{group.name}</span>
+                            </span>
+                            {due && (
+                              <span className="schedule-item-due">
+                                <CalendarDays size={11} aria-hidden="true" />
+                                <time dateTime={due}>{shortDate(due)}</time>
+                              </span>
+                            )}
+                          </button>
+                        </motion.li>
+                      );
+                    }),
+                  )}
+                </AnimatePresence>
+              </ul>
             )
           )}
         </section>
