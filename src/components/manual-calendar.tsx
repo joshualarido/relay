@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Popover } from "radix-ui";
+import { AnimatePresence } from "motion/react";
 import FullCalendar, {
   type CalendarRef,
   type EventDropInfo,
@@ -1149,25 +1150,27 @@ export function ManualCalendar({
         )}
       </div>
 
-      {scheduleOpen && (
-        <SchedulePanel
-          key={`schedule-${highlightedTaskId ?? "default"}`}
-          open={scheduleOpen}
-          onClose={closeSchedule}
-          projects={projects}
-          tasks={panelTasks}
-          events={events}
-          timezone={timezone}
-          highlightedTaskId={highlightedTaskId}
-          keptTaskIds={keptTaskIds}
-          pickedItem={pickedItem}
-          onPickItem={handlePickItem}
-          onPointerDragStart={handleSchedulePointerDown}
-          anchorPos={scheduleAnchor}
-          announcement={scheduleAnnouncement}
-          error={scheduleError}
-        />
-      )}
+      <AnimatePresence>
+        {scheduleOpen && (
+          <SchedulePanel
+            key={`schedule-${highlightedTaskId ?? "default"}`}
+            open={scheduleOpen}
+            onClose={closeSchedule}
+            projects={projects}
+            tasks={panelTasks}
+            events={events}
+            timezone={timezone}
+            highlightedTaskId={highlightedTaskId}
+            keptTaskIds={keptTaskIds}
+            pickedItem={pickedItem}
+            onPickItem={handlePickItem}
+            onPointerDragStart={handleSchedulePointerDown}
+            anchorPos={scheduleAnchor}
+            announcement={scheduleAnnouncement}
+            error={scheduleError}
+          />
+        )}
+      </AnimatePresence>
 
       {dragGhost && (
         <div
