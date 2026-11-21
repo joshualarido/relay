@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { betterAuth } from "better-auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -26,9 +27,15 @@ export function getAuth() {
   return auth;
 }
 
+const cachedSession = cache(async () => {
+  if (!authConfiguration().secretReady) return null;
+  return authenticate(getAuth(), await headers());
+});
+
 export async function currentSession(requestHeaders?: Headers) {
   if (!authConfiguration().secretReady) return null;
-  return authenticate(getAuth(), requestHeaders ?? await headers());
+  if (requestHeaders) return authenticate(getAuth(), requestHeaders);
+  return cachedSession();
 }
 
 export async function requireUserId(): Promise<string> {
