@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArchiveRestore, Folder, SquareCheck, Trash2 } from "lucide-react";
-import type { Project, Task } from "@/lib/db/schema";
+import { ArchiveRestore, Clock, Folder, SquareCheck, Trash2 } from "lucide-react";
+import type { Event, Project, Task } from "@/lib/db/schema";
 import type { DeletionPreview } from "@/lib/lifecycle";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
@@ -13,10 +13,12 @@ import { useWorkspace } from "./workspace-store";
 export function ArchivesView({
   initialTasks,
   initialProjects,
+  initialEvents,
   projectNames,
 }: {
   initialTasks: Task[];
   initialProjects: Project[];
+  initialEvents: Event[];
   projectNames: Record<string, string>;
 }) {
   const router = useRouter();
@@ -24,6 +26,7 @@ export function ArchivesView({
   const { confirm, confirmation } = useConfirmation();
   const [tasks, setTasks] = useState(initialTasks);
   const [projects, setProjects] = useState(initialProjects);
+  const [events, setEvents] = useState(initialEvents);
   const [error, setError] = useState("");
 
   async function restoreTask(t: Task) {
@@ -76,7 +79,32 @@ export function ArchivesView({
     }
   }
 
-  async function deleteItem(entityType: "task" | "project", id: string, name: string) {
+  async function restoreEvent(ev: Event) {
+    setError("");
+    const prev = events;
+    setEvents((all) => all.filter((x) => x.id !== ev.id));
+    try {
+      const response = await fetch(`/api/events/${ev.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: ev.revision,
+          archived: false,
+          mutationId: crypto.randomUUID(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not restore event.");
+      workspace?.setEvents((all) => (all.some((x) => x.id === result.id) ? all : [...all, result]));
+      notifyMutation(response, () => router.refresh(), { message: "Event restored." });
+      router.refresh();
+    } catch (failure) {
+      setEvents(prev);
+      setError(failure instanceof Error ? failure.message : "Could not restore event.");
+    }
+  }
+
+  async function deleteItem(entityType: "task" | "project" | "event", id: string, name: string) {
     setError("");
     let preview: DeletionPreview;
     try {
@@ -88,14 +116,16 @@ export function ArchivesView({
       return;
     }
     const ok = await confirm({
-      title: entityType === "task" ? "Delete task?" : "Delete project?",
+      title: entityType === "task" ? "Delete task?" : entityType === "event" ? "Delete event?" : "Delete project?",
       action: "Delete",
       description: `"${name}" will be deleted. You can undo this from the toast.`,
     });
     if (!ok) return;
     const prevTasks = tasks;
     const prevProjects = projects;
+    const prevEvents = events;
     if (entityType === "task") setTasks((all) => all.filter((x) => x.id !== id));
+    else if (entityType === "event") setEvents((all) => all.filter((x) => x.id !== id));
     else setProjects((all) => all.filter((x) => x.id !== id));
     try {
       const res = await fetch(`/api/${entityType}s/${id}/deletion`, {
@@ -106,17 +136,18 @@ export function ArchivesView({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not delete.");
       notifyMutation(res, () => router.refresh(), {
-        message: entityType === "task" ? "Task deleted." : "Project deleted.",
+        message: entityType === "task" ? "Task deleted." : entityType === "event" ? "Event deleted." : "Project deleted.",
       });
       router.refresh();
     } catch (failure) {
       setTasks(prevTasks);
       setProjects(prevProjects);
+      setEvents(prevEvents);
       setError(failure instanceof Error ? failure.message : "Could not delete.");
     }
   }
 
-  const empty = tasks.length === 0 && projects.length === 0;
+  const empty = tasks.length === 0 && projects.length === 0 && events.length === 0;
 
   return (
     <div className="page today-page">
@@ -140,7 +171,7 @@ export function ArchivesView({
           <ul className="today-list">
             {tasks.map((t) => (
               <li key={t.id} className="today-row">
-                <div className="today-row-body">
+                <div className="archive-row-body">
                   <SquareCheck size={15} className="timeline-icon" aria-hidden="true" />
                   <span className="task-title">{t.title}</span>
                   {t.projectId && projectNames[t.projectId] && (
@@ -166,13 +197,45 @@ export function ArchivesView({
         </section>
       )}
 
+      {events.length > 0 && (
+        <section className="today-section" aria-labelledby="archived-events-heading">
+          <h2 id="archived-events-heading">Events</h2>
+          <ul className="today-list">
+            {events.map((ev) => (
+              <li key={ev.id} className="today-row">
+                <div className="archive-row-body">
+                  <Clock size={15} className="timeline-icon" aria-hidden="true" />
+                  <span className="task-title">{ev.title}</span>
+                  {ev.projectId && projectNames[ev.projectId] && (
+                    <span className="today-meta">{projectNames[ev.projectId]}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" onClick={() => void restoreEvent(ev)}>
+                    <ArchiveRestore size={15} aria-hidden="true" />
+                    Restore
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    aria-label={`Delete ${ev.title}`}
+                    onClick={() => void deleteItem("event", ev.id, ev.title)}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {projects.length > 0 && (
         <section className="today-section" aria-labelledby="archived-projects-heading">
           <h2 id="archived-projects-heading">Projects</h2>
           <ul className="today-list">
             {projects.map((p) => (
               <li key={p.id} className="today-row">
-                <div className="today-row-body">
+                <div className="archive-row-body">
                   <Folder size={15} className="timeline-icon" aria-hidden="true" />
                   <span className="task-title">{p.name}</span>
                   <span className="today-meta">{p.status}</span>

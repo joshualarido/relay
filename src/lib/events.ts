@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { Temporal } from "temporal-polyfill";
 import type { AppDatabase } from "./db";
@@ -24,6 +24,7 @@ const createSchema = z.object({
   mutationId: mutationIdSchema,
 }).strict();
 const updateSchema = z.object(fields).partial().extend({ mutationId: mutationIdSchema }).strict();
+const archiveSchema = z.object({ archived: z.boolean(), mutationId: mutationIdSchema }).strict();
 const moveSchema = z.object({ start: fields.start, mutationId: mutationIdSchema }).strict();
 const datesSchema = z.object({ start: fields.start, end: fields.end, allDay: fields.allDay }).superRefine((data, ctx) => {
   // Unscheduled event: both start and end are empty strings.
@@ -52,7 +53,13 @@ export function listEvents(db: Pick<AppDatabase, "select">, ownerId: string, inc
   const projects = new Set(listProjects(db, ownerId).map((p) => p.id));
   const tasks = new Set(listTasks(db, ownerId).map((t) => t.id));
   return db.select().from(event).where(and(eq(event.ownerId, ownerId), isNull(event.deletedAt))).orderBy(asc(event.start)).all()
-    .filter((e) => includeArchived || (e.taskId ? tasks.has(e.taskId) : !e.projectId || projects.has(e.projectId)));
+    .filter((e) => includeArchived || (!e.archivedAt && (e.taskId ? tasks.has(e.taskId) : !e.projectId || projects.has(e.projectId))));
+}
+
+export function listArchivedEvents(db: Pick<AppDatabase, "select">, ownerId: string) {
+  return db.select().from(event)
+    .where(and(eq(event.ownerId, ownerId), isNull(event.deletedAt), isNotNull(event.archivedAt)))
+    .orderBy(desc(event.archivedAt), asc(event.createdAt)).all();
 }
 
 export function getEvent(db: Pick<AppDatabase, "select">, ownerId: string, id: string): Event {
@@ -126,4 +133,28 @@ export function updateEvent(db: AppDatabase, ownerId: string, id: string, expect
 }
 export function rescheduleEvent(db: AppDatabase, ownerId: string, id: string, expectedRevision: number, input: unknown) {
   return saveEvent(db, ownerId, id, expectedRevision, input, true);
+}
+
+export function archiveEvent(db: AppDatabase, ownerId: string, id: string, expectedRevision: number, input: unknown): Event {
+  const data = archiveSchema.parse(input);
+  z.number().int().positive().parse(expectedRevision);
+  const action = data.archived ? "archive" : "unarchive";
+  const hash = requestHash(`event-${action}`, id, { expectedRevision, archived: data.archived });
+  return db.transaction((tx) => {
+    const previous = replayMutation(tx, ownerId, data.mutationId, hash);
+    if (previous) return previous.result as Event;
+    const before = getEvent(tx, ownerId, id);
+    if (before.revision !== expectedRevision) throw new AppError(409, "Event changed. Reload and try again.");
+    const now = new Date().toISOString();
+    const result = tx.update(event).set({
+      archivedAt: data.archived ? now : null,
+      revision: before.revision + 1,
+      updatedAt: now,
+    }).where(and(eq(event.id, id), eq(event.ownerId, ownerId))).returning().get()!;
+    recordOperation(tx, {
+      ownerId, mutationId: data.mutationId, requestHash: hash, action, entityType: "event", entityId: id,
+      beforeState: [{ entityType: "event", record: before }], afterState: [{ entityType: "event", record: result }], result,
+    });
+    return result;
+  }, { behavior: "immediate" });
 }

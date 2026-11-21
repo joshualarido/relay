@@ -1,80 +1,310 @@
 "use client";
 
-import Link from "next/link";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { X } from "lucide-react";
+import { Archive, CalendarDays, Clock, ExternalLink, Folder, MapPin, X } from "lucide-react";
+import { Temporal } from "temporal-polyfill";
 import type { Event, Project, Task } from "@/lib/db/schema";
-import type { DeletionPreview } from "@/lib/lifecycle";
-import { EventForm } from "./event-form";
-import { Button } from "./ui/button";
+import { instantToLocal, localToInstant } from "@/lib/dates";
 import { notifyMutation } from "./mutation-notice";
-import { projectHref, taskHref } from "@/lib/links";
+import { InlineText } from "./projects/inline-text";
+import { useWorkspace } from "./workspace-store";
 
-export function EventPanel({ event, projects, tasks, timezone }: { event: Event | null; projects: Project[]; tasks: Task[]; timezone: string }) {
-  const router = useRouter(), path = usePathname(), search = useSearchParams();
-  const [preview, setPreview] = useState<DeletionPreview | null>(null);
+function formatDuration(start: string, end: string, allDay: boolean): string | null {
+  if (!start || !end) return null;
+  if (allDay) {
+    const days = Temporal.PlainDate.from(start).until(Temporal.PlainDate.from(end)).days;
+    return days === 1 ? "All day" : `${days} days`;
+  }
+  const mins = Math.round((Date.parse(end) - Date.parse(start)) / 60_000);
+  if (mins <= 0) return null;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function relativeTime(iso: string): string {
+  const diff = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
+  if (diff < 1) return "Updated just now";
+  if (diff < 60) return `Updated ${diff}m ago`;
+  const hrs = Math.floor(diff / 60);
+  if (hrs < 24) return `Updated ${hrs}h ago`;
+  return `Updated ${Math.floor(hrs / 24)}d ago`;
+}
+
+export function EventPanel({
+  event,
+  projects,
+  timezone,
+}: {
+  event: Event | null;
+  projects: Project[];
+  tasks: Task[];
+  timezone: string;
+}) {
+  const router = useRouter();
+  const path = usePathname();
+  const search = useSearchParams();
+  const workspace = useWorkspace();
+  const [localEvent, setLocalEvent] = useState(event);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const mutation = useRef("");
+
+  const current = localEvent;
+  const isHttpLink = Boolean(current?.location && /^https?:\/\//i.test(current.location.trim()));
+
   function close() {
-    const query = new URLSearchParams(search); query.delete("event");
+    const query = new URLSearchParams(search);
+    query.delete("event");
     router.replace(`${path}${query.size ? `?${query}` : ""}`, { scroll: false });
   }
-  function display(value: string) {
-    return event!.allDay ? value : new Intl.DateTimeFormat("en-GB", { timeZone: event!.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+
+  async function patch(fields: Record<string, unknown>, message: string) {
+    if (!current) return false;
+    setPending(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/events/${current.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: current.revision, ...fields, mutationId: crypto.randomUUID() }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Could not save event.");
+      setLocalEvent(result as Event);
+      workspace?.setEvents((all) => all.map((e) => (e.id === current.id ? (result as Event) : e)));
+      notifyMutation(res, () => router.refresh(), { message });
+      router.refresh();
+      return true;
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not save event.");
+      return false;
+    } finally {
+      setPending(false);
+    }
   }
-  return <Dialog.Root open onOpenChange={(open) => { if (!open && !pending) close(); }}>
-    <Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="form-dialog"
-      onCloseAutoFocus={(e) => {
-        e.preventDefault();
-        const trigger = event && document.querySelector<HTMLElement>(`[data-calendar-record="event:${CSS.escape(event.id)}"]`);
-        (trigger || document.getElementById("main"))?.focus();
-      }}>
-      <Dialog.Title className="sr-only">Event details</Dialog.Title>
-      <Dialog.Description className="muted mb-5">Your saved commitment, in its recorded timezone.</Dialog.Description>
-      <Button variant="ghost" className="dialog-close" aria-label="Close event details" disabled={pending} onClick={close}><X size={20} /></Button>
-      {!event ? <p>Event not found.</p> : <div className="stack">
-        <h2 className="text-xl break-words">{event.title}</h2><p className="whitespace-pre-wrap">{event.description || "No description yet."}</p>
-        <p>Start <time dateTime={event.start}>{display(event.start)}</time><br />End <time dateTime={event.end}>{display(event.end)}</time>{event.allDay && " (exclusive)"}</p>
-        <p className="muted">{event.allDay ? "All day" : "Timed event"} / {event.timezone}</p>
-        {event.location && (/^https?:\/\//i.test(event.location) ? <a className="text-primary break-all" href={event.location} target="_blank" rel="noopener noreferrer">{event.location}</a> : <p>{event.location}</p>)}
-        {event.projectId && <Link className="text-primary" href={projectHref(event.projectId)}>{projects.find((p) => p.id === event.projectId)?.name ?? "Project"}</Link>}
-        {event.taskId && <Link className="text-primary" href={taskHref(tasks.find((t) => t.id === event.taskId) ?? { id: event.taskId, projectId: null })}>{tasks.find((t) => t.id === event.taskId)?.title ?? "Task"}</Link>}
-        <div className="flex flex-wrap gap-3"><EventForm event={event} projects={projects} tasks={tasks} timezone={timezone} />
-          <Button variant="destructive" disabled={pending} onClick={async () => {
-            setPending(true); setError("");
-            try {
-              const response = await fetch(`/api/events/${event.id}/deletion`);
-              const result = await response.json();
-              if (!response.ok) throw new Error(result.error);
-              mutation.current = crypto.randomUUID(); setPreview(result);
-            } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not load deletion preview."); }
-            finally { setPending(false); }
-          }}>Delete event</Button>
-        </div>
-      </div>}
-      {error && <p role="alert" className="error-message">{error}</p>}
-      <Dialog.Root open={Boolean(preview)} onOpenChange={(open) => { if (!open && !pending) setPreview(null); }}>
-        <Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="form-dialog">
-          <Dialog.Title className="text-xl font-semibold">Delete event?</Dialog.Title><Dialog.Description className="muted mt-3">This event will be deleted. You can undo this from the notification.</Dialog.Description>
-          <ul className="preview-list">{preview?.records.map((r) => <li key={r.id}>{r.label}</li>)}</ul>
-          {error && <p role="alert" className="error-message">{error}</p>}
-          <div className="form-actions"><Button variant="outline" disabled={pending} onClick={() => setPreview(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={pending} onClick={async () => {
-              setPending(true); setError("");
-              try {
-                const response = await fetch(`/api/events/${event!.id}/deletion`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...preview, mutationId: mutation.current }) });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-                setPreview(null); close(); notifyMutation(response, () => router.refresh()); router.refresh();
-              } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save. Retry with this preview."); }
-              finally { setPending(false); }
-            }}>{pending ? "Deleting..." : "Confirm soft deletion"}</Button>
-          </div>
-        </Dialog.Content></Dialog.Portal>
-      </Dialog.Root>
-    </Dialog.Content></Dialog.Portal>
-  </Dialog.Root>;
+
+  async function archive() {
+    if (!current) return;
+    workspace?.setEvents((all) => all.filter((e) => e.id !== current.id));
+    close();
+    try {
+      const res = await fetch(`/api/events/${current.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: current.revision, archived: true, mutationId: crypto.randomUUID() }),
+      });
+      if (res.ok) {
+        notifyMutation(res, () => router.refresh(), { message: "Event archived." });
+        router.refresh();
+      }
+    } catch {}
+  }
+
+  const activeProjects = projects.filter((p) => !p.archivedAt || p.id === current?.projectId);
+  const duration = current ? formatDuration(current.start, current.end, current.allDay) : null;
+  const startValue = current?.start
+    ? current.allDay
+      ? current.start
+      : instantToLocal(current.start, current.timezone || timezone).slice(0, 16)
+    : "";
+  const endValue = current?.end
+    ? current.allDay
+      ? current.end
+      : instantToLocal(current.end, current.timezone || timezone).slice(0, 16)
+    : "";
+
+  return (
+    <Dialog.Root open onOpenChange={(open) => { if (!open && !pending) close(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="sheet-overlay" />
+        <Dialog.Content className="detail-sheet" aria-describedby={undefined}>
+          <Dialog.Close className="icon-button sheet-close" aria-label="Close event details" disabled={pending}>
+            <X size={18} aria-hidden="true" />
+          </Dialog.Close>
+
+          {!current ? (
+            <p className="muted">Event not found.</p>
+          ) : (
+            <>
+              <div className="detail-header">
+                <div className="detail-kicker">
+                  <span className="detail-badge detail-badge-event">
+                    <Clock size={12} aria-hidden="true" />
+                    Event
+                  </span>
+                  {duration && <span className="detail-duration">{duration}</span>}
+                  {isHttpLink && (
+                    <a
+                      href={current.location.trim()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="detail-join-link"
+                    >
+                      Open link
+                      <ExternalLink size={12} aria-hidden="true" />
+                    </a>
+                  )}
+                </div>
+                <Dialog.Title asChild>
+                  <h2 className="sheet-title">
+                    <InlineText
+                      value={current.title}
+                      label="event title"
+                      required
+                      onSave={(title) => patch({ title }, "Event renamed.")}
+                    />
+                  </h2>
+                </Dialog.Title>
+              </div>
+
+              <div className="detail-props">
+                <div className="detail-prop-row">
+                  <span className="detail-prop-label">
+                    <CalendarDays size={14} aria-hidden="true" />
+                    When
+                  </span>
+                  <div className="detail-prop-value stack" style={{ gap: 8 }}>
+                    {!current.start ? (
+                      <span className="muted text-sm">Unscheduled — drag from Schedule (S)</span>
+                    ) : (
+                      <>
+                        <label className="checkbox-label text-sm">
+                          <input
+                            type="checkbox"
+                            checked={current.allDay}
+                            disabled={pending}
+                            onChange={(e) => {
+                              const nextAllDay = e.target.checked;
+                              if (nextAllDay) {
+                                const d = current.allDay
+                                  ? current.start
+                                  : instantToLocal(current.start, timezone).slice(0, 10);
+                                void patch(
+                                  { start: d, end: Temporal.PlainDate.from(d).add({ days: 1 }).toString(), allDay: true },
+                                  "Set to all day.",
+                                );
+                              } else {
+                                const d = current.start.slice(0, 10);
+                                void patch(
+                                  {
+                                    start: localToInstant(`${d}T09:00`, timezone),
+                                    end: localToInstant(`${d}T10:00`, timezone),
+                                    allDay: false,
+                                    timezone,
+                                  },
+                                  "Set to timed event.",
+                                );
+                              }
+                            }}
+                          />
+                          All day
+                        </label>
+                        <div className="detail-time-inputs">
+                          <input
+                            aria-label="Event start"
+                            type={current.allDay ? "date" : "datetime-local"}
+                            key={`s-${current.id}-${current.start}-${current.allDay}`}
+                            defaultValue={startValue}
+                            disabled={pending}
+                            onBlur={(e) => {
+                              const val = e.target.value;
+                              if (!val || val === startValue) return;
+                              const nextStart = current.allDay ? val : localToInstant(val, current.timezone || timezone);
+                              void patch({ start: nextStart }, "Start updated.");
+                            }}
+                          />
+                          <input
+                            aria-label="Event end"
+                            type={current.allDay ? "date" : "datetime-local"}
+                            key={`e-${current.id}-${current.end}-${current.allDay}`}
+                            defaultValue={endValue}
+                            disabled={pending}
+                            onBlur={(e) => {
+                              const val = e.target.value;
+                              if (!val || val === endValue) return;
+                              const nextEnd = current.allDay ? val : localToInstant(val, current.timezone || timezone);
+                              void patch({ end: nextEnd }, "End updated.");
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <label className="detail-prop-label" htmlFor="event-sheet-project">
+                    <Folder size={14} aria-hidden="true" />
+                    Project
+                  </label>
+                  <div className="detail-prop-value">
+                    <select
+                      id="event-sheet-project"
+                      value={current.projectId ?? ""}
+                      disabled={pending}
+                      onChange={(e) => {
+                        const projectId = e.target.value || null;
+                        void patch({ projectId }, projectId ? "Project linked." : "Project unlinked.");
+                      }}
+                    >
+                      <option value="">No project</option>
+                      {activeProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <span className="detail-prop-label">
+                    <MapPin size={14} aria-hidden="true" />
+                    Location
+                  </span>
+                  <div className="detail-prop-value">
+                    <InlineText
+                      value={current.location}
+                      label="event location"
+                      placeholder="Add location or meeting link"
+                      onSave={(location) => patch({ location }, "Location saved.")}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="detail-notes-section">
+                <span className="sheet-label">Notes</span>
+                <InlineText
+                  className="sheet-notes"
+                  value={current.description}
+                  label="event notes"
+                  multiline
+                  placeholder="Add notes…"
+                  onSave={(description) => patch({ description }, "Notes saved.")}
+                />
+              </div>
+
+              {error && (
+                <p role="alert" className="error-message text-sm">
+                  {error}
+                </p>
+              )}
+
+              <div className="sheet-actions detail-footer">
+                <button type="button" className="text-quiet inline-flex items-center gap-1.5" onClick={() => void archive()}>
+                  <Archive size={14} aria-hidden="true" />
+                  Archive
+                </button>
+                <span className="muted text-sm ml-auto">{relativeTime(current.updatedAt)}</span>
+              </div>
+            </>
+          )}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
 }

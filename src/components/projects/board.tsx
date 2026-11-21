@@ -7,7 +7,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Temporal } from "temporal-polyfill";
-import { CalendarClock, CalendarDays, ChevronLeft, Clock, GripVertical, Star } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, CircleDot, Clock, FolderInput, GripVertical, PanelRight, RotateCcw, Star } from "lucide-react";
 import type { Event, Project, Task } from "@/lib/db/schema";
 import { NO_PROJECT, taskColumns, taskDeadline } from "@/lib/project-board";
 import { dateInTimezone } from "@/lib/dates";
@@ -24,21 +24,21 @@ export function taskMenu(board: BoardApi, task: Task): MenuEntry[] {
     .filter((p) => p.id !== task.projectId);
   const to = (status: Task["status"], index?: number) => ({ projectId: task.projectId, status, index });
   return [
-    { label: "Open details", onSelect: () => board.openTask(task.id, document.querySelector(`[data-task-card="${task.id}"]`)) },
-    { label: "Schedule", onSelect: () => board.scheduleTask(task.id) },
+    { label: "Open details", icon: <PanelRight size={15} aria-hidden="true" />, onSelect: () => board.openTask(task.id, document.querySelector(`[data-task-card="${task.id}"]`)) },
+    { label: "Schedule", icon: <CalendarClock size={15} aria-hidden="true" />, onSelect: () => board.scheduleTask(task.id) },
     task.status === "Done"
-      ? { label: "Reopen", onSelect: () => board.moveTask(task.id, to("To do"), "Task reopened.") }
-      : { label: "Complete", onSelect: () => board.completeTask(task, false) },
-    { label: "Change status", children: taskColumns.map((status) => ({
+      ? { label: "Reopen", icon: <RotateCcw size={15} aria-hidden="true" />, onSelect: () => board.moveTask(task.id, to("To do"), "Task reopened.") }
+      : { label: "Complete", icon: <CheckCircle2 size={15} aria-hidden="true" />, onSelect: () => board.completeTask(task, false) },
+    { label: "Change status", icon: <CircleDot size={15} aria-hidden="true" />, children: taskColumns.map((status) => ({
       label: status, checked: status === task.status, disabled: status === task.status,
       onSelect: () => board.moveTask(task.id, to(status), `Moved to ${status}.`),
     })) },
-    { label: "Move to project", children: destinations.map((p) => ({
+    { label: "Move to project", icon: <FolderInput size={15} aria-hidden="true" />, children: destinations.map((p) => ({
       label: p.name, onSelect: () => board.moveTask(task.id, { projectId: p.id, status: task.status }, `Moved to ${p.name}.`),
     })) },
-    { label: "Move up", disabled: i <= 0, onSelect: () => board.moveTask(task.id, to(task.status, i - 1), "Order saved.") },
-    { label: "Move down", disabled: i >= column.length - 1, onSelect: () => board.moveTask(task.id, to(task.status, i + 1), "Order saved.") },
-    "separator", { label: "Archive", onSelect: () => board.archiveTask(task) },
+    { label: "Move up", icon: <ArrowUp size={15} aria-hidden="true" />, disabled: i <= 0, onSelect: () => board.moveTask(task.id, to(task.status, i - 1), "Order saved.") },
+    { label: "Move down", icon: <ArrowDown size={15} aria-hidden="true" />, disabled: i >= column.length - 1, onSelect: () => board.moveTask(task.id, to(task.status, i + 1), "Order saved.") },
+    "separator", { label: "Archive", icon: <Archive size={15} aria-hidden="true" />, onSelect: () => board.archiveTask(task) },
   ];
 }
 

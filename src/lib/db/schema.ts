@@ -123,6 +123,7 @@ export const event = sqliteTable("event", {
   timezone: text("timezone").notNull(),
   location: text("location").notNull().default(""),
   revision: integer("revision").notNull().default(1),
+  archivedAt: text("archived_at"),
   deletedAt: text("deleted_at"),
   deletionOperationId: text("deletion_operation_id"),
   createdAt: text("created_at").notNull(),
