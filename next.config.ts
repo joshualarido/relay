@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 const config: NextConfig = {
   serverExternalPackages: ["better-sqlite3"],
+  output: "standalone",
   poweredByHeader: false,
   // The dev badge covers the account control and bottom-left links; compile/runtime errors still show.
   devIndicators: false,
