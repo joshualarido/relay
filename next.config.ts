@@ -7,8 +7,8 @@ const config: NextConfig = {
   poweredByHeader: false,
   // The dev badge covers the account control and bottom-left links; compile/runtime errors still show.
   devIndicators: false,
-  // Revisiting a screen within 30 s paints from the client router cache; mutations call router.refresh().
-  experimental: { staleTimes: { dynamic: 30 } },
+  // Revisiting a screen within 5 min paints from the client router cache; mutations call router.refresh().
+  experimental: { staleTimes: { dynamic: 300 } },
   turbopack: { root: resolve(".") },
   // v3 removed History and Chat; old bookmarks land on Today.
   redirects: async () => [
