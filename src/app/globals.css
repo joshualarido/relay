@@ -240,10 +240,11 @@ progress::-moz-progress-bar { background: var(--primary); }
 }
 .calendar-frame > :first-child { min-width: 650px; }
 .calendar-frame [role=columnheader] { font-size: .75rem; font-weight: 500; color: var(--muted-foreground); }
-.calendar-record { display: flex; align-items: flex-start; gap: 5px; width: 100%; padding: 3px 6px; background: color-mix(in srgb, var(--record-color) 13%, transparent); color: var(--foreground); border-radius: 5px; font-size: .75rem; line-height: 1.35; overflow-wrap: break-word; white-space: normal; }
+.calendar-record { display: flex; align-items: flex-start; gap: 5px; width: 100%; height: 100%; padding: 3px 6px; background: color-mix(in srgb, var(--record-color) 13%, transparent); color: var(--foreground); border-radius: 5px; font-size: .75rem; line-height: 1.35; overflow-wrap: break-word; white-space: normal; }
 .calendar-record:hover { background: color-mix(in srgb, var(--record-color) 22%, transparent); }
 .calendar-record svg { flex-shrink: 0; margin-top: 2px; color: var(--record-color); }
 .calendar-record time { color: var(--muted-foreground); margin-right: 3px; font-variant-numeric: tabular-nums; }
+.calendar-event-resizer { display: block !important; min-height: 8px; min-width: 8px; z-index: 5; pointer-events: auto; }
 .calendar-off-hours { background: color-mix(in srgb, var(--secondary) 55%, transparent); }
 
 /* Inline event quick-create popover */

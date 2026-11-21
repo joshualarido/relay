@@ -9,7 +9,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Popover } from "radix-ui";
 import FullCalendar, {
   type CalendarRef,
-  type DateClickInfo,
   type EventDropInfo,
   type EventResizeDoneInfo,
 } from "@fullcalendar/react";
@@ -152,7 +151,7 @@ export function ManualCalendar({
     const prev = recordQueues.current.get(key) ?? Promise.resolve();
     const next = prev.catch(() => undefined).then(job);
     recordQueues.current.set(key, next);
-    void next.finally(() => {
+    void next.catch(() => undefined).finally(() => {
       if (recordQueues.current.get(key) === next) recordQueues.current.delete(key);
     });
     return next;
@@ -642,47 +641,77 @@ export function ManualCalendar({
     [activeDate, changeView, view],
   );
 
-  // Hit-test FullCalendar DOM for pointer drag
+  // Hit-test FullCalendar DOM by bounding geometry (works across pointer-events: none / layered TimeGrid tables)
   const hitTestCalendar = useCallback(
     (clientX: number, clientY: number, itemKind: ScheduleItem["kind"]): { target: ScheduleDropTarget; box: HighlightBox } | null => {
       const frame = frameRef.current;
       if (!frame) return null;
-      const frameRect = frame.getBoundingClientRect();
-      const els = document.elementsFromPoint(clientX, clientY);
-      const inFrame = els.filter((el) => frame.contains(el));
 
-      const slotEl = inFrame.find((el) => el.classList.contains("calendar-slot-lane") && el.getAttribute("data-time"));
-      const colEl = inFrame.find((el) => el.classList.contains("calendar-time-col") && el.getAttribute("data-date"));
-      if (slotEl && colEl) {
-        if (itemKind === "project") return null; // Project onto time slot not allowed
-        const d = colEl.getAttribute("data-date")!;
-        const t = slotEl.getAttribute("data-time")!;
-        const colRect = colEl.getBoundingClientRect();
-        const slotRect = slotEl.getBoundingClientRect();
-        return {
-          target: { kind: "time", startInstant: localSlotToInstant(d, t, timezone) },
-          box: {
-            left: colRect.left - frameRect.left + frame.scrollLeft,
-            top: slotRect.top - frameRect.top + frame.scrollTop,
-            width: colRect.width,
-            height: slotRect.height * 2,
-          },
-        };
+      // Ignore points covered by the floating Schedule panel or inline editor
+      const topEls = document.elementsFromPoint(clientX, clientY);
+      if (topEls.some((el) => el.classList.contains("schedule-panel") || el.classList.contains("inline-event-popover"))) {
+        return null;
       }
 
-      const dayEl = inFrame.find((el) => el.classList.contains("calendar-day-cell") && el.getAttribute("data-date"));
-      if (dayEl) {
-        const d = dayEl.getAttribute("data-date")!;
+      const frameRect = frame.getBoundingClientRect();
+      if (
+        clientX < frameRect.left ||
+        clientX > frameRect.right ||
+        clientY < frameRect.top ||
+        clientY > frameRect.bottom
+      ) {
+        return null;
+      }
+
+      // 1) Check TimeGrid timed slots (Week / Day views)
+      const cols = frame.querySelectorAll<HTMLElement>(".calendar-time-col[data-date]");
+      if (cols.length > 0) {
+        let hitCol: { el: HTMLElement; rect: DOMRect } | null = null;
+        for (const col of cols) {
+          const r = col.getBoundingClientRect();
+          if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+            hitCol = { el: col, rect: r };
+            break;
+          }
+        }
+        if (hitCol) {
+          const slots = frame.querySelectorAll<HTMLElement>(".calendar-slot-lane[data-time]");
+          for (const slot of slots) {
+            const sr = slot.getBoundingClientRect();
+            if (clientY >= sr.top && clientY <= sr.bottom) {
+              if (itemKind === "project") return null; // Project onto time slot not allowed
+              const d = hitCol.el.getAttribute("data-date")!;
+              const t = slot.getAttribute("data-time")!;
+              return {
+                target: { kind: "time", startInstant: localSlotToInstant(d, t, timezone) },
+                box: {
+                  left: hitCol.rect.left - frameRect.left + frame.scrollLeft,
+                  top: sr.top - frameRect.top + frame.scrollTop,
+                  width: hitCol.rect.width,
+                  height: sr.height * 2,
+                },
+              };
+            }
+          }
+        }
+      }
+
+      // 2) Check day cells (Month grid + Week/Day all-day row)
+      const dayCells = frame.querySelectorAll<HTMLElement>(".calendar-day-cell[data-date]");
+      for (const dayEl of dayCells) {
         const rect = dayEl.getBoundingClientRect();
-        return {
-          target: { kind: "day", date: d },
-          box: {
-            left: rect.left - frameRect.left + frame.scrollLeft,
-            top: rect.top - frameRect.top + frame.scrollTop,
-            width: rect.width,
-            height: rect.height,
-          },
-        };
+        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+          const d = dayEl.getAttribute("data-date")!;
+          return {
+            target: { kind: "day", date: d },
+            box: {
+              left: rect.left - frameRect.left + frame.scrollLeft,
+              top: rect.top - frameRect.top + frame.scrollTop,
+              width: rect.width,
+              height: rect.height,
+            },
+          };
+        }
       }
       return null;
     },
@@ -863,15 +892,24 @@ export function ManualCalendar({
 
   const activeHighlight = hoverHighlight ?? keyboardHighlight;
 
-  // Date click: either tap-to-place in Schedule mode, or inline event creation
-  function handleDateClick(info: DateClickInfo) {
+  // Track pointer down on the calendar frame to distinguish plain clicks from event drags/resizes
+  const frameDownRef = useRef<{ x: number; y: number } | null>(null);
+
+  function handleFrameClick(e: React.MouseEvent<HTMLDivElement>) {
+    const down = frameDownRef.current;
+    frameDownRef.current = null;
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 6) return;
+
+    const clickTarget = e.target as HTMLElement | null;
+    if (clickTarget?.closest(".calendar-record, a, button")) return;
+
+    const hit = hitTestCalendar(e.clientX, e.clientY, pickedItem?.kind ?? "task");
+    if (!hit) return;
+
     if (scheduleOpen) {
       if (pickedItem) {
-        const target: ScheduleDropTarget = info.allDay
-          ? { kind: "day", date: info.dateStr.slice(0, 10) }
-          : { kind: "time", startInstant: info.date.toISOString() };
-        void placeItem(pickedItem, target, { keepInPanel: info.jsEvent.shiftKey });
-        if (!info.jsEvent.shiftKey) {
+        void placeItem(pickedItem, hit.target, { keepInPanel: e.shiftKey });
+        if (!e.shiftKey) {
           setPickedItem(null);
           setKeyboardSlot(null);
         }
@@ -879,29 +917,24 @@ export function ManualCalendar({
       return;
     }
 
-    const clickTarget = info.jsEvent.target as HTMLElement | null;
-    if (clickTarget?.closest(".calendar-record, a, button")) return;
+    const pos = clampPopover(e.clientX + 8, e.clientY + 8);
+    const returnFocus = clickTarget?.closest<HTMLElement>("[data-date]") ?? frameRef.current;
 
-    const rect = info.dayEl.getBoundingClientRect();
-    const rawX = info.jsEvent.clientX || rect.left + 12;
-    const rawY = info.jsEvent.clientY || rect.top + 12;
-    const pos = clampPopover(rawX + 8, rawY + 8);
-
-    if (info.allDay) {
-      const start = info.dateStr.slice(0, 10);
+    if (hit.target.kind === "day") {
+      const start = hit.target.date;
       const end = nextCalendarDate(start);
       setInlineTitle("");
       setInlineStart(start);
       setInlineEnd(end);
       setInlineError("");
-      setInlineEditor({ allDay: true, start, end, x: pos.x, y: pos.y, returnFocus: info.dayEl });
+      setInlineEditor({ allDay: true, start, end, x: pos.x, y: pos.y, returnFocus });
     } else {
-      const range = defaultInlineTimedRange(info.date.toISOString(), timezone);
+      const range = defaultInlineTimedRange(hit.target.startInstant, timezone);
       setInlineTitle("");
       setInlineStart(range.start);
       setInlineEnd(range.end);
       setInlineError("");
-      setInlineEditor({ allDay: false, start: range.start, end: range.end, x: pos.x, y: pos.y, returnFocus: info.dayEl });
+      setInlineEditor({ allDay: false, start: range.start, end: range.end, x: pos.x, y: pos.y, returnFocus });
     }
   }
 
@@ -961,6 +994,27 @@ export function ManualCalendar({
   const panelTasks = useMemo(
     () => tasks.filter((t) => !dismissedTaskIds.has(t.id)),
     [tasks, dismissedTaskIds],
+  );
+
+  const dayCellClass = useCallback(
+    (info: { isToday: boolean }) => (info.isToday ? "calendar-day-cell calendar-today" : "calendar-day-cell"),
+    [],
+  );
+  const dayLaneClass = useCallback(() => "calendar-time-col", []);
+  const slotLaneClass = useCallback(
+    (info: { time?: { milliseconds: number } }) => {
+      const ms = info.time?.milliseconds ?? 0;
+      const hour = Math.floor(ms / 3_600_000);
+      return scheduleOpen && !isWorkingHour(hour)
+        ? "calendar-slot-lane calendar-off-hours"
+        : "calendar-slot-lane";
+    },
+    [scheduleOpen],
+  );
+  const eventAllow = useCallback((span: { allDay: boolean }, moving: { allDay: boolean } | null) => span.allDay === moving?.allDay, []);
+  const eventAfterClass = useCallback(
+    (info: { isEndResizable: boolean }) => (info.isEndResizable ? "calendar-event-resizer" : ""),
+    [],
   );
 
   function syncNavDate() {
@@ -1092,6 +1146,8 @@ export function ManualCalendar({
         role="region"
         aria-label="Calendar grid; scroll horizontally on narrow screens"
         tabIndex={0}
+        onPointerDown={(e) => { frameDownRef.current = { x: e.clientX, y: e.clientY }; }}
+        onClick={handleFrameClick}
       >
         <FullCalendar
           ref={ref}
@@ -1104,9 +1160,9 @@ export function ManualCalendar({
           datesSet={(info) => setTitle(info.view.title)}
           height="auto"
           editable={true}
-          eventDurationEditable={false}
+          eventDurationEditable={true}
           dayMaxEvents={false}
-          eventAllow={(span, moving) => span.allDay === moving?.allDay}
+          eventAllow={eventAllow}
           events={records
             .filter((r) => enabled[r.kind])
             .map((r) => ({
@@ -1126,7 +1182,6 @@ export function ManualCalendar({
           eventResize={(info) => {
             void handleEventResize(info);
           }}
-          dateClick={handleDateClick}
           eventContent={(info) => {
             const kind = info.event.extendedProps.kind as Kind;
             const id = info.event.extendedProps.id as string;
@@ -1144,21 +1199,16 @@ export function ManualCalendar({
               >
                 <Icon size={12} aria-hidden="true" />
                 <span aria-hidden="true">
-                  {info.timeText && <time>{info.timeText}</time>}
+                  {info.timeText && <time suppressHydrationWarning>{info.timeText}</time>}
                   {info.event.title}
                 </span>
               </Link>
             );
           }}
-          dayCellClass={(info) => (info.isToday ? "calendar-day-cell calendar-today" : "calendar-day-cell")}
-          dayLaneClass={() => "calendar-time-col"}
-          slotLaneClass={(info) => {
-            const ms = info.time?.milliseconds ?? 0;
-            const hour = Math.floor(ms / 3_600_000);
-            return scheduleOpen && !isWorkingHour(hour)
-              ? "calendar-slot-lane calendar-off-hours"
-              : "calendar-slot-lane";
-          }}
+          dayCellClass={dayCellClass}
+          dayLaneClass={dayLaneClass}
+          slotLaneClass={slotLaneClass}
+          eventAfterClass={eventAfterClass}
         />
 
         {activeHighlight && (
