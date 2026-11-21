@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { archiveProject, getProject, updateProject } from "@/lib/projects";
+import { archiveProject, getProject, updateProject } from "@/services/projects";
 
 type Context = { params: Promise<{ projectId: string }> };
 

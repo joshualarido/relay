@@ -1,6 +1,6 @@
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { createTask, listTasks } from "@/lib/tasks";
+import { createTask, listTasks } from "@/services/tasks";
 
 export function GET(request: Request) {
   return route(request, (userId) => listTasks(getDatabase(), userId));

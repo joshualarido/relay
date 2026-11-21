@@ -1,6 +1,6 @@
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { previewDeletion, confirmDeletion } from "@/lib/lifecycle";
+import { previewDeletion, confirmDeletion } from "@/services/lifecycle";
 import { AppError } from "@/lib/errors";
 import { z } from "zod";
 

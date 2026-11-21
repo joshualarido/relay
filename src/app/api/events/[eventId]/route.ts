@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { archiveEvent, getEvent, rescheduleEvent, updateEvent } from "@/lib/events";
+import { archiveEvent, getEvent, rescheduleEvent, updateEvent } from "@/services/events";
 
 type Context = { params: Promise<{ eventId: string }> };
 export function GET(request: Request, context: Context) {

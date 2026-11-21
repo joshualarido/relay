@@ -1,6 +1,6 @@
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { createProject, listProjects } from "@/lib/projects";
+import { createProject, listProjects } from "@/services/projects";
 
 export function GET(request: Request) {
   return route(request, (userId) => listProjects(getDatabase(), userId, new URL(request.url).searchParams.get("archived") === "true"));
