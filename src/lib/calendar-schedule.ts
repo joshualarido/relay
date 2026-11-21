@@ -18,27 +18,28 @@ export type ScheduleDropTarget =
 
 export type ScheduleDropAction =
   | {
-      endpoint: "/api/events";
-      method: "POST";
-      entityKey: string;
-      payload: {
-        title: string;
-        start: string;
-        end: string;
-        allDay: false;
-        timezone: string;
-        taskId: string;
-        projectId: null;
-      };
-    }
-  | {
       endpoint: `/api/tasks/${string}`;
       method: "PATCH";
       entityKey: string;
       payload: {
-        dueDate: string;
+        startAt: string;
+        endAt: string;
+        allDay: boolean;
+        dueDate: string | null;
         dueAt: null;
-        timezone: null;
+        timezone: string | null;
+        expectedRevision: number;
+      };
+    }
+  | {
+      endpoint: `/api/events/${string}`;
+      method: "PATCH";
+      entityKey: string;
+      payload: {
+        start: string;
+        end: string;
+        allDay: boolean;
+        timezone: string;
         expectedRevision: number;
       };
     }
@@ -78,9 +79,9 @@ export function groupUnscheduledTasks(
   const projectMap = new Map(projects.map((p) => [p.id, p]));
 
   const eligible = tasks.filter((t) => {
-    if (t.deletedAt || t.status === "Done") return false;
+    if (t.deletedAt || t.archivedAt || t.status === "Done") return false;
     const forceInclude = include?.has(t.id) ?? false;
-    if (!forceInclude && scheduledTaskIds.has(t.id)) return false;
+    if (!forceInclude && (Boolean(t.startAt) || scheduledTaskIds.has(t.id))) return false;
     if (!q) return true;
     const projectName = t.projectId ? (projectMap.get(t.projectId)?.name ?? "") : "No project";
     return t.title.toLowerCase().includes(q) || projectName.toLowerCase().includes(q);
@@ -173,7 +174,53 @@ export function nextCalendarDate(date: string): string {
   return Temporal.PlainDate.from(date).add({ days: 1 }).toString();
 }
 
-/** Build the server mutation for dropping a task onto a time slot or day/all-day row. */
+/** Non-deleted events with no scheduled start/end yet. */
+export function listUnscheduledEvents(events: readonly Event[], query = ""): Event[] {
+  const q = query.trim().toLowerCase();
+  return events.filter((e) => {
+    if (e.deletedAt || e.start) return false;
+    return !q || e.title.toLowerCase().includes(q);
+  });
+}
+
+/** Build the server mutation for dropping an unscheduled event onto a time slot or day/all-day row. */
+export function buildEventDropAction(
+  ev: Pick<Event, "id" | "revision">,
+  target: ScheduleDropTarget,
+  timezone: string,
+): ScheduleDropAction {
+  if (target.kind === "time") {
+    const start = Temporal.Instant.from(target.startInstant).toString();
+    const end = addMinutesInstant(start, 60);
+    return {
+      endpoint: `/api/events/${ev.id}`,
+      method: "PATCH",
+      entityKey: `event:${ev.id}`,
+      payload: {
+        start,
+        end,
+        allDay: false,
+        timezone,
+        expectedRevision: ev.revision,
+      },
+    };
+  }
+  dateOnlySchema.parse(target.date);
+  return {
+    endpoint: `/api/events/${ev.id}`,
+    method: "PATCH",
+    entityKey: `event:${ev.id}`,
+    payload: {
+      start: target.date,
+      end: nextCalendarDate(target.date),
+      allDay: true,
+      timezone,
+      expectedRevision: ev.revision,
+    },
+  };
+}
+
+/** Build the server mutation for dropping a task onto a time slot (1h timed) or day/all-day row (all-day). */
 export function buildTaskDropAction(
   task: Pick<Task, "id" | "title" | "revision">,
   target: ScheduleDropTarget,
@@ -183,17 +230,17 @@ export function buildTaskDropAction(
     const start = Temporal.Instant.from(target.startInstant).toString();
     const end = addMinutesInstant(start, 60);
     return {
-      endpoint: "/api/events",
-      method: "POST",
+      endpoint: `/api/tasks/${task.id}`,
+      method: "PATCH",
       entityKey: `task:${task.id}`,
       payload: {
-        title: task.title,
-        start,
-        end,
+        startAt: start,
+        endAt: end,
         allDay: false,
+        dueDate: null,
+        dueAt: null,
         timezone,
-        taskId: task.id,
-        projectId: null,
+        expectedRevision: task.revision,
       },
     };
   }
@@ -203,6 +250,9 @@ export function buildTaskDropAction(
     method: "PATCH",
     entityKey: `task:${task.id}`,
     payload: {
+      startAt: target.date,
+      endAt: nextCalendarDate(target.date),
+      allDay: true,
       dueDate: target.date,
       dueAt: null,
       timezone: null,

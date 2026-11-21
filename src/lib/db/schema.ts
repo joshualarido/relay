@@ -90,6 +90,9 @@ export const task = sqliteTable("task", {
   plannedDate: text("planned_date"),
   dueDate: text("due_date"),
   dueAt: text("due_at"),
+  startAt: text("start_at"),
+  endAt: text("end_at"),
+  allDay: integer("all_day", { mode: "boolean" }).notNull().default(false),
   timezone: text("timezone"),
   // dormant (v3): estimates are not part of the v3 model.
   estimateMinutes: integer("estimate_minutes"),

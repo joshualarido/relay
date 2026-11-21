@@ -17,13 +17,18 @@ const fields = {
   important: z.boolean().nullable(),
   dueDate: dateOnlySchema.nullable(),
   dueAt: z.iso.datetime({ offset: true }).nullable(),
+  startAt: z.string().max(100).nullable(),
+  endAt: z.string().max(100).nullable(),
+  allDay: z.boolean(),
   timezone: timezoneSchema.nullable(),
   position: z.number().int().min(0).max(1_000_000),
 };
 const createSchema = z.object({
   ...fields, description: fields.description.default(""), projectId: fields.projectId.default(null),
   status: fields.status.default("To do"), important: fields.important.default(null),
-  dueDate: fields.dueDate.default(null), dueAt: fields.dueAt.default(null), timezone: fields.timezone.default(null),
+  dueDate: fields.dueDate.default(null), dueAt: fields.dueAt.default(null),
+  startAt: fields.startAt.default(null), endAt: fields.endAt.default(null), allDay: fields.allDay.default(false),
+  timezone: fields.timezone.default(null),
   position: fields.position.default(0), mutationId: mutationIdSchema,
 }).strict();
 const updateSchema = z.object(fields).partial().extend({ mutationId: mutationIdSchema }).strict();

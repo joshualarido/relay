@@ -30,8 +30,8 @@ export function todayTimeline(db: Pick<AppDatabase, "select">, ownerId: string, 
   const tasks = listTasks(db, ownerId), taskById = new Map(tasks.map((t) => [t.id, t]));
   const projectNames = new Map(listProjects(db, ownerId).map((p) => [p.id, p.name]));
 
-  const items: TodayItem[] = listEvents(db, ownerId)
-    .filter((e) => e.allDay ? e.start <= today && e.end > today : Date.parse(e.start) < dayEnd && Date.parse(e.end) > dayStart)
+  const eventItems: TodayItem[] = listEvents(db, ownerId)
+    .filter((e) => Boolean(e.start && e.end) && (e.allDay ? e.start <= today && e.end > today : Date.parse(e.start) < dayEnd && Date.parse(e.end) > dayStart))
     .map((e) => {
       const linked = e.taskId ? taskById.get(e.taskId) : undefined;
       const projectId = linked ? linked.projectId : e.projectId;
@@ -41,7 +41,26 @@ export function todayTimeline(db: Pick<AppDatabase, "select">, ownerId: string, 
         ...(linked && { taskId: linked.id, task: linked }),
         ...(projectId && projectNames.has(projectId) && { projectName: projectNames.get(projectId) }),
       };
-    })
+    });
+
+  const eventTaskIds = new Set(eventItems.flatMap((i) => (i.taskId ? [i.taskId] : [])));
+  const directTaskItems: TodayItem[] = tasks
+    .filter((t) => !eventTaskIds.has(t.id) && Boolean(t.startAt && t.endAt) &&
+      (t.allDay ? t.startAt! <= today && t.endAt! > today : Date.parse(t.startAt!) < dayEnd && Date.parse(t.endAt!) > dayStart))
+    .map((t) => ({
+      id: `task-block-${t.id}`,
+      kind: "task-block" as const,
+      title: t.title,
+      start: t.startAt!,
+      end: t.endAt!,
+      allDay: t.allDay,
+      done: t.status === "Done",
+      taskId: t.id,
+      task: t,
+      ...(t.projectId && projectNames.has(t.projectId) && { projectName: projectNames.get(t.projectId) }),
+    }));
+
+  const items: TodayItem[] = [...eventItems, ...directTaskItems]
     .sort((a, b) => Number(b.allDay) - Number(a.allDay) || startMs(a) - startMs(b) || a.title.localeCompare(b.title));
 
   const scheduled = new Set(items.flatMap((i) => i.taskId ? [i.taskId] : []));
