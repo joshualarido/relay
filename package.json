@@ -7,14 +7,15 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1",
+    "dev": "next dev --hostname 127.0.0.1 --port 3001",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "mcp": "tsx src/mcp/index.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",
@@ -22,6 +23,7 @@
     "@dnd-kit/utilities": "3.2.2",
     "@fontsource/dm-sans": "5.3.0",
     "@fullcalendar/react": "7.1.5",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@tailwindcss/postcss": "4.3.5",
     "better-auth": "1.7.25",
     "better-sqlite3": "13.2.0",
