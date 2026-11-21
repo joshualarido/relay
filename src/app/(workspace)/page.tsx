@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Temporal } from "temporal-polyfill";
 import { requireUserId } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
@@ -6,8 +5,8 @@ import { getPreferences } from "@/lib/preferences";
 import { listProjects } from "@/lib/projects";
 import { listTasks } from "@/lib/tasks";
 import { summarySentence, todayTimeline } from "@/lib/today";
-import { TaskComplete } from "@/components/task-complete";
 import { TodayTimeline } from "@/components/today-timeline";
+import { TodayDueList, TodayShortcuts } from "@/components/today-due-list";
 import { CatchUp } from "@/components/catch-up";
 import { DayClear } from "@/components/day-clear";
 import { TaskSelection } from "@/components/task-selection";
@@ -24,10 +23,16 @@ export default async function TodayPage({ searchParams }: {
   const tomorrow = start.add({ days: 1 });
   const projects = listProjects(db, ownerId);
   const allProjects = [...projects, ...listProjects(db, ownerId, true)];
-  const projectName = (id: string | null) => projects.find((p) => p.id === id)?.name;
+  const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
   const dateLabel = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${day.today}T12:00:00Z`));
+  const todayTasks = [
+    ...day.overdue,
+    ...day.dueUnscheduled,
+    ...day.items.flatMap((item) => (item.kind === "task-block" && item.task ? [item.task] : [])),
+  ];
 
   return <div className="page today-page">
+    <TodayShortcuts tasks={todayTasks} />
     <header className="today-header">
       <div><h1>Today</h1><p className="today-summary"><span>{dateLabel}</span>{day.dayState === "active" && <> · <span>{summarySentence(day.summary, day.dayState)}</span></>}</p></div>
       {day.dayState !== "empty" && <CaptureButton />}
@@ -35,12 +40,7 @@ export default async function TodayPage({ searchParams }: {
     {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
     {day.dueUnscheduled.length > 0 && <section className="today-section" aria-labelledby="due-today-heading">
       <h2 id="due-today-heading">Due today</h2>
-      <ul className="today-list">{day.dueUnscheduled.map((task) => <li className="today-row" key={task.id}>
-        <TaskComplete task={task} />
-        <div className="today-row-body"><Link className="task-title" data-task-link={task.id} href={`/?task=${task.id}`} scroll={false}>{task.title}</Link>
-          {projectName(task.projectId) && <span className="today-meta">{projectName(task.projectId)}</span>}</div>
-        <Link className="today-quiet-action" href={`/calendar?schedule=1&task=${task.id}`}>Schedule<span className="sr-only"> {task.title}</span></Link>
-      </li>)}</ul>
+      <TodayDueList tasks={day.dueUnscheduled} projectNames={projectNames} timezone={timezone} />
     </section>}
     {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
       : day.dayState === "clear" ? <DayClear day={day.today} />
