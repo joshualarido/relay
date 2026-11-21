@@ -1,14 +1,14 @@
 import type { Snapshot } from "./db/schema";
 
 // Pre-v3 activity snapshots may hold legacy status values; map them at read time.
-const taskMap: Record<string, "To do" | "Doing" | "Done"> = {
-  Backlog: "To do", Next: "To do", "To do": "To do", "In Progress": "Doing", Blocked: "Doing", Doing: "Doing", Done: "Done",
+const taskMap: Record<string, "To do" | "Done"> = {
+  Backlog: "To do", Next: "To do", "To do": "To do", "In Progress": "To do", Blocked: "To do", Doing: "To do", Done: "Done",
 };
 const projectMap: Record<string, "Planned" | "Active" | "Paused" | "Done"> = {
   Planned: "Planned", Active: "Active", Paused: "Paused", Completed: "Done", Done: "Done",
 };
 
-export function normalizeTaskStatus(s: string): "To do" | "Doing" | "Done" {
+export function normalizeTaskStatus(s: string): "To do" | "Done" {
   const v = taskMap[s];
   if (!v) throw new Error(`Unknown task status: ${s}`);
   return v;

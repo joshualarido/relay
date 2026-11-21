@@ -8,7 +8,7 @@ import { getProject, listProjects } from "./projects";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "./activity";
 import { AppError } from "./errors";
 
-export const taskStatuses = ["To do", "Doing", "Done"] as const;
+export const taskStatuses = ["To do", "Done"] as const;
 const fields = {
   title: z.string().min(1).max(500).refine((v) => v.trim().length > 0, "Enter a task title."),
   description: z.string().max(20_000),
@@ -52,7 +52,7 @@ export function getTask(db: Pick<AppDatabase, "select">, ownerId: string, id: st
 // Pre-v3 creates (main@691c3bb) hashed the parsed request in this key order, with legacy statuses
 // (default "Backlog") and dormant fields at their defaults; before Phase 1.2 important/urgent/plannedDate were absent.
 // A retry of such a create after the upgrade must replay instead of failing as a reused mutation id.
-const legacyStatuses = { "To do": ["Backlog", "Next"], Doing: ["In Progress", "Blocked"], Done: ["Done"] } as const;
+const legacyStatuses = { "To do": ["Backlog", "Next", "In Progress", "Blocked", "Doing"], Done: ["Done"] } as const;
 function legacyCreateHashes(data: Omit<z.infer<typeof createSchema>, "mutationId">) {
   const { title, description, projectId, important, dueDate, dueAt, timezone, position } = data;
   return legacyStatuses[data.status].flatMap((status) => {

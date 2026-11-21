@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarClock, CalendarDays, ChevronLeft, GripVertical, Star } from "lucide-react";
+import { CalendarClock, CalendarDays, ChevronLeft, Clock, GripVertical, Star } from "lucide-react";
 import type { Event, Project, Task } from "@/lib/db/schema";
 import { NO_PROJECT, taskColumns, taskDeadline } from "@/lib/project-board";
 import { dateInTimezone } from "@/lib/dates";
@@ -56,6 +56,7 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
   const { onKeyDown, ...pointer } = listeners ?? {};
   const done = task.status === "Done" || board.completing === task.id;
   const due = taskDeadline(task);
+  const scheduled = board.scheduledTaskIds.has(task.id);
   const entries = taskMenu(board, task);
   return <motion.li layoutId={`task-${task.id}`} layout="position" className="task-item"
     transition={board.instant || reduce ? { duration: 0 } : { type: "spring", duration: 0.25, bounce: 0 }}>
@@ -65,11 +66,15 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
         <CheckButton task={task} done={done} reduce={reduce} />
         <div className="task-card-body">
           <button type="button" className="task-card-title" data-task-link={task.id} onClick={(e) => board.openTask(task.id, e.currentTarget.closest("article"))}>{task.title}</button>
-          {(due || task.important) && <span className="task-card-meta">
+          <span className="task-card-meta">
             {task.important && <span className="row-meta is-important"><Star size={12} aria-hidden="true" />Important</span>}
             {due && <span className={`row-meta deadline-task${due < board.today && task.status !== "Done" ? " is-overdue" : ""}`}>
               <CalendarDays size={12} aria-hidden="true" /><span className="sr-only">Due </span>{due < board.today && task.status !== "Done" ? "Overdue · " : ""}<time dateTime={due}>{shortDate(due)}</time></span>}
-          </span>}
+            <span className={`row-meta ${scheduled ? "is-scheduled" : "is-unscheduled"}`}>
+              {scheduled ? <CalendarClock size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />}
+              {scheduled ? "Scheduled" : "Unscheduled"}
+            </span>
+          </span>
         </div>
         <span className="row-tools">
           <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} onKeyDown={onKeyDown as React.KeyboardEventHandler}

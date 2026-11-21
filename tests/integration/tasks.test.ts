@@ -46,7 +46,7 @@ describe("manual tasks", () => {
     const count = tasks.listTasks(w.db, w.alice.id).length;
     const done = tasks.updateTask(w.db, w.alice.id, t.id, 1, { status: "Done", mutationId: crypto.randomUUID() });
     expect(done.completedAt).toBeTruthy();
-    const reopened = tasks.updateTask(w.db, w.alice.id, t.id, 2, { status: "Doing", mutationId: crypto.randomUUID() });
+    const reopened = tasks.updateTask(w.db, w.alice.id, t.id, 2, { status: "To do", mutationId: crypto.randomUUID() });
     expect(reopened.completedAt).toBeNull();
     const history = w.db.select().from(activity).where(eq(activity.entityId, t.id)).all();
     expect(history).toHaveLength(3);
@@ -58,9 +58,9 @@ describe("manual tasks", () => {
   it("moves and orders tasks, with atomic stale-membership checks and retry protection", () => {
     const p = project();
     const a = create();
-    const b = create({ projectId: p.id, status: "Doing" });
+    const b = create({ projectId: p.id, status: "Done" });
     const input = {
-      id: a.id, projectId: p.id, status: "Doing", orderedIds: [a.id, b.id],
+      id: a.id, projectId: p.id, status: "Done", orderedIds: [a.id, b.id],
       expectedRevisions: [{ id: a.id, revision: 1 }, { id: b.id, revision: 1 }], mutationId: crypto.randomUUID(),
     };
     const result = tasks.reorderTasks(w.db, w.alice.id, input);

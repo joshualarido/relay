@@ -108,6 +108,47 @@ export function groupUnscheduledTasks(
   return groups;
 }
 
+/** Open tasks with no deadline (`dueDate === null && dueAt === null`), grouped by project with "No project" first. */
+export function groupDatelessTasks(
+  tasks: readonly Task[],
+  projects: readonly Project[],
+  options?: {
+    query?: string;
+  },
+): ScheduleTaskGroup[] {
+  const q = options?.query?.trim().toLowerCase() ?? "";
+  const projectMap = new Map(projects.map((p) => [p.id, p]));
+
+  const eligible = tasks.filter((t) => {
+    if (t.deletedAt || t.status === "Done") return false;
+    if (t.dueDate !== null || t.dueAt !== null) return false;
+    if (!q) return true;
+    const projectName = t.projectId ? (projectMap.get(t.projectId)?.name ?? "") : "No project";
+    return t.title.toLowerCase().includes(q) || projectName.toLowerCase().includes(q);
+  });
+
+  const byKey = new Map<string, Task[]>();
+  for (const t of eligible) {
+    const key = t.projectId && projectMap.has(t.projectId) ? t.projectId : NO_PROJECT_KEY;
+    const list = byKey.get(key);
+    if (list) list.push(t);
+    else byKey.set(key, [t]);
+  }
+
+  const groups: ScheduleTaskGroup[] = [];
+  const noProject = byKey.get(NO_PROJECT_KEY);
+  if (noProject && noProject.length > 0) {
+    groups.push({ key: NO_PROJECT_KEY, name: "No project", tasks: noProject });
+  }
+  for (const p of projects) {
+    const list = byKey.get(p.id);
+    if (list && list.length > 0) {
+      groups.push({ key: p.id, name: p.name, tasks: list });
+    }
+  }
+  return groups;
+}
+
 /** Non-archived, non-Done projects with no deadline. */
 export function listDatelessProjects(
   projects: readonly Project[],

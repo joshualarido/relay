@@ -203,8 +203,7 @@ test("desktop timed drag crosses DST without changing duration", async ({ page, 
   }
 });
 
-test("inline event create, Esc cancel, and event-only edge resize persist and undo", async ({ page, request, baseURL }) => {
-  const headers = { origin: baseURL! };
+test("inline event create, Esc cancel, and event-only edge resize persist and undo", async ({ page, request }) => {
   const suffix = crypto.randomUUID().slice(0, 6);
   const allDayTitle = `Inline day ${suffix}`;
   const timedTitle = `Inline timed ${suffix}`;

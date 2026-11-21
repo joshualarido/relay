@@ -19,6 +19,7 @@ import { useConfirmation } from "../confirm-dialog";
 import { ProjectList } from "./project-list";
 import { TaskBoard } from "./board";
 import { DetailSheet } from "./detail-sheet";
+import { useWorkspace } from "../workspace-store";
 
 type TaskTarget = { projectId: string | null; status: Task["status"]; index?: number };
 type DragData =
@@ -44,8 +45,14 @@ const projectKey = (projectId: string | null) => projectId ?? NO_PROJECT;
 function useBoardState({ projects: serverProjects, tasks: serverTasks, events, timezone, now }: Props) {
   const router = useRouter();
   const params = useSearchParams();
-  const [projects, setProjectsState] = useState(serverProjects);
-  const [tasks, setTasksState] = useState(serverTasks);
+  const workspace = useWorkspace();
+  const [projects, setProjectsState] = useState(workspace?.projects ?? serverProjects);
+  const [tasks, setTasksState] = useState(workspace?.tasks ?? serverTasks);
+  const activeEvents = workspace?.events ?? events;
+  const scheduledTaskIds = useMemo(
+    () => new Set(activeEvents.filter((e) => e.taskId && !e.deletedAt).map((e) => e.taskId!)),
+    [activeEvents],
+  );
   const [synced, setSynced] = useState({ serverProjects, serverTasks });
   const [busy, setBusy] = useState(0);
   const [error, setError] = useState("");
@@ -68,11 +75,11 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
   }
   function setTasks(next: Task[] | ((all: Task[]) => Task[])) {
     const value = typeof next === "function" ? next(latest.current.tasks) : next;
-    latest.current = { ...latest.current, tasks: value }; setTasksState(value);
+    latest.current = { ...latest.current, tasks: value }; setTasksState(value); workspace?.setTasks(value);
   }
   function setProjects(next: Project[] | ((all: Project[]) => Project[])) {
     const value = typeof next === "function" ? next(latest.current.projects) : next;
-    latest.current = { ...latest.current, projects: value }; setProjectsState(value);
+    latest.current = { ...latest.current, projects: value }; setProjectsState(value); workspace?.setProjects(value);
   }
   function enqueue<R>(job: () => Promise<R>): Promise<R> {
     const run = queue.current.then(job);
@@ -212,7 +219,7 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
   }
 
   return {
-    projects, tasks, groups, byProject, summaries, events: upcomingEvents(events, tasks, selectedKey, now, timezone),
+    projects, tasks, groups, byProject, summaries, scheduledTaskIds, events: upcomingEvents(activeEvents, tasks, selectedKey, now, timezone),
     timezone, today: dateInTimezone(now, timezone), selectedKey, selected, level, sheetTask, projectSheet, pending: busy > 0, error, setError, instant, completing,
     select, backToList, openTask, openProject, closeSheet, moveTask, completeTask, moveProject, createTask, createProject, patchTask, patchProject,
     scheduleTask: (taskId: string) => router.push(`/calendar?schedule=1&task=${taskId}`),
@@ -230,7 +237,7 @@ export function ProjectsView(props: Props) {
   const [active, setActive] = useState<DragData | null>(null);
   const [creating, setCreating] = useState(false);
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );

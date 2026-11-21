@@ -4,7 +4,7 @@ import { dateInTimezone } from "./dates";
 /** Selection key for the left pane: a project id, or "none" for loose tasks. */
 export const NO_PROJECT = "none";
 export const projectGroups = ["Active", "Planned", "Paused", "Done"] as const;
-export const taskColumns = ["To do", "Doing", "Done"] as const;
+export const taskColumns = ["To do", "Done"] as const;
 
 type Ordered = { id: string; position: number; createdAt: string };
 const byOrder = (a: Ordered, b: Ordered) => a.position - b.position || a.createdAt.localeCompare(b.createdAt);

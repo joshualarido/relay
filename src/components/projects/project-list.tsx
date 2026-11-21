@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays, ChevronRight, GripVertical, Inbox, Plus } from "lucide-react";
+import { CalendarDays, ChevronRight, Folder, GripVertical, Inbox, Plus } from "lucide-react";
 import type { Project } from "@/lib/db/schema";
 import { NO_PROJECT, projectGroups, type Summary } from "@/lib/project-board";
 import { useBoard, type BoardApi } from "./projects-view";
@@ -49,10 +49,10 @@ export function projectMenu(board: BoardApi, project: Project): MenuEntry[] {
   ];
 }
 
-function RowBody({ id, name, summary }: { id: string; name: string; summary: Summary }) {
+function RowBody({ id, name, summary, icon }: { id: string; name: string; summary: Summary; icon?: React.ReactNode }) {
   const board = useBoard();
   return <button type="button" className="project-row-main" data-project-row={id} aria-current={board.selectedKey === id ? "true" : undefined} onClick={() => board.select(id)}>
-    <span className="project-row-name">{name}</span>
+    <span className="project-row-title">{icon}<span className="project-row-name">{name}</span></span>
     <Progress summary={summary} />
     <DeadlineMeta next={summary.next} today={board.today} />
   </button>;
@@ -69,7 +69,7 @@ function ProjectRow({ project, dragging }: { project: Project; dragging: string 
     <li ref={(el) => { setNodeRef(el); setTargetRef(el); }} className="project-row" {...(archived ? {} : pointer)}
       data-selected={board.selectedKey === project.id} data-over={dragging === "task" && isOver} data-dragging={isDragging}
       style={{ transform: CSS.Translate.toString(transform), transition }}>
-      <RowBody id={project.id} name={project.name} summary={board.summaries.get(project.id)!} />
+      <RowBody id={project.id} name={project.name} summary={board.summaries.get(project.id)!} icon={<Folder size={15} aria-hidden="true" className="project-row-icon" />} />
       <span className="row-tools">
         {!archived && <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} onKeyDown={onKeyDown as React.KeyboardEventHandler}
           aria-label={`Move ${project.name}`} title="Drag, or press Enter to move with the arrow keys"><GripVertical size={15} aria-hidden="true" /></button>}
@@ -97,8 +97,7 @@ function NoProjectRow({ dragging }: { dragging: string | null }) {
   const board = useBoard();
   const { setNodeRef, isOver } = useDroppable({ id: `target:${NO_PROJECT}`, data: { type: "target", key: NO_PROJECT } });
   return <ul className="project-rows no-project"><li ref={setNodeRef} className="project-row" data-selected={board.selectedKey === NO_PROJECT} data-over={dragging === "task" && isOver}>
-    <RowBody id={NO_PROJECT} name="No project" summary={board.summaries.get(NO_PROJECT)!} />
-    <span className="row-tools" aria-hidden="true"><Inbox size={15} className="muted" /></span>
+    <RowBody id={NO_PROJECT} name="No project" summary={board.summaries.get(NO_PROJECT)!} icon={<Inbox size={15} aria-hidden="true" className="project-row-icon" />} />
   </li></ul>;
 }
 

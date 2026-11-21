@@ -46,7 +46,7 @@ export function CommandPalette({ timezone, projects, open, onOpenChange, returnF
       }}>
         <div className="field"><label htmlFor="workspace-search">Search workspace</label><input id="workspace-search" name="q" type="search" maxLength={500} /></div>
         <div className="form-grid">
-          <div className="field"><label htmlFor="workspace-status">Status</label><select id="workspace-status" name="status"><option value="">Any status</option>{["Planned", "Active", "Paused", "To do", "Doing", "Done"].map((s) => <option key={s}>{s}</option>)}</select></div>
+          <div className="field"><label htmlFor="workspace-status">Status</label><select id="workspace-status" name="status"><option value="">Any status</option>{["Planned", "Active", "Paused", "To do", "Done"].map((s) => <option key={s}>{s}</option>)}</select></div>
           <div className="field"><label htmlFor="workspace-important">Important</label><select id="workspace-important" name="important"><option value="">Any</option><option value="true">Yes</option><option value="false">No</option><option value="unset">Unset</option></select></div>
           <div className="field"><label htmlFor="workspace-project">Project</label><select id="workspace-project" name="projectId"><option value="">All projects</option><option value="inbox">No project</option>{projects.map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select></div>
           <div className="field"><label htmlFor="workspace-date">Deadline or planned date</label><input id="workspace-date" type="date" name="date" /></div>

@@ -36,6 +36,7 @@ import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, Slid
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { SchedulePanel, type ScheduleItem } from "./schedule-panel";
+import { useWorkspace } from "./workspace-store";
 
 type Kind = "project" | "task" | "event";
 const labels: Record<Kind, string> = { project: "Project deadline", task: "Task deadline", event: "Event" };
@@ -121,11 +122,33 @@ export function ManualCalendar({
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const router = useRouter();
   const params = useSearchParams();
+  const workspace = useWorkspace();
 
-  // Optimistic local collections synced with server props
-  const [projects, setProjects] = useState(serverProjects);
-  const [tasks, setTasks] = useState(serverTasks);
-  const [events, setEvents] = useState(serverEvents);
+  // Optimistic local collections synced with server props and shared workspace store
+  const [projects, setProjectsState] = useState(workspace?.projects ?? serverProjects);
+  const [tasks, setTasksState] = useState(workspace?.tasks ?? serverTasks);
+  const [events, setEventsState] = useState(workspace?.events ?? serverEvents);
+  const setProjects = useCallback<React.Dispatch<React.SetStateAction<Project[]>>>(
+    (updater) => {
+      setProjectsState(updater);
+      workspace?.setProjects(updater);
+    },
+    [workspace],
+  );
+  const setTasks = useCallback<React.Dispatch<React.SetStateAction<Task[]>>>(
+    (updater) => {
+      setTasksState(updater);
+      workspace?.setTasks(updater);
+    },
+    [workspace],
+  );
+  const setEvents = useCallback<React.Dispatch<React.SetStateAction<Event[]>>>(
+    (updater) => {
+      setEventsState(updater);
+      workspace?.setEvents(updater);
+    },
+    [workspace],
+  );
   const [synced, setSynced] = useState({ serverProjects, serverTasks, serverEvents });
   const [busyCount, setBusyCount] = useState(0);
   const latestRef = useRef({ projects: serverProjects, tasks: serverTasks, events: serverEvents });
@@ -472,11 +495,17 @@ export function ManualCalendar({
 
       const action =
         item.kind === "task"
-          ? buildTaskDropAction(freshTask!, target, timezone)
+          ? item.source === "dateless-task" && target.kind === "time"
+            ? null
+            : buildTaskDropAction(freshTask!, target, timezone)
           : buildProjectDropAction(freshProject!, target);
 
       if (!action) {
-        setScheduleAnnouncement("Projects can only be dropped onto a day or all-day row.");
+        setScheduleAnnouncement(
+          item.source === "dateless-task"
+            ? "Drop tasks without a deadline onto a day or all-day row to set a due date."
+            : "Projects can only be dropped onto a day or all-day row.",
+        );
         return;
       }
 
@@ -611,7 +640,7 @@ export function ManualCalendar({
         setBusyCount((c) => Math.max(0, c - 1));
       }
     },
-    [enqueueRecord, highlightedTaskId, router, timezone],
+    [enqueueRecord, highlightedTaskId, router, setEvents, setProjects, setTasks, timezone],
   );
 
   // Pick up an item (keyboard or tap-to-place)
@@ -630,7 +659,7 @@ export function ManualCalendar({
         changeView("Day");
       }
       const startSlot: KeyboardSlot =
-        item.kind === "project" || nextView === "Month"
+        item.kind === "project" || item.source === "dateless-task" || nextView === "Month"
           ? { kind: "day", date: activeDate }
           : { kind: "time", date: activeDate, minutes: 10 * 60 };
       setKeyboardSlot(startSlot);
@@ -643,7 +672,7 @@ export function ManualCalendar({
 
   // Hit-test FullCalendar DOM by bounding geometry (works across pointer-events: none / layered TimeGrid tables)
   const hitTestCalendar = useCallback(
-    (clientX: number, clientY: number, itemKind: ScheduleItem["kind"]): { target: ScheduleDropTarget; box: HighlightBox } | null => {
+    (clientX: number, clientY: number, dayOnly: boolean): { target: ScheduleDropTarget; box: HighlightBox } | null => {
       const frame = frameRef.current;
       if (!frame) return null;
 
@@ -679,7 +708,7 @@ export function ManualCalendar({
           for (const slot of slots) {
             const sr = slot.getBoundingClientRect();
             if (clientY >= sr.top && clientY <= sr.bottom) {
-              if (itemKind === "project") return null; // Project onto time slot not allowed
+              if (dayOnly) return null; // Projects and dateless-task deadline drops only allow day/all-day rows
               const d = hitCol.el.getAttribute("data-date")!;
               const t = slot.getAttribute("data-time")!;
               return {
@@ -737,7 +766,8 @@ export function ManualCalendar({
         }
         if (!dragging) return;
         setDragGhost({ item, x: ev.clientX, y: ev.clientY });
-        lastHit = hitTestCalendar(ev.clientX, ev.clientY, item.kind);
+        const dayOnly = item.kind === "project" || item.source === "dateless-task";
+        lastHit = hitTestCalendar(ev.clientX, ev.clientY, dayOnly);
         setHoverHighlight(lastHit ? lastHit.box : null);
       };
 
@@ -747,13 +777,14 @@ export function ManualCalendar({
         window.removeEventListener("pointercancel", onUp);
         if (!dragging) {
           // Treat as tap/click to pick up (or cancel if already picked)
-          if (pickedItem?.kind === item.kind && pickedItem.id === item.id) handlePickItem(null);
+          if (pickedItem?.source === item.source && pickedItem.id === item.id) handlePickItem(null);
           else handlePickItem(item);
           return;
         }
         setDragGhost(null);
         setHoverHighlight(null);
-        const hit = hitTestCalendar(ev.clientX, ev.clientY, item.kind) ?? lastHit;
+        const dayOnly = item.kind === "project" || item.source === "dateless-task";
+        const hit = hitTestCalendar(ev.clientX, ev.clientY, dayOnly) ?? lastHit;
         if (hit) {
           void placeItem(item, hit.target, { keepInPanel: ev.shiftKey });
         } else if (item.kind === "project") {
@@ -903,7 +934,11 @@ export function ManualCalendar({
     const clickTarget = e.target as HTMLElement | null;
     if (clickTarget?.closest(".calendar-record, a, button")) return;
 
-    const hit = hitTestCalendar(e.clientX, e.clientY, pickedItem?.kind ?? "task");
+    const hit = hitTestCalendar(
+      e.clientX,
+      e.clientY,
+      pickedItem ? pickedItem.kind === "project" || pickedItem.source === "dateless-task" : false,
+    );
     if (!hit) return;
 
     if (scheduleOpen) {

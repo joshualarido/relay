@@ -50,15 +50,13 @@ describe("grouping", () => {
 });
 
 describe("move plans", () => {
-  const tasks = [t("a", { position: 0 }), t("b", { position: 1 }), t("c", { status: "Doing", position: 0 }), t("d", { projectId: "p2", position: 0, revision: 4 })];
+  const tasks = [t("a", { position: 0 }), t("b", { position: 1 }), t("c", { status: "Done", position: 0 }), t("d", { projectId: "p2", position: 0, revision: 4 })];
 
   it("moves a task between columns at an index and stamps completion", () => {
-    const plan = planTaskMove(tasks, "a", { projectId: "p1", status: "Done" }, "2026-11-19T00:00:00Z")!;
-    expect(plan.orderedIds).toEqual(["a"]);
+    const plan = planTaskMove(tasks, "a", { projectId: "p1", status: "Done", index: 0 }, "2026-11-19T00:00:00Z")!;
+    expect(plan.orderedIds).toEqual(["a", "c"]);
     expect(plan.next.find((x) => x.id === "a")).toMatchObject({ status: "Done", position: 0, completedAt: "2026-11-19T00:00:00Z" });
-    const doing = planTaskMove(tasks, "b", { projectId: "p1", status: "Doing", index: 0 })!;
-    expect(doing.orderedIds).toEqual(["b", "c"]);
-    expect(doing.expectedRevisions).toEqual([{ id: "b", revision: 1 }, { id: "c", revision: 1 }]);
+    expect(plan.expectedRevisions).toEqual([{ id: "a", revision: 1 }, { id: "c", revision: 1 }]);
   });
   it("reorders within a column", () => {
     expect(planTaskMove(tasks, "b", { projectId: "p1", status: "To do", index: 0 })!.orderedIds).toEqual(["b", "a"]);

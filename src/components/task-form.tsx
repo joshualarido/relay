@@ -8,7 +8,7 @@ import type { Project, Task } from "@/lib/db/schema";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 
-const statuses = ["To do", "Doing", "Done"];
+const statuses = ["To do", "Done"];
 
 export function TaskForm({ task, projects, projectId = null, initialOpen = false, onClose }: { task?: Task; projects: Project[]; projectId?: string | null; initialOpen?: boolean; onClose?: () => void }) {
   const [open, setOpenState] = useState(initialOpen);
