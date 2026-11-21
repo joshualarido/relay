@@ -54,7 +54,7 @@ describe("conflict-safe manual recovery", () => {
     expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ title: t.title, projectId: p.id, completedAt: null, revision: 3 });
     expect(getTask(w.db, w.alice.id, other.id)).toEqual(other);
     const order = mutation();
-    reorderTasks(w.db, w.alice.id, { id: t.id, projectId: q.id, status: "Doing", orderedIds: [t.id], expectedRevisions: [{ id: t.id, revision: 3 }], ...order });
+    reorderTasks(w.db, w.alice.id, { id: t.id, projectId: q.id, status: "Done", orderedIds: [t.id], expectedRevisions: [{ id: t.id, revision: 3 }], ...order });
     undo(operation(order.mutationId).id);
     expect(getTask(w.db, w.alice.id, t.id)).toMatchObject({ projectId: p.id, status: "To do", revision: 5 });
     const e = makeEvent(), move = mutation();
@@ -181,6 +181,29 @@ describe("conflict-safe manual recovery", () => {
     const newer = addDependency(w.db, w.alice.id, { taskId: a.id, prerequisiteId: b.id, ...mutation() });
     expect(() => undo(operation(input.mutationId).id)).toThrow(/duplicate|matching/i);
     expect(listDependencies(w.db, w.alice.id)).toEqual([newer]);
+  });
+
+  it("deletes a project and its child tasks together, leaves loose tasks untouched, and restores both in one Undo", () => {
+    const p = project();
+    const childA = createTask(w.db, w.alice.id, { title: "Child A", projectId: p.id, ...mutation() });
+    const childB = createTask(w.db, w.alice.id, { title: "Child B", projectId: p.id, status: "Done", ...mutation() });
+    const loose = createTask(w.db, w.alice.id, { title: "Loose task", projectId: null, ...mutation() });
+
+    const preview = recovery.previewDeletion(w.db, w.alice.id, "project", p.id);
+    expect(preview.records.map((r) => r.id).sort()).toEqual([p.id, childA.id, childB.id].sort());
+
+    const { operationId } = recovery.confirmDeletion(w.db, w.alice.id, { ...preview, ...mutation() });
+    expect(() => getProject(w.db, w.alice.id, p.id)).toThrow(/not found/i);
+    expect(() => getTask(w.db, w.alice.id, childA.id)).toThrow(/not found/i);
+    expect(() => getTask(w.db, w.alice.id, childB.id)).toThrow(/not found/i);
+    expect(getTask(w.db, w.alice.id, loose.id)).toEqual(loose);
+
+    // One combined Undo restores the project and all its child tasks together.
+    undo(operationId);
+    expect(getProject(w.db, w.alice.id, p.id)).toMatchObject({ id: p.id, name: p.name, revision: 3 });
+    expect(getTask(w.db, w.alice.id, childA.id)).toMatchObject({ id: childA.id, projectId: p.id, status: "To do", revision: 3 });
+    expect(getTask(w.db, w.alice.id, childB.id)).toMatchObject({ id: childB.id, projectId: p.id, status: "Done", revision: 3 });
+    expect(getTask(w.db, w.alice.id, loose.id)).toEqual(loose);
   });
 
   it("rejects stale multi-record undo and restore without touching any sibling or history", () => {

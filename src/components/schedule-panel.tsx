@@ -116,7 +116,7 @@ export function SchedulePanel({
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => {
-      searchRef.current?.focus();
+      panelRef.current?.focus();
       if (highlightedTaskId) {
         panelRef.current?.querySelector<HTMLElement>(`[data-schedule-item="task:${highlightedTaskId}"][data-highlighted="true"]`)?.scrollIntoView({ block: "nearest" });
       }
@@ -181,6 +181,7 @@ export function SchedulePanel({
   return (
     <aside
       ref={panelRef}
+      tabIndex={-1}
       className="schedule-panel"
       role="region"
       aria-label="Schedule panel"

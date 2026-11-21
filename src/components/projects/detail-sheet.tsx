@@ -48,7 +48,7 @@ function TaskDetails({ task }: { task: Task }) {
     {task.completedAt && <p className="muted text-sm">Completed <time dateTime={task.completedAt}>{new Date(task.completedAt).toLocaleString("en-GB", { timeZone: board.timezone, dateStyle: "medium", timeStyle: "short" })}</time></p>}
     <div className="sheet-actions">
       <Link className="text-quiet" href={`/calendar?schedule=1&task=${task.id}`}>Schedule</Link>
-      <button type="button" className="text-danger" onClick={() => board.deleteTask(task)}>Delete task</button>
+      <button type="button" className="text-quiet" onClick={() => board.archiveTask(task)}>Archive task</button>
     </div>
   </>;
 }

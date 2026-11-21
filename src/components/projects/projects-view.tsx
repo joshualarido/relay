@@ -197,6 +197,13 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
     if (!("archived" in fields)) setProjects((all) => all.map((p) => p.id === project.id ? { ...p, ...fields } : p));
     return Boolean(await send<Project>(`/api/projects/${project.id}`, "PATCH", { expectedRevision: current.revision, ...fields }, message, (p) => merge(setProjects, p)));
   });
+  const archiveTask = (task: Task) => enqueue(async () => {
+    const current = latest.current.tasks.find((t) => t.id === task.id) ?? task;
+    if (params.get("task") === task.id) closeSheet();
+    setInstant(false);
+    setTasks((all) => all.filter((t) => t.id !== task.id));
+    await send<Task>(`/api/tasks/${task.id}`, "PATCH", { expectedRevision: current.revision, archived: true }, "Task archived.");
+  });
   const remove = (entityType: "task" | "project", id: string, name: string) => enqueue(() => removeNow(entityType, id, name));
   async function removeNow(entityType: "task" | "project", id: string, name: string) {
     let preview: DeletionPreview;
@@ -215,7 +222,12 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
     if (!done) return;
     closeSheet();
     if (entityType === "task") setTasks((all) => all.filter((t) => t.id !== id));
-    else { setProjects((all) => all.filter((p) => p.id !== id)); if (selectedKey === id) setQuery((q) => q.delete("project")); }
+    else {
+      const deletedTaskIds = new Set(preview.records.filter((r) => r.entityType === "task").map((r) => r.id));
+      setTasks((all) => all.filter((t) => !deletedTaskIds.has(t.id)));
+      setProjects((all) => all.filter((p) => p.id !== id));
+      if (selectedKey === id) setQuery((q) => q.delete("project"));
+    }
   }
 
   return {
@@ -223,6 +235,7 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
     timezone, today: dateInTimezone(now, timezone), selectedKey, selected, level, sheetTask, projectSheet, pending: busy > 0, error, setError, instant, completing,
     select, backToList, openTask, openProject, closeSheet, moveTask, completeTask, moveProject, createTask, createProject, patchTask, patchProject,
     scheduleTask: (taskId: string) => router.push(`/calendar?schedule=1&task=${taskId}`),
+    archiveTask,
     deleteTask: (t: Task) => remove("task", t.id, t.title), deleteProject: (p: Project) => remove("project", p.id, p.name),
     dialogs: <>{completionDialog}{confirmDialog}</>,
   };
@@ -244,13 +257,32 @@ export function ProjectsView(props: Props) {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n" && !isShortcutBlocked(e)) {
-        e.preventDefault(); setCreating(true);
+      if (isShortcutBlocked(e)) return;
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setCreating(true);
+        return;
+      }
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== "e" && key !== "x") return;
+      const card = document.activeElement?.closest<HTMLElement>("[data-task-card]");
+      const taskId = card?.dataset.taskCard;
+      if (!taskId) return;
+      const task = board.tasks.find((t) => t.id === taskId);
+      if (!task) return;
+      e.preventDefault();
+      if (key === "e") {
+        board.openTask(task.id, card);
+      } else if (task.status === "Done") {
+        void board.moveTask(task.id, { projectId: task.projectId, status: "To do" }, "Task reopened.");
+      } else {
+        void board.completeTask(task, Boolean(reduce));
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [board, reduce]);
 
   // Only drop targets that fit what is being dragged; the pointer wins, keyboard drags use the nearest corner.
   const collision: CollisionDetection = (args) => {

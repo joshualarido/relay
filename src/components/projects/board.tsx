@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Temporal } from "temporal-polyfill";
 import { CalendarClock, CalendarDays, ChevronLeft, Clock, GripVertical, Star } from "lucide-react";
 import type { Event, Project, Task } from "@/lib/db/schema";
 import { NO_PROJECT, taskColumns, taskDeadline } from "@/lib/project-board";
@@ -14,6 +15,7 @@ import { useBoard, type BoardApi } from "./projects-view";
 import { MoreMenu, RightClickMenu, type MenuEntry } from "./item-menu";
 import { InlineText } from "./inline-text";
 import { projectMenu, shortDate } from "./project-list";
+import { SwipeableTaskRow } from "../swipeable-task-row";
 
 export function taskMenu(board: BoardApi, task: Task): MenuEntry[] {
   const column = (board.byProject.get(task.projectId ?? NO_PROJECT) ?? []).filter((t) => t.status === task.status);
@@ -36,13 +38,14 @@ export function taskMenu(board: BoardApi, task: Task): MenuEntry[] {
     })) },
     { label: "Move up", disabled: i <= 0, onSelect: () => board.moveTask(task.id, to(task.status, i - 1), "Order saved.") },
     { label: "Move down", disabled: i >= column.length - 1, onSelect: () => board.moveTask(task.id, to(task.status, i + 1), "Order saved.") },
-    "separator", { label: "Delete", danger: true, onSelect: () => board.deleteTask(task) },
+    "separator", { label: "Archive", onSelect: () => board.archiveTask(task) },
   ];
 }
 
 function CheckButton({ task, done, reduce }: { task: Task; done: boolean; reduce: boolean }) {
   const board = useBoard();
   return <button type="button" className="check-button" data-done={done} aria-label={task.status === "Done" ? `Reopen ${task.title}` : `Complete ${task.title}`}
+    title={task.status === "Done" ? "Reopen task (X)" : "Complete task (X)"}
     onClick={() => task.status === "Done" ? board.moveTask(task.id, { projectId: task.projectId, status: "To do" }, "Task reopened.") : board.completeTask(task, reduce)}>
     <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.25" />
       <motion.path d="M6.2 10.4l2.6 2.6 5-5.4" initial={false} animate={{ pathLength: done ? 1 : 0, opacity: done ? 1 : 0 }} transition={{ duration: reduce ? 0 : 0.2, ease: "easeOut" }} />
@@ -58,30 +61,47 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
   const due = taskDeadline(task);
   const scheduled = board.scheduledTaskIds.has(task.id);
   const entries = taskMenu(board, task);
+  const pushToTomorrow = () => {
+    const tomorrow = Temporal.Now.plainDateISO(board.timezone).add({ days: 1 }).toString();
+    void board.patchTask(
+      task,
+      { dueDate: tomorrow, ...(task.dueAt ? { dueAt: null, timezone: null } : {}) },
+      "Moved to tomorrow.",
+    );
+  };
   return <motion.li layoutId={`task-${task.id}`} layout="position" className="task-item"
     transition={board.instant || reduce ? { duration: 0 } : { type: "spring", duration: 0.25, bounce: 0 }}>
     <RightClickMenu entries={entries}>
-      <article ref={setNodeRef} {...pointer} className="task-card" data-task-card={task.id} data-done={done} data-dragging={isDragging}
-        style={{ transform: CSS.Translate.toString(transform), transition }}>
-        <CheckButton task={task} done={done} reduce={reduce} />
-        <div className="task-card-body">
-          <button type="button" className="task-card-title" data-task-link={task.id} onClick={(e) => board.openTask(task.id, e.currentTarget.closest("article"))}>{task.title}</button>
-          <span className="task-card-meta">
-            {task.important && <span className="row-meta is-important"><Star size={12} aria-hidden="true" />Important</span>}
-            {due && <span className={`row-meta deadline-task${due < board.today && task.status !== "Done" ? " is-overdue" : ""}`}>
-              <CalendarDays size={12} aria-hidden="true" /><span className="sr-only">Due </span>{due < board.today && task.status !== "Done" ? "Overdue · " : ""}<time dateTime={due}>{shortDate(due)}</time></span>}
-            <span className={`row-meta ${scheduled ? "is-scheduled" : "is-unscheduled"}`}>
-              {scheduled ? <CalendarClock size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />}
-              {scheduled ? "Scheduled" : "Unscheduled"}
+      <SwipeableTaskRow
+        className="task-card-swipe"
+        taskId={task.id}
+        disabled={isDragging}
+        canComplete={task.status !== "Done"}
+        onComplete={() => board.completeTask(task, reduce)}
+        onTomorrow={pushToTomorrow}
+      >
+        <article ref={setNodeRef} {...pointer} className="task-card" data-task-card={task.id} data-done={done} data-dragging={isDragging}
+          style={{ transform: CSS.Translate.toString(transform), transition }}>
+          <CheckButton task={task} done={done} reduce={reduce} />
+          <div className="task-card-body">
+            <button type="button" className="task-card-title" data-task-link={task.id} title="Edit task (E)" onClick={(e) => board.openTask(task.id, e.currentTarget.closest("article"))}>{task.title}</button>
+            <span className="task-card-meta">
+              {task.important && <span className="row-meta is-important"><Star size={12} aria-hidden="true" />Important</span>}
+              {due && <span className={`row-meta deadline-task${due < board.today && task.status !== "Done" ? " is-overdue" : ""}`}>
+                <CalendarDays size={12} aria-hidden="true" /><span className="sr-only">Due </span>{due < board.today && task.status !== "Done" ? "Overdue · " : ""}<time dateTime={due}>{shortDate(due)}</time></span>}
+              <span className={`row-meta ${scheduled ? "is-scheduled" : "is-unscheduled"}`}>
+                {scheduled ? <CalendarClock size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />}
+                {scheduled ? "Scheduled" : "Unscheduled"}
+              </span>
             </span>
+          </div>
+          <span className="row-tools">
+            <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} onKeyDown={onKeyDown as React.KeyboardEventHandler}
+              aria-label={`Move ${task.title}`} title="Drag, or press Enter to move with the arrow keys"><GripVertical size={15} aria-hidden="true" /></button>
+            <MoreMenu label={`Actions for ${task.title}`} entries={entries} />
           </span>
-        </div>
-        <span className="row-tools">
-          <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} onKeyDown={onKeyDown as React.KeyboardEventHandler}
-            aria-label={`Move ${task.title}`} title="Drag, or press Enter to move with the arrow keys"><GripVertical size={15} aria-hidden="true" /></button>
-          <MoreMenu label={`Actions for ${task.title}`} entries={entries} />
-        </span>
-      </article>
+        </article>
+      </SwipeableTaskRow>
     </RightClickMenu>
   </motion.li>;
 }
@@ -146,8 +166,11 @@ export function TaskBoard({ dragging, reduce }: { dragging: string | null; reduc
   const tasks = board.byProject.get(board.selectedKey) ?? [];
   const summary = board.summaries.get(board.selectedKey)!;
   return <section className="board-pane" aria-label={project?.name ?? "No project"}
-    // Narrow screens: swipe right to return to the project list.
-    onTouchStart={(e) => { touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+    // Narrow screens: swipe right outside a task card to return to the project list.
+    onTouchStart={(e) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-swipe-row]")) { touch.current = null; return; }
+      touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }}
     onTouchEnd={(e) => {
       const start = touch.current; touch.current = null;
       if (!start || dragging || board.level !== "board" || !matchMedia("(max-width: 760px)").matches) return;

@@ -98,6 +98,7 @@ export const task = sqliteTable("task", {
   completedAt: text("completed_at"),
   position: integer("position").notNull().default(0),
   revision: integer("revision").notNull().default(1),
+  archivedAt: text("archived_at"),
   deletedAt: text("deleted_at"),
   deletionOperationId: text("deletion_operation_id"),
   createdAt: text("created_at").notNull(),

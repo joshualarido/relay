@@ -69,7 +69,7 @@ One screen, two panes. The task board is the hero element.
 
 **Right pane: the selected project's task board**
 - A header with the title, description and deadline, each editable inline.
-- Tasks are grouped by status as **To do / Doing / Done**, laid out as kanban columns on wide screens. Drag a task between groups to change its status and within a group to reorder it. Checking a task completes it and animates it into Done.
+- Tasks are grouped by status as **To do / Done** (the **Doing** status was removed on 2026-11-21), laid out as kanban columns on wide screens. Drag a task between groups to change its status and within a group to reorder it. Checking a task completes it and animates it into Done.
 - Typing at the bottom of a group adds a task with that status.
 - A small strip shows this project's upcoming events.
 - Moving a task to another project: drag it onto a project in the left pane, or use the context menu.
@@ -123,12 +123,12 @@ One screen, two panes. The task board is the hero element.
 |---|---|
 | User | id, auth identity, timezone |
 | Project | id, owner, name, description, status (Planned/Active/Paused/Done), deadline (date, optional), position, archivedAt, timestamps |
-| Task | id, owner, **projectId (optional)**, title, notes, status (To do/Doing/Done), important (bool), dueDate (date, optional), position, completedAt, timestamps |
+| Task | id, owner, **projectId (optional)**, title, notes, status (To do/Done), important (bool), dueDate (date, optional), position, completedAt, timestamps |
 | Event | id, owner, **taskId (optional)**, projectId (optional), title, start, end, allDay, timestamps |
 
 Rules:
 - "Scheduling a task" = creating an Event with `taskId`. A task can have several sessions. Completing the task does not delete its events.
-- Deleting a project asks whether to delete its tasks or keep them as loose tasks. Events are never deleted by a cascade; they only get unlinked.
+- Deleting a project deletes its child tasks together after confirmation, with one combined Undo restoring both. Loose tasks are never affected.
 - Date-only deadlines stay on their calendar date in any time zone. Timed events are stored in UTC and shown in the user's time zone.
 - Soft delete is used only to support Undo. It's single-user, with all rows scoped to the owner.
 
@@ -183,16 +183,18 @@ AI of any kind (§10), the Inbox page, Chat page, History page, check-ins, task 
 
 **Phase 3 — Calendar.** Week, month and day views, inline create, move and resize, and **Schedule mode**: the floating panel, the drop rules, keyboard pick-up and drop, and tap-to-place.
 
-**Phase 4 — Input and anywhere.** Quick add with tokens, the command palette, keyboard shortcuts, mobile swipes, PWA, and deployment to Vercel and Turso.
+**Phase 4 — Input and gestures (local only).** Quick add with tokens, the command palette, keyboard shortcuts (`?`, `E`, `X`), mobile swipes, local PWA manifest/icons, and branch cleanup.
+
+**Deploy phase (deferred).** Deploy to Vercel with Turso (libSQL) and enforce the Google sign-in email allow-list.
 
 ### MVP acceptance
-1. Create a project, add 5 tasks, drag tasks between To do, Doing and Done, drag the project from Planned to Active, and refresh: everything persists.
+1. Create a project, add 5 tasks, drag tasks between To do and Done, drag the project from Planned to Active, and refresh: everything persists.
 2. Capture "Fix login bug #relay @fri" in one line, and it lands in the right project with a Friday due date.
 3. Press `S` on the Calendar and drag a task from the panel onto Thursday 10:00: a linked event appears. Drag another task onto Friday's day row: it gets that due date. Drag a project onto a day: it gets that deadline. All three can be undone.
 4. Create a loose task and a standalone event, both with no links.
 5. Today's timeline correctly shows today's events, scheduled blocks and due-today tasks, with a moving now line. The catch-up line counts overdue items correctly, and the summary line matches.
 6. Every change can be undone from its toast.
-7. Works on the phone from the deployed URL, installed as a PWA, including swipe gestures.
+7. Installable locally as a PWA from `localhost`, with swipe gestures tested on a phone viewport.
 8. Typecheck, lint, the key Vitest tests and one Playwright flow per screen all pass.
 
 ## 10. After MVP — AI layer (in order)
@@ -210,3 +212,4 @@ Rules carried over from v2: the AI proposes and the app validates and executes. 
 - **2026-11-17 (v3.1):** a Capture button on Today. `Ctrl+←/→` and `1/2/3` switch screens with a directional slide.
 - **2026-11-17 (v3.2):** Today is a single timeline. Projects is a split view whose task board, grouped by status and draggable, replaces a separate kanban screen. Loose tasks live under "No project". Task statuses stay To do / Doing / Done. Schedule mode (`S`) uses a floating panel near the cursor for dropping tasks and projects onto the calendar. Touch screens get a `⋯` button. One hero element per screen, and completion is the animation moment. The mobile approach is agreed in principle and will be validated later.
 - **2026-11-17 (v3.2a, planning):** keep the activity log and revisions as invisible Undo plumbing. Removed fields stay dormant in the database instead of being dropped. Task statuses map Backlog/Next→To do, In Progress/Blocked→Doing; project Completed→Done.
+- **2026-11-21 (Phase 4 planning & `862e077`):** removed the `Doing` task status (tasks are `To do` or `Done`). Deferred Vercel, Turso, and Google allow-list into a later Deploy phase; Phase 4 acceptance #7 is verified locally (`localhost` PWA install + phone-viewport swipes). Confirmed project deletion removes child tasks with one combined Undo, and archived projects stay as a collapsed group.

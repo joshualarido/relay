@@ -302,6 +302,20 @@ export function ManualCalendar({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [scheduleOpen, openSchedule, closeSchedule]);
 
+  // Clicking outside the Schedule panel closes it (unless dragging or in tap-to-place mode).
+  useEffect(() => {
+    if (!scheduleOpen || pickedItem || dragGhost) return;
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest(".schedule-panel")) return;
+      if (scheduleBtnRef.current?.contains(target)) return;
+      closeSchedule();
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [scheduleOpen, pickedItem, dragGhost, closeSchedule]);
+
   // Auto-focus inline title when inline editor opens
   useEffect(() => {
     if (inlineEditor) {
@@ -1119,6 +1133,7 @@ export function ManualCalendar({
           <Button
             ref={scheduleBtnRef}
             variant="outline"
+            title="Schedule mode (S)"
             aria-pressed={scheduleOpen}
             onClick={(e) => {
               if (scheduleOpen) closeSchedule();

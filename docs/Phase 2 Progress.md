@@ -48,10 +48,10 @@ Screenshots (isolated test DB): `docs/phase2-screens/` — projects-1440-light.p
 
 ## Open decisions
 
-1. **Deleting a project** still uses the existing cascade: its tasks are soft-deleted with it, and the dialog lists them. PRD §5 asks whether to delete the tasks or keep them as loose tasks. That needs a backend change, so it is left for a decision.
+1. **Deleting a project** — **Closed (2026-11-21, Phase 4):** keeps the cascade deletion behavior (deleting a project removes its child tasks together after listing them in the confirmation dialog, with one combined Undo restoring both; loose tasks are never affected). Covered by an integration test in `tests/integration/recovery.test.ts`.
 2. **Today and Calendar** still open tasks in the old modal panel. Only Projects uses the new sheet. Should the sheet replace the panel on those screens too?
 3. **Ctrl+N** is wired up, but Chrome reserves Ctrl+N in a normal tab (it opens a new window). It works in an installed app (PWA) window. The **+** button always works.
-4. **Archived projects** appear as a collapsed "Archived" group at the bottom of the list (the old archive view was a separate page). Keep it?
+4. **Archived projects** — **Closed (2026-11-21, Phase 4):** kept as a collapsed "Archived" group at the bottom of the project list.
 5. **New projects** start in Planned (the existing default, and it matches acceptance 1).
 6. **Timed deadlines** (`dueAt`) are shown in the sheet but can't be edited there, since there is no date-time picker yet.
 7. **Drop animation:** the overlay's drop animation is off. With it on, a card that moved to another column blocked the next drag. Cards still animate on completion and on menu moves.
