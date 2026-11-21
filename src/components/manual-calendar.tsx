@@ -265,9 +265,13 @@ export function ManualCalendar({
     setScheduleError("");
     const fallbackRect = scheduleBtnRef.current?.getBoundingClientRect();
     setScheduleAnchor(
-      anchor ??
-        lastPointerRef.current ??
-        (fallbackRect ? { x: fallbackRect.left - 240, y: fallbackRect.bottom + 8 } : null),
+      anchor
+        ? { ...anchor }
+        : lastPointerRef.current
+          ? { ...lastPointerRef.current }
+          : fallbackRect
+            ? { x: fallbackRect.left - 240, y: fallbackRect.bottom + 8 }
+            : null,
     );
     setScheduleOpen(true);
   }, []);
@@ -285,22 +289,21 @@ export function ManualCalendar({
       q.delete("schedule");
       if (q.has("task") && urlSchedule) q.delete("task");
     });
-    requestAnimationFrame(() => scheduleBtnRef.current?.focus());
+    requestAnimationFrame(() => scheduleBtnRef.current?.focus({ preventScroll: true }));
   }, [updateUrl, urlSchedule]);
 
-  // Global S shortcut to toggle Schedule mode
+  // Global S shortcut always opens or moves Schedule mode to the cursor; clicking away closes it.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (isShortcutBlocked(e)) return;
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       if (e.key.toLowerCase() !== "s") return;
       e.preventDefault();
-      if (scheduleOpen) closeSchedule();
-      else openSchedule();
+      openSchedule(lastPointerRef.current);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [scheduleOpen, openSchedule, closeSchedule]);
+  }, [openSchedule]);
 
   // Clicking outside the Schedule panel closes it (unless dragging or in tap-to-place mode).
   useEffect(() => {
@@ -1086,21 +1089,6 @@ export function ManualCalendar({
         </div>
 
         <div className="calendar-toolbar-right">
-          <form
-            className="calendar-date"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const value = String(new FormData(e.currentTarget).get("date"));
-              ref.current?.getApi().gotoDate(value);
-              setActiveDate(value);
-              updateUrl((q) => q.set("date", value));
-            }}
-          >
-            <label className="sr-only" htmlFor="calendar-date">Go to date</label>
-            <input id="calendar-date" name="date" type="date" defaultValue={date} required />
-            <Button type="submit" variant="outline">Go</Button>
-          </form>
-
           <Popover.Root>
             <Popover.Trigger asChild>
               <Button variant="outline" aria-label="Filter calendar">
@@ -1209,6 +1197,19 @@ export function ManualCalendar({
           headerToolbar={false}
           datesSet={(info) => setTitle(info.view.title)}
           height="auto"
+          navLinks={true}
+          navLinkDayClick={(dayDate) => {
+            const iso = dateInTimezone(dayDate.toISOString(), timezone);
+            const api = ref.current?.getApi();
+            api?.gotoDate(iso);
+            api?.changeView(VIEWS.Day, iso);
+            setView("Day");
+            setActiveDate(iso);
+            updateUrl((q) => {
+              q.set("view", "day");
+              q.set("date", iso);
+            });
+          }}
           editable={true}
           eventDurationEditable={true}
           dayMaxEvents={false}
