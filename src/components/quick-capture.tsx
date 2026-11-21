@@ -144,7 +144,6 @@ export function QuickCapture({
       return;
     }
 
-    const today = Temporal.Now.plainDateISO(timezone).toString();
     const bodyBase =
       kind === "project"
         ? {
@@ -152,46 +151,87 @@ export function QuickCapture({
             ...(parsed.dueDate ? { deadline: parsed.dueDate } : {}),
           }
         : kind === "event"
-        ? parsed.timeRange
-          ? (() => {
-              const { start, end } = buildEventRangeFromToken(
-                parsed.timeRange.date,
-                parsed.timeRange.startTime,
-                parsed.timeRange.endTime,
-                timezone,
-              );
-              return {
-                title: cleanTitle,
-                description: "",
-                allDay: false,
-                timezone,
-                start,
-                end,
-                projectId: parsed.projectId,
-                taskId: null,
-                location: "",
-              };
-            })()
-          : (() => {
-              const date = parsed.dueDate ?? today;
-              return {
-                title: cleanTitle,
-                description: "",
-                allDay: true,
-                timezone,
-                start: date,
-                end: Temporal.PlainDate.from(date).add({ days: 1 }).toString(),
-                projectId: parsed.projectId,
-                taskId: null,
-                location: "",
-              };
-            })()
-        : {
-            title: cleanTitle,
-            projectId: parsed.projectId,
-            dueDate: parsed.dueDate ?? parsed.timeRange?.date ?? null,
-            important: parsed.important ? true : null,
-          };
+          ? parsed.timeRange
+            ? (() => {
+                const { start, end } = buildEventRangeFromToken(
+                  parsed.timeRange.date,
+                  parsed.timeRange.startTime,
+                  parsed.timeRange.endTime,
+                  timezone,
+                );
+                return {
+                  title: cleanTitle,
+                  description: "",
+                  allDay: false,
+                  timezone,
+                  start,
+                  end,
+                  projectId: parsed.projectId,
+                  taskId: null,
+                  location: "",
+                };
+              })()
+            : parsed.dueDate
+              ? {
+                  title: cleanTitle,
+                  description: "",
+                  allDay: true,
+                  timezone,
+                  start: parsed.dueDate,
+                  end: Temporal.PlainDate.from(parsed.dueDate).add({ days: 1 }).toString(),
+                  projectId: parsed.projectId,
+                  taskId: null,
+                  location: "",
+                }
+              : {
+                  title: cleanTitle,
+                  description: "",
+                  allDay: false,
+                  timezone,
+                  start: "",
+                  end: "",
+                  projectId: parsed.projectId,
+                  taskId: null,
+                  location: "",
+                }
+          : parsed.timeRange
+            ? (() => {
+                const { start, end } = buildEventRangeFromToken(
+                  parsed.timeRange.date,
+                  parsed.timeRange.startTime,
+                  parsed.timeRange.endTime,
+                  timezone,
+                );
+                return {
+                  title: cleanTitle,
+                  projectId: parsed.projectId,
+                  startAt: start,
+                  endAt: end,
+                  allDay: false,
+                  dueDate: null,
+                  timezone,
+                  important: parsed.important ? true : null,
+                };
+              })()
+            : parsed.dueDate
+              ? {
+                  title: cleanTitle,
+                  projectId: parsed.projectId,
+                  startAt: parsed.dueDate,
+                  endAt: Temporal.PlainDate.from(parsed.dueDate).add({ days: 1 }).toString(),
+                  allDay: true,
+                  dueDate: parsed.dueDate,
+                  important: parsed.important ? true : null,
+                }
+              : {
+                  title: cleanTitle,
+                  projectId: parsed.projectId,
+                  startAt: null,
+                  endAt: null,
+                  allDay: false,
+                  dueDate: null,
+                  important: parsed.important ? true : null,
+                };
 
     const payloadKey = JSON.stringify({ kind, bodyBase });
     if (identity.current.payload !== payloadKey) {

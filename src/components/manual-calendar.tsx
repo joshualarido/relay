@@ -23,16 +23,14 @@ import type { Event, Project, Task } from "@/lib/db/schema";
 import { dateInTimezone } from "@/lib/dates";
 import { isShortcutBlocked } from "@/lib/screens";
 import {
+  buildEventDropAction,
   buildEventResizeEnd,
-  buildInlineEventPayload,
   buildProjectDropAction,
   buildTaskDropAction,
-  defaultInlineTimedRange,
   isWorkingHour,
-  nextCalendarDate,
   type ScheduleDropTarget,
 } from "@/lib/calendar-schedule";
-import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, SlidersHorizontal, X } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, SlidersHorizontal } from "lucide-react";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { SchedulePanel, type ScheduleItem } from "./schedule-panel";
@@ -75,15 +73,6 @@ type KeyboardSlot =
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
-}
-
-function clampPopover(x: number, y: number, width = 300, height = 270) {
-  if (typeof window === "undefined") return { x, y };
-  const pad = 12;
-  return {
-    x: Math.max(pad, Math.min(x, window.innerWidth - width - pad)),
-    y: Math.max(pad, Math.min(y, window.innerHeight - height - pad)),
-  };
 }
 
 function formatSlotTime(minutes: number) {
@@ -188,20 +177,12 @@ export function ManualCalendar({
   const [enabled, setEnabled] = useState<Record<Kind, boolean>>({ project: true, task: true, event: true });
   const [error, setError] = useState("");
 
-  // Inline create state
-  const [inlineEditor, setInlineEditor] = useState<InlineEditorState | null>(null);
-  const [inlineTitle, setInlineTitle] = useState("");
-  const [inlineStart, setInlineStart] = useState("");
-  const [inlineEnd, setInlineEnd] = useState("");
-  const [inlinePending, setInlinePending] = useState(false);
-  const [inlineError, setInlineError] = useState("");
-
   // Schedule mode state
   const urlSchedule = params.get("schedule") === "1";
   const urlHighlightTask = urlSchedule ? params.get("task") : null;
   const [scheduleOpen, setScheduleOpen] = useState(urlSchedule);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(urlHighlightTask);
-  const [keptTaskIds, setKeptTaskIds] = useState<Set<string>>(() => new Set());
+  const [keptTaskIds] = useState<Set<string>>(() => new Set());
   const [dismissedTaskIds, setDismissedTaskIds] = useState<Set<string>>(() => new Set());
   const [pickedItem, setPickedItem] = useState<ScheduleItem | null>(null);
   const [keyboardSlot, setKeyboardSlot] = useState<KeyboardSlot | null>(null);
@@ -261,7 +242,6 @@ export function ManualCalendar({
   }
 
   const openSchedule = useCallback((anchor?: { x: number; y: number } | null) => {
-    setInlineEditor(null);
     setScheduleError("");
     const fallbackRect = scheduleBtnRef.current?.getBoundingClientRect();
     setScheduleAnchor(
@@ -319,13 +299,6 @@ export function ManualCalendar({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [scheduleOpen, pickedItem, dragGhost, closeSchedule]);
 
-  // Auto-focus inline title when inline editor opens
-  useEffect(() => {
-    if (inlineEditor) {
-      requestAnimationFrame(() => inlineTitleRef.current?.focus());
-    }
-  }, [inlineEditor]);
-
   const records = useMemo(
     () => [
       ...projects
@@ -341,27 +314,29 @@ export function ManualCalendar({
           done: false,
         })),
       ...tasks
-        .filter((t) => t.dueDate || t.dueAt)
+        .filter((t) => Boolean(t.startAt || t.dueDate || t.dueAt))
         .map((t) => ({
           kind: "task" as const,
           id: t.id,
           title: t.title,
-          start: (t.dueDate ?? t.dueAt)!,
-          end: undefined,
-          allDay: Boolean(t.dueDate),
+          start: (t.startAt ?? t.dueDate ?? t.dueAt)!,
+          end: t.endAt ?? undefined,
+          allDay: t.startAt ? t.allDay : Boolean(t.dueDate),
           revision: t.revision,
           done: t.status === "Done",
         })),
-      ...events.map((e) => ({
-        kind: "event" as const,
-        id: e.id,
-        title: e.title,
-        start: e.start,
-        end: e.end,
-        allDay: e.allDay,
-        revision: e.revision,
-        done: false,
-      })),
+      ...events
+        .filter((e) => Boolean(e.start && e.end))
+        .map((e) => ({
+          kind: "event" as const,
+          id: e.id,
+          title: e.title,
+          start: e.start,
+          end: e.end,
+          allDay: e.allDay,
+          revision: e.revision,
+          done: false,
+        })),
     ],
     [projects, tasks, events],
   );
@@ -508,71 +483,31 @@ export function ManualCalendar({
 
       const cur = latestRef.current;
       const freshTask = item.kind === "task" ? cur.tasks.find((t) => t.id === item.id) ?? item.task : null;
+      const freshEvent = item.kind === "event" ? cur.events.find((e) => e.id === item.id) ?? item.event : null;
       const freshProject = item.kind === "project" ? cur.projects.find((p) => p.id === item.id) ?? item.project : null;
 
       const action =
         item.kind === "task"
-          ? item.source === "dateless-task" && target.kind === "time"
-            ? null
-            : buildTaskDropAction(freshTask!, target, timezone)
-          : buildProjectDropAction(freshProject!, target);
+          ? buildTaskDropAction(freshTask!, target, timezone)
+          : item.kind === "event"
+            ? buildEventDropAction(freshEvent!, target, timezone)
+            : buildProjectDropAction(freshProject!, target);
 
       if (!action) {
-        setScheduleAnnouncement(
-          item.source === "dateless-task"
-            ? "Drop tasks without a deadline onto a day or all-day row to set a due date."
-            : "Projects can only be dropped onto a day or all-day row.",
-        );
+        setScheduleAnnouncement("Projects can only be dropped onto a day or all-day row.");
         return;
       }
 
       const prevEvents = cur.events;
       const prevTasks = cur.tasks;
       const prevProjects = cur.projects;
-      const optimisticId = `optimistic-${crypto.randomUUID()}`;
 
       // Optimistic update
-      if (action.endpoint === "/api/events") {
-        const nowIso = new Date().toISOString();
-        const optimisticEvent: Event = {
-          id: optimisticId,
-          ownerId: freshTask!.ownerId,
-          title: action.payload.title,
-          description: "",
-          start: action.payload.start,
-          end: action.payload.end,
-          allDay: false,
-          timezone: action.payload.timezone,
-          projectId: null,
-          taskId: action.payload.taskId,
-          location: "",
-          deletedAt: null,
-          deletionOperationId: null,
-          revision: 1,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        };
-        setEvents((prev) => {
-          const next = [...prev, optimisticEvent];
-          latestRef.current = { ...latestRef.current, events: next };
-          return next;
-        });
-        if (keepInPanel) {
-          setKeptTaskIds((prev) => new Set(prev).add(item.id));
-        } else {
-          setKeptTaskIds((prev) => {
-            if (!prev.has(item.id)) return prev;
-            const next = new Set(prev);
-            next.delete(item.id);
-            return next;
-          });
-          if (highlightedTaskId === item.id) setHighlightedTaskId(null);
-        }
-      } else if ("dueDate" in action.payload) {
-        const dueDate = action.payload.dueDate;
+      if ("startAt" in action.payload) {
+        const { startAt, endAt, allDay, dueDate, timezone: tz } = action.payload;
         setTasks((prev) => {
           const next = prev.map((t) =>
-            t.id === item.id ? { ...t, dueDate, dueAt: null, timezone: null } : t,
+            t.id === item.id ? { ...t, startAt, endAt, allDay, dueDate, dueAt: null, timezone: tz } : t,
           );
           latestRef.current = { ...latestRef.current, tasks: next };
           return next;
@@ -581,6 +516,13 @@ export function ManualCalendar({
           setDismissedTaskIds((prev) => new Set(prev).add(item.id));
           if (highlightedTaskId === item.id) setHighlightedTaskId(null);
         }
+      } else if ("start" in action.payload) {
+        const { start, end, allDay, timezone: tz } = action.payload;
+        setEvents((prev) => {
+          const next = prev.map((e) => (e.id === item.id ? { ...e, start, end, allDay, timezone: tz } : e));
+          latestRef.current = { ...latestRef.current, events: next };
+          return next;
+        });
       } else if ("deadline" in action.payload) {
         const deadline = action.payload.deadline;
         setProjects((prev) => {
@@ -593,11 +535,13 @@ export function ManualCalendar({
       setBusyCount((c) => c + 1);
       try {
         await enqueueRecord(action.entityKey, async () => {
-          // Re-read latest revision inside serialized queue for PATCHes
           let bodyPayload: Record<string, unknown> = { ...action.payload, mutationId: crypto.randomUUID() };
           if (action.endpoint.startsWith("/api/tasks/")) {
             const latestTask = latestRef.current.tasks.find((t) => t.id === item.id);
             if (latestTask) bodyPayload = { ...bodyPayload, expectedRevision: latestTask.revision };
+          } else if (action.endpoint.startsWith("/api/events/")) {
+            const latestEvent = latestRef.current.events.find((e) => e.id === item.id);
+            if (latestEvent) bodyPayload = { ...bodyPayload, expectedRevision: latestEvent.revision };
           } else if (action.endpoint.startsWith("/api/projects/")) {
             const latestProject = latestRef.current.projects.find((p) => p.id === item.id);
             if (latestProject) bodyPayload = { ...bodyPayload, expectedRevision: latestProject.revision };
@@ -611,22 +555,22 @@ export function ManualCalendar({
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "Could not schedule item.");
 
-          if (action.endpoint === "/api/events") {
-            setEvents((prev) => {
-              const next = prev.map((e) => (e.id === optimisticId ? (result as Event) : e));
-              latestRef.current = { ...latestRef.current, events: next };
-              return next;
-            });
-            setScheduleAnnouncement(`Scheduled "${item.title}" as a 1-hour event.`);
-            notifyMutation(response, () => router.refresh(), { message: `Scheduled "${item.title}".` });
-          } else if ("dueDate" in action.payload) {
+          if ("startAt" in action.payload) {
             setTasks((prev) => {
               const next = prev.map((t) => (t.id === item.id ? (result as Task) : t));
               latestRef.current = { ...latestRef.current, tasks: next };
               return next;
             });
-            setScheduleAnnouncement(`Set due date for "${item.title}" to ${action.payload.dueDate}.`);
-            notifyMutation(response, () => router.refresh(), { message: `Due date set for "${item.title}".` });
+            setScheduleAnnouncement(`Scheduled "${item.title}".`);
+            notifyMutation(response, () => router.refresh(), { message: `Scheduled "${item.title}".` });
+          } else if ("start" in action.payload) {
+            setEvents((prev) => {
+              const next = prev.map((e) => (e.id === item.id ? (result as Event) : e));
+              latestRef.current = { ...latestRef.current, events: next };
+              return next;
+            });
+            setScheduleAnnouncement(`Scheduled "${item.title}".`);
+            notifyMutation(response, () => router.refresh(), { message: `Scheduled "${item.title}".` });
           } else if ("deadline" in action.payload) {
             setProjects((prev) => {
               const next = prev.map((p) => (p.id === item.id ? (result as Project) : p));
@@ -676,7 +620,7 @@ export function ManualCalendar({
         changeView("Day");
       }
       const startSlot: KeyboardSlot =
-        item.kind === "project" || item.source === "dateless-task" || nextView === "Month"
+        item.kind === "project" || nextView === "Month"
           ? { kind: "day", date: activeDate }
           : { kind: "time", date: activeDate, minutes: 10 * 60 };
       setKeyboardSlot(startSlot);
@@ -783,7 +727,7 @@ export function ManualCalendar({
         }
         if (!dragging) return;
         setDragGhost({ item, x: ev.clientX, y: ev.clientY });
-        const dayOnly = item.kind === "project" || item.source === "dateless-task";
+        const dayOnly = item.kind === "project";
         lastHit = hitTestCalendar(ev.clientX, ev.clientY, dayOnly);
         setHoverHighlight(lastHit ? lastHit.box : null);
       };
@@ -800,7 +744,7 @@ export function ManualCalendar({
         }
         setDragGhost(null);
         setHoverHighlight(null);
-        const dayOnly = item.kind === "project" || item.source === "dateless-task";
+        const dayOnly = item.kind === "project";
         const hit = hitTestCalendar(ev.clientX, ev.clientY, dayOnly) ?? lastHit;
         if (hit) {
           void placeItem(item, hit.target, { keepInPanel: ev.shiftKey });
@@ -951,94 +895,19 @@ export function ManualCalendar({
     const clickTarget = e.target as HTMLElement | null;
     if (clickTarget?.closest(".calendar-record, a, button")) return;
 
+    if (!scheduleOpen || !pickedItem) return;
+
     const hit = hitTestCalendar(
       e.clientX,
       e.clientY,
-      pickedItem ? pickedItem.kind === "project" || pickedItem.source === "dateless-task" : false,
+      pickedItem.kind === "project",
     );
     if (!hit) return;
 
-    if (scheduleOpen) {
-      if (pickedItem) {
-        void placeItem(pickedItem, hit.target, { keepInPanel: e.shiftKey });
-        if (!e.shiftKey) {
-          setPickedItem(null);
-          setKeyboardSlot(null);
-        }
-      }
-      return;
-    }
-
-    const pos = clampPopover(e.clientX + 8, e.clientY + 8);
-    const returnFocus = clickTarget?.closest<HTMLElement>("[data-date]") ?? frameRef.current;
-
-    if (hit.target.kind === "day") {
-      const start = hit.target.date;
-      const end = nextCalendarDate(start);
-      setInlineTitle("");
-      setInlineStart(start);
-      setInlineEnd(end);
-      setInlineError("");
-      setInlineEditor({ allDay: true, start, end, x: pos.x, y: pos.y, returnFocus });
-    } else {
-      const range = defaultInlineTimedRange(hit.target.startInstant, timezone);
-      setInlineTitle("");
-      setInlineStart(range.start);
-      setInlineEnd(range.end);
-      setInlineError("");
-      setInlineEditor({ allDay: false, start: range.start, end: range.end, x: pos.x, y: pos.y, returnFocus });
-    }
-  }
-
-  function closeInlineEditor() {
-    const returnEl = inlineEditor?.returnFocus ?? frameRef.current;
-    setInlineEditor(null);
-    setInlineError("");
-    requestAnimationFrame(() => returnEl?.focus());
-  }
-
-  async function saveInlineEvent(e: React.FormEvent) {
-    e.preventDefault();
-    if (!inlineEditor || inlinePending) return;
-    if (!inlineTitle.trim()) {
-      setInlineError("Enter an event title.");
-      return;
-    }
-    setInlinePending(true);
-    setInlineError("");
-    try {
-      const payload = buildInlineEventPayload({
-        title: inlineTitle,
-        allDay: inlineEditor.allDay,
-        start: inlineStart,
-        end: inlineEnd,
-        timezone,
-      });
-      const response = await fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, mutationId: crypto.randomUUID() }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Could not create event.");
-      setEvents((prev) => {
-        const next = [...prev, result as Event];
-        latestRef.current = { ...latestRef.current, events: next };
-        return next;
-      });
-      setInlineEditor(null);
-      notifyMutation(response, () => router.refresh(), { message: `Created "${(result as Event).title}".` });
-      router.refresh();
-    } catch (failure) {
-      setInlineError(
-        failure instanceof RangeError
-          ? "Invalid or ambiguous local time in this timezone."
-          : failure instanceof Error
-            ? failure.message
-            : "Could not create event.",
-      );
-    } finally {
-      setInlinePending(false);
+    void placeItem(pickedItem, hit.target, { keepInPanel: e.shiftKey });
+    if (!e.shiftKey) {
+      setPickedItem(null);
+      setKeyboardSlot(null);
     }
   }
 
@@ -1278,82 +1147,6 @@ export function ManualCalendar({
           </div>
         )}
       </div>
-
-      {inlineEditor && (
-        <div
-          className="inline-event-popover"
-          role="dialog"
-          aria-label="Quick create event"
-          style={{ left: `${inlineEditor.x}px`, top: `${inlineEditor.y}px` }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
-              closeInlineEditor();
-            }
-          }}
-        >
-          <div className="inline-event-header">
-            <h3>{inlineEditor.allDay ? "New all-day event" : "New event"}</h3>
-            <button type="button" className="icon-button" aria-label="Cancel inline event" onClick={closeInlineEditor}>
-              <X size={15} aria-hidden="true" />
-            </button>
-          </div>
-          <form className="stack" onSubmit={saveInlineEvent}>
-            <div className="field">
-              <label htmlFor="inline-event-title" className="sr-only">Event title</label>
-              <input
-                ref={inlineTitleRef}
-                id="inline-event-title"
-                name="title"
-                placeholder="Event title"
-                value={inlineTitle}
-                onChange={(e) => setInlineTitle(e.target.value)}
-                required
-                maxLength={500}
-                disabled={inlinePending}
-              />
-            </div>
-            <div className="inline-event-times">
-              <div className="field">
-                <label htmlFor="inline-event-start">Start</label>
-                <input
-                  id="inline-event-start"
-                  type={inlineEditor.allDay ? "date" : "datetime-local"}
-                  value={inlineStart}
-                  onChange={(e) => setInlineStart(e.target.value)}
-                  required
-                  disabled={inlinePending}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="inline-event-end">End</label>
-                <input
-                  id="inline-event-end"
-                  type={inlineEditor.allDay ? "date" : "datetime-local"}
-                  value={inlineEnd}
-                  onChange={(e) => setInlineEnd(e.target.value)}
-                  required
-                  disabled={inlinePending}
-                />
-              </div>
-            </div>
-            {inlineError && (
-              <p role="alert" className="error-message text-sm">
-                {inlineError}
-              </p>
-            )}
-            <div className="inline-event-actions">
-              <Button type="button" variant="outline" onClick={closeInlineEditor} disabled={inlinePending}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={inlinePending}>
-                {inlinePending ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {scheduleOpen && (
         <SchedulePanel

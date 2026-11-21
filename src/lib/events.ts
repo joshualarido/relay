@@ -26,6 +26,8 @@ const createSchema = z.object({
 const updateSchema = z.object(fields).partial().extend({ mutationId: mutationIdSchema }).strict();
 const moveSchema = z.object({ start: fields.start, mutationId: mutationIdSchema }).strict();
 const datesSchema = z.object({ start: fields.start, end: fields.end, allDay: fields.allDay }).superRefine((data, ctx) => {
+  // Unscheduled event: both start and end are empty strings.
+  if (!data.start && !data.end) return;
   const format = data.allDay ? dateOnlySchema : z.iso.datetime({ offset: true });
   for (const key of ["start", "end"] as const) {
     if (!format.safeParse(data[key]).success) ctx.addIssue({ code: "custom", path: [key], message: data.allDay ? "Choose a valid date (YYYY-MM-DD)." : "Include a valid time and UTC offset." });
@@ -70,8 +72,9 @@ export function createEvent(db: AppDatabase, ownerId: string, input: unknown): E
     const projectId = validateLinks(tx, ownerId, data);
     const now = new Date().toISOString();
     const result = tx.insert(event).values({
-      ...data, projectId, start: data.allDay ? data.start : new Date(data.start).toISOString(),
-      end: data.allDay ? data.end : new Date(data.end).toISOString(),
+      ...data, projectId,
+      start: !data.start ? "" : data.allDay ? data.start : new Date(data.start).toISOString(),
+      end: !data.end ? "" : data.allDay ? data.end : new Date(data.end).toISOString(),
       id: crypto.randomUUID(), ownerId, createdAt: now, updatedAt: now,
     }).returning().get();
     recordOperation(tx, {
@@ -105,8 +108,9 @@ function saveEvent(db: AppDatabase, ownerId: string, id: string, expectedRevisio
     datesSchema.parse(merged);
     const projectId = validateLinks(tx, ownerId, merged);
     const result = tx.update(event).set({
-      ...merged, projectId, start: merged.allDay ? merged.start : new Date(merged.start).toISOString(),
-      end: merged.allDay ? merged.end : new Date(merged.end).toISOString(),
+      ...merged, projectId,
+      start: !merged.start ? "" : merged.allDay ? merged.start : new Date(merged.start).toISOString(),
+      end: !merged.end ? "" : merged.allDay ? merged.end : new Date(merged.end).toISOString(),
       revision: before.revision + 1, updatedAt: new Date().toISOString(),
     }).where(and(eq(event.id, id), eq(event.ownerId, ownerId))).returning().get()!;
     recordOperation(tx, {
