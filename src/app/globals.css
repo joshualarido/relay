@@ -547,6 +547,36 @@ progress::-moz-progress-bar { background: var(--primary); }
 .day-clear { display: flex; align-items: center; gap: 12px; padding: 24px 0; font-size: 1.0625rem; font-weight: 600; }
 .day-clear svg { fill: none; stroke: var(--primary); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .day-clear.is-new path { stroke-dasharray: 16; stroke-dashoffset: 16; animation: draw-check 200ms ease-out 100ms forwards; }
+
+/* Today Progress & Momentum */
+.progress-section { padding-top: 32px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 20px; }
+.progress-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.progress-header h2 { margin: 0; }
+.momentum-hero { display: flex; flex-direction: column; gap: 10px; }
+.momentum-score-row { display: flex; align-items: baseline; gap: 8px; }
+.momentum-number { font-size: 2.25rem; line-height: 1; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.momentum-denom { font-size: .875rem; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.momentum-status { margin-left: 4px; font-size: .78125rem; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--secondary); color: var(--muted-foreground); }
+.momentum-status[data-status="on-track"] { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
+.momentum-status[data-status="building"] { background: color-mix(in srgb, var(--project-deadline) 16%, transparent); color: var(--project-deadline); }
+.momentum-track { height: 6px; border-radius: 999px; background: var(--secondary); overflow: hidden; }
+.momentum-track > span { display: block; height: 100%; border-radius: inherit; background: var(--primary); transition: width 240ms cubic-bezier(0.2, 0, 0, 1); }
+.momentum-breakdown { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: .8125rem; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.momentum-chart { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; align-items: end; height: 96px; padding-top: 4px; }
+.momentum-chart[data-window="30"] { gap: 3px; }
+.momentum-chart[data-window="90"] { gap: 2px; }
+.momentum-bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; min-width: 0; }
+.momentum-bar-track { flex: 1; width: 100%; max-width: 28px; border-radius: 5px; background: var(--secondary); display: flex; align-items: flex-end; overflow: hidden; }
+.momentum-bar-fill { width: 100%; background: var(--primary); border-radius: 5px; transition: height 220ms cubic-bezier(0.2, 0, 0, 1); }
+.momentum-bar-label { font-size: .72rem; color: var(--muted-foreground); }
+.momentum-projects { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.momentum-projects h3 { font-size: .8125rem; color: var(--muted-foreground); font-weight: 500; }
+.momentum-project-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.momentum-project-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(80px, 160px) auto; gap: 12px; align-items: center; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; color: var(--foreground); transition: background-color 140ms ease-out; }
+.momentum-project-row:hover { background: var(--secondary); }
+.momentum-project-name { font-weight: 500; overflow-wrap: anywhere; }
+.momentum-project-bar { height: 4px; }
+.momentum-project-meta { font-size: .78125rem; color: var(--muted-foreground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 @keyframes draw-check { to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .day-clear.is-new path { animation: none; stroke-dashoffset: 0; } }
 @media (max-width: 760px) {

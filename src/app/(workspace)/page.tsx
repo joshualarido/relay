@@ -7,6 +7,7 @@ import { listTasks } from "@/lib/tasks";
 import { summarySentence, todayTimeline } from "@/lib/today";
 import { TodayTimeline } from "@/components/today-timeline";
 import { TodayDueList, TodayShortcuts } from "@/components/today-due-list";
+import { TodayProgress } from "@/components/today-progress";
 import { CatchUp } from "@/components/catch-up";
 import { DayClear } from "@/components/day-clear";
 import { TaskSelection } from "@/components/task-selection";
@@ -23,6 +24,8 @@ export default async function TodayPage({ searchParams }: {
   const tomorrow = start.add({ days: 1 });
   const projects = listProjects(db, ownerId);
   const allProjects = [...projects, ...listProjects(db, ownerId, true)];
+  const allTasks = listTasks(db, ownerId, true);
+  const nowIso = new Date().toISOString();
   const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
   const dateLabel = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${day.today}T12:00:00Z`));
   const todayTasks = [
@@ -45,7 +48,8 @@ export default async function TodayPage({ searchParams }: {
     {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
       : day.dayState === "clear" ? <DayClear day={day.today} />
       : <TodayTimeline items={day.items} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
-    {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={listTasks(db, ownerId, true)} timezone={timezone} />
+    <TodayProgress tasks={allTasks} projects={projects} timezone={timezone} now={nowIso} />
+    {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={allTasks} timezone={timezone} />
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} focus={Boolean(query.focus)} projects={allProjects} />}
   </div>;
 }
