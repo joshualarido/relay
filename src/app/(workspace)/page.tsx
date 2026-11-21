@@ -40,15 +40,21 @@ export default async function TodayPage({ searchParams }: {
       <div><h1>Today</h1><p className="today-summary"><span>{dateLabel}</span>{day.dayState === "active" && <> · <span>{summarySentence(day.summary, day.dayState)}</span></>}</p></div>
       {day.dayState !== "empty" && <CaptureButton />}
     </header>
-    {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
-    {day.dueUnscheduled.length > 0 && <section className="today-section" aria-labelledby="due-today-heading">
-      <h2 id="due-today-heading">Due today</h2>
-      <TodayDueList tasks={day.dueUnscheduled} projectNames={projectNames} timezone={timezone} />
-    </section>}
-    {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
-      : day.dayState === "clear" ? <DayClear day={day.today} />
-      : <TodayTimeline items={day.items} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
-    <TodayProgress tasks={allTasks} projects={projects} timezone={timezone} now={nowIso} />
+    <div className="today-layout">
+      <div className="today-primary">
+        {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
+        {day.dueUnscheduled.length > 0 && <section className="today-section" aria-labelledby="due-today-heading">
+          <h2 id="due-today-heading">Due today</h2>
+          <TodayDueList tasks={day.dueUnscheduled} projectNames={projectNames} timezone={timezone} />
+        </section>}
+        {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
+          : day.dayState === "clear" ? <DayClear day={day.today} />
+          : <TodayTimeline items={day.items} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
+      </div>
+      <aside className="today-secondary" aria-label="Progress">
+        <TodayProgress tasks={allTasks} projects={projects} timezone={timezone} now={nowIso} />
+      </aside>
+    </div>
     {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={allTasks} timezone={timezone} />
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} focus={Boolean(query.focus)} projects={allProjects} />}
   </div>;

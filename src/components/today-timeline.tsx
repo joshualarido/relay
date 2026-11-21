@@ -91,7 +91,7 @@ export function TodayTimeline({
               {block &&
                 (item.done ? (
                   <span className="complete-mark" role="img" aria-label="Completed">
-                    <Check size={16} aria-hidden="true" />
+                    <Check size={13} aria-hidden="true" />
                   </span>
                 ) : (
                   <TaskComplete task={item.task!} />

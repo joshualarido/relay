@@ -20,5 +20,5 @@ export function TaskComplete({ task }: { task: Task }) {
       notifyMutation(response, () => router.refresh()); router.refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not complete task. Try again."); }
     finally { setPending(false); }
-  }}><Check size={18} aria-hidden="true" /></Button>{error && <p role="alert" className="error-message text-sm">{error}</p>}</div>;
+  }}><Check size={13} aria-hidden="true" /></Button>{error && <p role="alert" className="error-message text-sm">{error}</p>}</div>;
 }
