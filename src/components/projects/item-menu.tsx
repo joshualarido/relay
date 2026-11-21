@@ -1,12 +1,12 @@
 "use client";
 
-import { useSyncExternalStore, type ReactElement } from "react";
+import { useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { ContextMenu, DropdownMenu } from "radix-ui";
 import { Check, ChevronRight, MoreHorizontal } from "lucide-react";
 
 export type MenuEntry =
-  | { label: string; onSelect: () => void; danger?: boolean; disabled?: boolean; checked?: boolean }
-  | { label: string; children: MenuEntry[] }
+  | { label: string; icon?: ReactNode; onSelect: () => void; danger?: boolean; disabled?: boolean; checked?: boolean }
+  | { label: string; icon?: ReactNode; children: MenuEntry[] }
   | "separator";
 
 // Both Radix menus share the same part names, so one renderer serves the ⋯ button and right-click.
@@ -16,11 +16,11 @@ function Entries({ M, entries }: { M: Parts; entries: MenuEntry[] }) {
   return entries.map((entry, i) => {
     if (entry === "separator") return <M.Separator key={i} className="menu-separator" />;
     if ("children" in entry) return <M.Sub key={entry.label}>
-      <M.SubTrigger className="dropdown-item">{entry.label}<ChevronRight size={16} aria-hidden="true" className="ml-auto" /></M.SubTrigger>
+      <M.SubTrigger className="dropdown-item">{entry.icon}{entry.label}<ChevronRight size={16} aria-hidden="true" className="ml-auto" /></M.SubTrigger>
       <M.Portal><M.SubContent className="dropdown-menu" sideOffset={4}><Entries M={M} entries={entry.children} /></M.SubContent></M.Portal>
     </M.Sub>;
     return <M.Item key={entry.label} className={entry.danger ? "dropdown-item is-danger" : "dropdown-item"} disabled={entry.disabled} onSelect={entry.onSelect}>
-      {entry.label}{entry.checked && <><Check size={16} aria-hidden="true" className="ml-auto" /><span className="sr-only"> (current)</span></>}
+      {entry.icon}{entry.label}{entry.checked && <><Check size={16} aria-hidden="true" className="ml-auto" /><span className="sr-only"> (current)</span></>}
     </M.Item>;
   });
 }

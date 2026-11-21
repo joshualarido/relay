@@ -1,99 +1,283 @@
 "use client";
 
 import Link from "next/link";
-import { projectHref } from "@/lib/links";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { X } from "lucide-react";
+import { Archive, CalendarClock, CalendarDays, Check, CircleDot, Folder, SquareCheck, Star, X } from "lucide-react";
+import { Temporal } from "temporal-polyfill";
 import type { Project, Task } from "@/lib/db/schema";
-import type { DeletionPreview } from "@/lib/lifecycle";
-import { Button } from "./ui/button";
+import { taskColumns } from "@/lib/project-board";
 import { notifyMutation } from "./mutation-notice";
-import { TaskForm } from "./task-form";
+import { InlineText } from "./projects/inline-text";
+import { useWorkspace } from "./workspace-store";
 
-export function TaskPanel({ task, projects, focus }: { task: Task | null; projects: Project[]; focus: boolean }) {
+function relativeTime(iso: string): string {
+  const diff = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
+  if (diff < 1) return "Updated just now";
+  if (diff < 60) return `Updated ${diff}m ago`;
+  const hrs = Math.floor(diff / 60);
+  if (hrs < 24) return `Updated ${hrs}h ago`;
+  return `Updated ${Math.floor(hrs / 24)}d ago`;
+}
+
+export function TaskPanel({ task, projects }: { task: Task | null; projects: Project[]; focus?: boolean }) {
   const router = useRouter();
   const path = usePathname();
   const search = useSearchParams();
+  const workspace = useWorkspace();
+  const [localTask, setLocalTask] = useState(task);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [preview, setPreview] = useState<DeletionPreview | null>(null);
-  const mutationId = useRef("");
+
+  const current = localTask;
+
   function close() {
     const query = new URLSearchParams(search);
-    query.delete("task"); query.delete("focus");
+    query.delete("task");
+    query.delete("focus");
     router.replace(`${path}${query.size ? `?${query}` : ""}`, { scroll: false });
   }
-  return <Dialog.Root open onOpenChange={(open) => { if (!open && !pending) close(); }}>
-    <Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`form-dialog task-panel${focus ? " focus-panel" : ""}`}
-      onCloseAutoFocus={(e) => {
-        e.preventDefault();
-        const trigger = task && document.querySelector<HTMLElement>(`[data-task-link="${CSS.escape(task.id)}"]`);
-        (trigger || document.getElementById("main"))?.focus();
-      }}>
-      <Dialog.Title className={focus ? "text-2xl font-semibold mb-4" : "sr-only"}>{focus ? "Focus mode" : "Task details"}</Dialog.Title>
-      <Dialog.Description className="muted mb-5">Saved task details. You can undo changes from the notification.</Dialog.Description>
-      <Button variant="ghost" className="dialog-close" aria-label="Close task details" disabled={pending} onClick={close}><X size={20} /></Button>
-      {!task ? <p>Task not found.</p> : <div className="stack">
-        <h2 className="text-xl break-words">{task.title}</h2>
-        <p className="muted">{task.status}{task.important ? " / Important" : ""}</p>
-        <p className="whitespace-pre-wrap">{task.description || "No description yet."}</p>
-        {task.projectId ? <Link className="text-primary" href={projectHref(task.projectId)} onClick={(e) => { if (pending) e.preventDefault(); }}>{projects.find((p) => p.id === task.projectId)?.name ?? "Project"}</Link> : <Link className="text-primary" href={projectHref(null)}>No project</Link>}
-        {task.dueDate && <p>Due <time dateTime={task.dueDate}>{task.dueDate}</time> (date only)</p>}
-        {task.dueAt && <p>Due <time dateTime={task.dueAt}>{new Intl.DateTimeFormat("en-GB", { timeZone: task.timezone!, dateStyle: "medium", timeStyle: "short" }).format(new Date(task.dueAt))}</time> ({task.timezone})</p>}
-        {task.completedAt && <p className="muted">Completed at <time dateTime={task.completedAt}>{task.completedAt}</time></p>}
-        <p className="muted text-sm">Created {task.createdAt} / Updated {task.updatedAt}</p>
-        <div className="flex flex-wrap gap-3"><TaskForm task={task} projects={projects} />
-          {!focus && <Button variant="outline" disabled={pending} onClick={() => {
-            const query = new URLSearchParams(search); query.delete("task"); query.set("focus", task.id);
-            router.replace(`${path}?${query}`, { scroll: false });
-          }}>Focus on this task</Button>}
-          {task.status === "Done" && <Button variant="outline" disabled={pending} onClick={async () => {
-            setPending(true); setError("");
-            try {
-              const response = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ expectedRevision: task.revision, status: "To do", mutationId: crypto.randomUUID() }) });
-              const result = await response.json();
-              if (!response.ok) throw new Error(result.error);
-              notifyMutation(response, () => router.refresh()); router.refresh();
-            } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save. Try again."); }
-            finally { setPending(false); }
-          }}>Reopen task</Button>}
-          <Button variant="destructive" disabled={pending} onClick={async () => {
-            setPending(true); setError("");
-            try {
-              const response = await fetch(`/api/tasks/${task.id}/deletion`);
-              const result = await response.json();
-              if (!response.ok) throw new Error(result.error);
-              mutationId.current = crypto.randomUUID(); setPreview(result);
-            } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not load preview."); }
-            finally { setPending(false); }
-          }}>Delete task</Button>
-        </div>
-        {error && <p role="alert" className="error-message">{error}</p>}
-      </div>}
-      <Dialog.Root open={Boolean(preview)} onOpenChange={(open) => { if (!open && !pending) setPreview(null); }}>
-        <Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="form-dialog">
-          <Dialog.Title className="text-xl font-semibold">Delete task?</Dialog.Title>
-          <Dialog.Description className="muted mt-3">These records will be deleted together. You can undo this from the notification.</Dialog.Description>
-          <ul className="preview-list">{preview?.records.map((r) => <li key={r.id}>{r.label}<span className="muted">{r.entityType}</span></li>)}</ul>
-          {error && <p role="alert" className="error-message">{error}</p>}
-          <div className="form-actions"><Button variant="outline" disabled={pending} onClick={() => setPreview(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={pending} onClick={async () => {
-              setPending(true); setError("");
-              try {
-                const response = await fetch(`/api/tasks/${task!.id}/deletion`, { method: "POST", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ ...preview, mutationId: mutationId.current }) });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
-                setPreview(null); close(); notifyMutation(response, () => router.refresh()); router.refresh();
-              } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save. Retry with this preview."); }
-              finally { setPending(false); }
-            }}>{pending ? "Deleting..." : "Confirm soft deletion"}</Button>
-          </div>
-        </Dialog.Content></Dialog.Portal>
-      </Dialog.Root>
-    </Dialog.Content></Dialog.Portal>
-  </Dialog.Root>;
+
+  async function patch(fields: Record<string, unknown>, message: string) {
+    if (!current) return false;
+    setPending(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/tasks/${current.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: current.revision, ...fields, mutationId: crypto.randomUUID() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save task.");
+      setLocalTask(result as Task);
+      workspace?.setTasks((all) => all.map((t) => (t.id === current.id ? (result as Task) : t)));
+      notifyMutation(response, () => router.refresh(), { message });
+      router.refresh();
+      return true;
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not save task.");
+      return false;
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function archive() {
+    if (!current) return;
+    workspace?.setTasks((all) => all.filter((t) => t.id !== current.id));
+    close();
+    try {
+      const response = await fetch(`/api/tasks/${current.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: current.revision, archived: true, mutationId: crypto.randomUUID() }),
+      });
+      if (response.ok) {
+        notifyMutation(response, () => router.refresh(), { message: "Task archived." });
+        router.refresh();
+      }
+    } catch {}
+  }
+
+  const activeProjects = projects.filter((p) => !p.archivedAt || p.id === current?.projectId);
+  const dateValue = current?.startAt ? current.startAt.slice(0, 10) : current?.dueDate ?? "";
+
+  return (
+    <Dialog.Root open onOpenChange={(open) => { if (!open && !pending) close(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="sheet-overlay" />
+        <Dialog.Content
+          className="detail-sheet"
+          aria-describedby={undefined}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            const trigger = current && document.querySelector<HTMLElement>(`[data-task-link="${CSS.escape(current.id)}"]`);
+            (trigger || document.getElementById("main"))?.focus();
+          }}
+        >
+          <Dialog.Close className="icon-button sheet-close" aria-label="Close task details" disabled={pending}>
+            <X size={18} aria-hidden="true" />
+          </Dialog.Close>
+
+          {!current ? (
+            <p className="muted">Task not found.</p>
+          ) : (
+            <>
+              <div className="detail-header">
+                <div className="detail-kicker">
+                  <span className="detail-badge">
+                    <SquareCheck size={12} aria-hidden="true" />
+                    Task
+                  </span>
+                  <button
+                    type="button"
+                    className="detail-complete-pill"
+                    data-done={current.status === "Done" || undefined}
+                    disabled={pending}
+                    onClick={() =>
+                      void patch(
+                        { status: current.status === "Done" ? "To do" : "Done" },
+                        current.status === "Done" ? "Task reopened." : "Task completed.",
+                      )
+                    }
+                  >
+                    <Check size={13} aria-hidden="true" />
+                    {current.status === "Done" ? "Completed" : "Mark done"}
+                  </button>
+                </div>
+                <Dialog.Title asChild>
+                  <h2 className="sheet-title">
+                    <InlineText
+                      value={current.title}
+                      label="task title"
+                      required
+                      onSave={(title) => patch({ title }, "Task renamed.")}
+                    />
+                  </h2>
+                </Dialog.Title>
+              </div>
+
+              <div className="detail-props">
+                <div className="detail-prop-row">
+                  <span className="detail-prop-label">
+                    <CircleDot size={14} aria-hidden="true" />
+                    Status
+                  </span>
+                  <div className="detail-prop-value">
+                    <div className="view-switch" role="group" aria-label="Status">
+                      {taskColumns.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          aria-pressed={current.status === s}
+                          disabled={pending}
+                          onClick={() => s !== current.status && void patch({ status: s }, `Moved to ${s}.`)}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <label className="detail-prop-label" htmlFor="task-sheet-date">
+                    <CalendarDays size={14} aria-hidden="true" />
+                    When
+                  </label>
+                  <div className="detail-prop-value">
+                    <input
+                      id="task-sheet-date"
+                      type="date"
+                      key={`${current.id}-${dateValue}`}
+                      defaultValue={dateValue}
+                      disabled={pending}
+                      onBlur={(e) => {
+                        const val = e.target.value || null;
+                        if (val === (dateValue || null)) return;
+                        void patch(
+                          val
+                            ? {
+                                startAt: val,
+                                endAt: Temporal.PlainDate.from(val).add({ days: 1 }).toString(),
+                                allDay: true,
+                                dueDate: val,
+                                dueAt: null,
+                                timezone: null,
+                              }
+                            : { startAt: null, endAt: null, allDay: false, dueDate: null, dueAt: null, timezone: null },
+                          val ? "Date set." : "Schedule cleared.",
+                        );
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <label className="detail-prop-label" htmlFor="task-sheet-project">
+                    <Folder size={14} aria-hidden="true" />
+                    Project
+                  </label>
+                  <div className="detail-prop-value">
+                    <select
+                      id="task-sheet-project"
+                      value={current.projectId ?? ""}
+                      disabled={pending}
+                      onChange={(e) => {
+                        const projectId = e.target.value || null;
+                        void patch({ projectId }, projectId ? "Moved to project." : "Moved to No project.");
+                      }}
+                    >
+                      <option value="">No project</option>
+                      {activeProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <span className="detail-prop-label">
+                    <Star size={14} aria-hidden="true" />
+                    Important
+                  </span>
+                  <div className="detail-prop-value">
+                    <button
+                      type="button"
+                      className="toggle-button"
+                      aria-pressed={Boolean(current.important)}
+                      disabled={pending}
+                      onClick={() =>
+                        void patch(
+                          { important: !current.important },
+                          current.important ? "Unmarked important." : "Marked important.",
+                        )
+                      }
+                    >
+                      <Star size={14} aria-hidden="true" />
+                      {current.important ? "Important" : "Mark important"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="detail-notes-section">
+                <span className="sheet-label">Notes</span>
+                <InlineText
+                  className="sheet-notes"
+                  value={current.description}
+                  label="task notes"
+                  multiline
+                  placeholder="Add notes…"
+                  onSave={(description) => patch({ description }, "Notes saved.")}
+                />
+              </div>
+
+              {error && (
+                <p role="alert" className="error-message text-sm">
+                  {error}
+                </p>
+              )}
+
+              <div className="sheet-actions detail-footer">
+                <Link className="text-quiet inline-flex items-center gap-1.5" href={`/calendar?schedule=1&task=${current.id}`}>
+                  <CalendarClock size={14} aria-hidden="true" />
+                  Schedule
+                </Link>
+                <button type="button" className="text-quiet inline-flex items-center gap-1.5" onClick={() => void archive()}>
+                  <Archive size={14} aria-hidden="true" />
+                  Archive
+                </button>
+                <span className="muted text-sm ml-auto">{relativeTime(current.updatedAt)}</span>
+              </div>
+            </>
+          )}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays, ChevronRight, Folder, GripVertical, Inbox, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, CalendarDays, ChevronRight, CircleDot, Folder, GripVertical, Inbox, PanelRight, Plus, Trash2 } from "lucide-react";
 import type { Project } from "@/lib/db/schema";
 import { NO_PROJECT, projectGroups, type Summary } from "@/lib/project-board";
 import { useBoard, type BoardApi } from "./projects-view";
@@ -32,20 +32,20 @@ export function Progress({ summary }: { summary: Summary }) {
 
 export function projectMenu(board: BoardApi, project: Project): MenuEntry[] {
   if (project.archivedAt) return [
-    { label: "Unarchive", onSelect: () => board.patchProject(project, { archived: false }, "Project unarchived.") },
-    "separator", { label: "Delete", danger: true, onSelect: () => board.deleteProject(project) },
+    { label: "Unarchive", icon: <ArchiveRestore size={15} aria-hidden="true" />, onSelect: () => board.patchProject(project, { archived: false }, "Project unarchived.") },
+    "separator", { label: "Delete", icon: <Trash2 size={15} aria-hidden="true" />, danger: true, onSelect: () => board.deleteProject(project) },
   ];
   const group = board.groups[project.status], i = group.findIndex((p) => p.id === project.id);
   return [
-    { label: "Details", onSelect: () => { board.select(project.id); board.openProject(project.id); } },
-    { label: "Change status", children: projectGroups.map((status) => ({
+    { label: "Details", icon: <PanelRight size={15} aria-hidden="true" />, onSelect: () => { board.select(project.id); board.openProject(project.id); } },
+    { label: "Change status", icon: <CircleDot size={15} aria-hidden="true" />, children: projectGroups.map((status) => ({
       label: status, checked: status === project.status, disabled: status === project.status,
       onSelect: () => board.moveProject(project, { status }, `Moved to ${status}.`),
     })) },
-    { label: "Move up", disabled: i <= 0, onSelect: () => board.moveProject(project, { status: project.status, index: i - 1 }, "Order saved.") },
-    { label: "Move down", disabled: i >= group.length - 1, onSelect: () => board.moveProject(project, { status: project.status, index: i + 1 }, "Order saved.") },
-    { label: "Archive", onSelect: () => board.patchProject(project, { archived: true }, "Project archived.") },
-    "separator", { label: "Delete", danger: true, onSelect: () => board.deleteProject(project) },
+    { label: "Move up", icon: <ArrowUp size={15} aria-hidden="true" />, disabled: i <= 0, onSelect: () => board.moveProject(project, { status: project.status, index: i - 1 }, "Order saved.") },
+    { label: "Move down", icon: <ArrowDown size={15} aria-hidden="true" />, disabled: i >= group.length - 1, onSelect: () => board.moveProject(project, { status: project.status, index: i + 1 }, "Order saved.") },
+    { label: "Archive", icon: <Archive size={15} aria-hidden="true" />, onSelect: () => board.patchProject(project, { archived: true }, "Project archived.") },
+    "separator", { label: "Delete", icon: <Trash2 size={15} aria-hidden="true" />, danger: true, onSelect: () => board.deleteProject(project) },
   ];
 }
 

@@ -85,6 +85,13 @@
       "when": 1795270800000,
       "tag": "0011_v3_task_times",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795271900000,
+      "tag": "0012_v3_event_archive",
+      "breakpoints": true
     }
   ]
 }
