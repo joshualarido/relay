@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, CalendarDays, ChevronRight, CircleDot, Folder, GripVertical, Inbox, PanelRight, Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, CalendarDays, Check, ChevronRight, CircleDot, Folder, GripVertical, Inbox, PanelRight, Pause, Play, Plus, Trash2 } from "lucide-react";
 import type { Project } from "@/lib/db/schema";
 import { NO_PROJECT, projectGroups, type Summary } from "@/lib/project-board";
 import { useBoard, type BoardApi } from "./projects-view";
@@ -58,6 +58,32 @@ function RowBody({ id, name, summary, icon }: { id: string; name: string; summar
   </button>;
 }
 
+function QuickStatus({ project }: { project: Project }) {
+  const board = useBoard();
+  if (project.archivedAt || project.status === "Done") return null;
+  const move = (status: Project["status"]) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void board.moveProject(project, { status }, `Moved to ${status}.`);
+  };
+  return <span className="project-quick-switch">
+    {(project.status === "Planned" || project.status === "Paused") && (
+      <button type="button" className="quick-switch-btn" title="Move to Active" aria-label={`Move ${project.name} to Active`} onClick={move("Active")}>
+        <Play size={12} aria-hidden="true" />
+      </button>
+    )}
+    {project.status === "Active" && (
+      <>
+        <button type="button" className="quick-switch-btn" title="Move to Paused" aria-label={`Move ${project.name} to Paused`} onClick={move("Paused")}>
+          <Pause size={12} aria-hidden="true" />
+        </button>
+        <button type="button" className="quick-switch-btn" title="Mark Done" aria-label={`Mark ${project.name} Done`} onClick={move("Done")}>
+          <Check size={12} aria-hidden="true" />
+        </button>
+      </>
+    )}
+  </span>;
+}
+
 function ProjectRow({ project, dragging }: { project: Project; dragging: string | null }) {
   const board = useBoard();
   const archived = Boolean(project.archivedAt);
@@ -75,6 +101,7 @@ function ProjectRow({ project, dragging }: { project: Project; dragging: string 
           aria-label={`Move ${project.name}`} title="Drag, or press Enter to move with the arrow keys"><GripVertical size={15} aria-hidden="true" /></button>}
         <MoreMenu label={`Actions for ${project.name}`} entries={entries} />
       </span>
+      <QuickStatus project={project} />
     </li>
   </RightClickMenu>;
 }

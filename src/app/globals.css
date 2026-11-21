@@ -643,6 +643,19 @@ progress::-moz-progress-bar { background: var(--primary); }
   .row-tools { position: absolute; top: 4px; right: 4px; padding: 0; border-radius: 8px; background: inherit; opacity: 0; transition: opacity .15s ease-out; }
   .project-row .row-tools { top: 6px; }
   .project-row:hover .row-tools, .project-row:focus-within .row-tools, .task-card:hover .row-tools, .task-card:focus-within .row-tools, .row-tools:has([data-state=open]) { opacity: 1; }
+  .project-quick-switch { opacity: 0; transition: opacity .15s ease-out; }
+  .project-row:hover .project-quick-switch, .project-row:focus-within .project-quick-switch { opacity: 1; }
+}
+.project-quick-switch {
+  position: absolute; right: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 3px;
+}
+.quick-switch-btn {
+  width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--card); color: var(--muted-foreground); display: inline-grid; place-items: center;
+  padding: 0; transition: border-color .14s ease-out, color .14s ease-out, background-color .14s ease-out;
+}
+.quick-switch-btn:hover, .quick-switch-btn:focus-visible {
+  border-color: var(--primary); color: var(--primary); background: var(--secondary);
 }
 @media (hover: none) { .grip:not(:focus-visible) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } }
 .dropdown-item.is-danger { color: var(--destructive); }
