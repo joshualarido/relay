@@ -71,6 +71,13 @@
       "when": 1795248000000,
       "tag": "0009_v3_remove_doing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795268400000,
+      "tag": "0010_v3_task_archive",
+      "breakpoints": true
     }
   ]
 }

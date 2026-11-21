@@ -104,7 +104,6 @@ function NoProjectRow({ dragging }: { dragging: string | null }) {
 export function ProjectList({ creating, setCreating, dragging }: { creating: boolean; setCreating: (v: boolean) => void; dragging: string | null }) {
   const board = useBoard();
   const [name, setName] = useState("");
-  const [archivedOpen, setArchivedOpen] = useState(false);
   async function create() {
     if (!name.trim()) return setCreating(false);
     if (await board.createProject(name)) { setName(""); setCreating(false); }
@@ -127,10 +126,5 @@ export function ProjectList({ creating, setCreating, dragging }: { creating: boo
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void create(); } if (e.key === "Escape") { setName(""); setCreating(false); } }} />}
     <NoProjectRow dragging={dragging} />
     {projectGroups.map((status) => <Group key={status} status={status} projects={board.groups[status]} dragging={dragging} />)}
-    {board.groups.archived.length > 0 && <section className="project-group" aria-labelledby="group-archived">
-      <h2 id="group-archived"><button type="button" className="group-toggle" aria-expanded={archivedOpen} onClick={() => setArchivedOpen(!archivedOpen)}>
-        <ChevronRight size={14} aria-hidden="true" />Archived</button><span className="group-count">{board.groups.archived.length}</span></h2>
-      {archivedOpen && <SortableContext items={board.groups.archived.map((p) => `project:${p.id}`)}><ul className="project-rows">{board.groups.archived.map((p) => <ProjectRow key={p.id} project={p} dragging={dragging} />)}</ul></SortableContext>}
-    </section>}
   </nav>;
 }

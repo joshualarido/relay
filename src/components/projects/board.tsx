@@ -38,7 +38,7 @@ export function taskMenu(board: BoardApi, task: Task): MenuEntry[] {
     })) },
     { label: "Move up", disabled: i <= 0, onSelect: () => board.moveTask(task.id, to(task.status, i - 1), "Order saved.") },
     { label: "Move down", disabled: i >= column.length - 1, onSelect: () => board.moveTask(task.id, to(task.status, i + 1), "Order saved.") },
-    "separator", { label: "Delete", danger: true, onSelect: () => board.deleteTask(task) },
+    "separator", { label: "Archive", onSelect: () => board.archiveTask(task) },
   ];
 }
 

@@ -204,6 +204,7 @@ test("command palette (Ctrl+K and /), ? cheat sheet, and E / X on focused task",
   await expect(page).toHaveURL(new RegExp(`task=${task.id}`));
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // `?` opens the shortcut cheat sheet, and does not fire while typing in an input.
   await page.keyboard.press("?");
@@ -321,7 +322,7 @@ test("mobile swipe gestures (right = complete, left = tomorrow, both undoable), 
 
   // Undo tomorrow push
   await tomToast.getByRole("button", { name: "Undo" }).click();
-  await expect(page.getByText("Change undone.")).toBeVisible();
+  await expect(page.getByText("Change undone.").last()).toBeVisible();
   expect(((await (await request.get(`/api/tasks/${swipeTom.id}`)).json()) as { dueDate: string | null }).dueDate).toBeNull();
 
   // ⋯ menu fallback still works on mobile

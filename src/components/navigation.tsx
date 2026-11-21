@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { motion, MotionConfig } from "motion/react";
-import { House, FolderKanban, CalendarDays, Plus, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Archive, House, FolderKanban, CalendarDays, Plus, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
@@ -28,6 +28,10 @@ const links = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
 ];
 
+const otherLinks = [
+  { href: "/archives", label: "Archives", icon: Archive },
+];
+
 export function Navigation({ name, initialCollapsed, projects, capture, children }: {
   name: string; initialCollapsed: boolean; projects: { id: string; name: string }[]; capture: CaptureData; children: ReactNode;
 }) {
@@ -49,9 +53,18 @@ export function Navigation({ name, initialCollapsed, projects, capture, children
       returnFocus.current = e.currentTarget; setSearchOpen(true);
     }}><Search size={17} aria-hidden="true" /><span className="nav-label">Search <kbd>Ctrl K</kbd></span></Button>
     <nav aria-label="Workspace">
+      <span className="nav-group-label nav-label">Main</span>
       {links.map(({ href, label, icon: Icon }, i) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return <Link key={href} href={href} className={cn("nav-link", active && "active")} aria-label={label} title={`${label} (${i + 1})`}
+          aria-current={active ? "page" : undefined}>
+          {active && <motion.span layoutId={`nav-indicator-${scope}`} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.18, ease: "easeOut" }} />}
+          <Icon size={18} aria-hidden="true" /><span className="nav-label">{label}</span></Link>;
+      })}
+      <span className="nav-group-label nav-label">Other</span>
+      {otherLinks.map(({ href, label, icon: Icon }) => {
+        const active = pathname.startsWith(href);
+        return <Link key={href} href={href} className={cn("nav-link", active && "active")} aria-label={label} title={label}
           aria-current={active ? "page" : undefined}>
           {active && <motion.span layoutId={`nav-indicator-${scope}`} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.18, ease: "easeOut" }} />}
           <Icon size={18} aria-hidden="true" /><span className="nav-label">{label}</span></Link>;

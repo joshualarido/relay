@@ -138,6 +138,8 @@ progress::-moz-progress-bar { background: var(--primary); }
 .nav-title { display: flex; align-items: center; justify-content: space-between; padding-left: 10px; gap: 4px; min-height: 40px; }
 .sidebar-toggle { padding: 8px; flex-shrink: 0; }
 .nav-content nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-group-label { font-size: .72rem; font-weight: 500; color: var(--muted-foreground); padding: 10px 10px 4px; }
+.nav-group-label:first-child { padding-top: 0; }
 .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-height: 40px; color: var(--muted-foreground); border-radius: 8px; font-weight: 500; transition: background-color .15s ease-out, color .15s ease-out; }
 .nav-link:hover { background: var(--secondary); color: var(--foreground); }
 .nav-link { position: relative; }
@@ -370,25 +372,61 @@ progress::-moz-progress-bar { background: var(--primary); }
   .quick-capture-form { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Command palette */
-.palette-dialog { padding: 12px; width: min(560px, calc(100vw - 24px)); }
-.palette-input-row {
-  position: relative; display: flex; align-items: center; gap: 6px;
-  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+/* Spotlight-style command bar */
+.palette-overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--overlay) 45%, transparent); z-index: var(--z-overlay); }
+.palette-spotlight {
+  position: fixed; top: min(14vh, 110px); left: 50%; transform: translateX(-50%);
+  width: min(680px, calc(100vw - 24px)); z-index: var(--z-dialog);
+  display: flex; flex-direction: column; gap: 10px; outline: none;
 }
-.palette-search-icon { position: absolute; left: 12px; color: var(--muted-foreground); pointer-events: none; }
-.palette-input-row input {
-  border: 0; background: transparent; padding: 8px 8px 8px 36px; min-height: 42px; font-size: .9375rem;
+.palette-bar-row { display: flex; align-items: center; gap: 8px; }
+.palette-pill {
+  flex: 1; min-width: 0; position: relative; display: flex; align-items: center; gap: 8px;
+  height: 48px; padding: 0 14px; border-radius: 999px;
+  background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow-float);
 }
-.palette-input-row input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
-.palette-input-row input:focus-visible { outline: none; }
+.palette-pill:focus-within { border-color: var(--primary); }
+.palette-search-icon { color: var(--muted-foreground); flex-shrink: 0; }
+.palette-pill input {
+  border: 0; background: transparent; padding: 0; min-height: 0; height: 100%; font-size: .9375rem;
+}
+.palette-pill input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.palette-pill input:focus-visible { outline: none; }
+.palette-pill-kbd { flex-shrink: 0; }
+.palette-quick-pills { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.palette-circle-btn {
+  width: 44px; height: 44px; border-radius: 999px; display: inline-grid; place-items: center;
+  background: var(--card); border: 1px solid var(--border); color: var(--muted-foreground);
+  box-shadow: var(--shadow-float); transition: border-color .15s ease-out, color .15s ease-out, background-color .15s ease-out;
+}
+.palette-circle-btn:hover, .palette-circle-btn:focus-visible { border-color: var(--primary); color: var(--primary); background: var(--secondary); }
+.palette-panel {
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--shadow-float); padding: 10px;
+}
+.palette-section-label { font-size: .72rem; font-weight: 500; color: var(--muted-foreground); padding: 2px 6px 8px; }
+.palette-recent-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px;
+}
+.palette-recent-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+  padding: 10px 8px; border-radius: 10px; cursor: pointer; transition: background-color .12s ease-out;
+}
+.palette-recent-tile[data-active=true] { background: var(--secondary); }
+.palette-tile-icon {
+  width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--secondary); color: var(--muted-foreground);
+}
+.palette-recent-tile[data-active=true] .palette-tile-icon { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--secondary)); }
+.palette-tile-title { font-size: .78125rem; font-weight: 500; color: var(--foreground); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .palette-results {
-  list-style: none; margin: 8px 0 0; padding: 0; max-height: min(380px, 55dvh); overflow-y: auto;
+  list-style: none; margin: 0; padding: 0; max-height: min(380px, 55dvh); overflow-y: auto;
   display: flex; flex-direction: column; gap: 2px;
 }
 .palette-option {
-  display: flex; align-items: center; gap: 10px; padding: 9px 10px; min-height: 42px;
-  border-radius: 8px; cursor: pointer; transition: background-color .12s ease-out;
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-height: 42px;
+  border-radius: 10px; cursor: pointer; transition: background-color .12s ease-out;
 }
 .palette-option[data-active=true] { background: var(--secondary); }
 .palette-option-icon { display: inline-flex; color: var(--muted-foreground); flex-shrink: 0; }
@@ -396,6 +434,11 @@ progress::-moz-progress-bar { background: var(--primary); }
 .palette-option-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .palette-option-title { font-weight: 500; color: var(--foreground); overflow-wrap: anywhere; }
 .palette-option-meta { font-size: .75rem; color: var(--muted-foreground); }
+.palette-inline-actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+@media (max-width: 640px) {
+  .palette-bar-row { flex-direction: column; align-items: stretch; }
+  .palette-quick-pills { justify-content: center; }
+}
 
 /* Shortcut cheat sheet */
 .shortcut-sheet { width: min(520px, calc(100vw - 32px)); }

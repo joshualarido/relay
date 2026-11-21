@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { AppDatabase } from "./db";
 import { task, type Task } from "./db/schema";
@@ -27,6 +27,7 @@ const createSchema = z.object({
   position: fields.position.default(0), mutationId: mutationIdSchema,
 }).strict();
 const updateSchema = z.object(fields).partial().extend({ mutationId: mutationIdSchema }).strict();
+const archiveSchema = z.object({ archived: z.boolean(), mutationId: mutationIdSchema }).strict();
 
 function validateDeadline(data: { dueDate: string | null; dueAt: string | null; timezone: string | null }) {
   z.object({ dueDate: fields.dueDate, dueAt: fields.dueAt, timezone: fields.timezone }).superRefine((value, ctx) => {
@@ -39,7 +40,13 @@ export function listTasks(db: Pick<AppDatabase, "select">, ownerId: string, incl
   const visibleProjects = new Set(listProjects(db, ownerId).map((p) => p.id));
   return db.select().from(task).where(and(eq(task.ownerId, ownerId), isNull(task.deletedAt)))
     .orderBy(asc(task.position), asc(task.createdAt)).all()
-    .filter((t) => includeArchived || !t.projectId || visibleProjects.has(t.projectId));
+    .filter((t) => includeArchived || (!t.archivedAt && (!t.projectId || visibleProjects.has(t.projectId))));
+}
+
+export function listArchivedTasks(db: Pick<AppDatabase, "select">, ownerId: string) {
+  return db.select().from(task)
+    .where(and(eq(task.ownerId, ownerId), isNull(task.deletedAt), isNotNull(task.archivedAt)))
+    .orderBy(desc(task.archivedAt), asc(task.createdAt)).all();
 }
 
 export function getTask(db: Pick<AppDatabase, "select">, ownerId: string, id: string): Task {
@@ -110,6 +117,30 @@ export function updateTask(db: AppDatabase, ownerId: string, id: string, expecte
     }).where(and(eq(task.id, id), eq(task.ownerId, ownerId))).returning().get()!;
     recordOperation(tx, {
       ownerId, mutationId, requestHash: hash, action: "edit", entityType: "task", entityId: id,
+      beforeState: [{ entityType: "task", record: before }], afterState: [{ entityType: "task", record: result }], result,
+    });
+    return result;
+  }, { behavior: "immediate" });
+}
+
+export function archiveTask(db: AppDatabase, ownerId: string, id: string, expectedRevision: number, input: unknown): Task {
+  const data = archiveSchema.parse(input);
+  z.number().int().positive().parse(expectedRevision);
+  const action = data.archived ? "archive" : "unarchive";
+  const hash = requestHash(`task-${action}`, id, { expectedRevision, archived: data.archived });
+  return db.transaction((tx) => {
+    const previous = replayMutation(tx, ownerId, data.mutationId, hash);
+    if (previous) return previous.result as Task;
+    const before = getTask(tx, ownerId, id);
+    if (before.revision !== expectedRevision) throw new AppError(409, "Task changed. Reload and try again.");
+    const now = new Date().toISOString();
+    const result = tx.update(task).set({
+      archivedAt: data.archived ? now : null,
+      revision: before.revision + 1,
+      updatedAt: now,
+    }).where(and(eq(task.id, id), eq(task.ownerId, ownerId))).returning().get()!;
+    recordOperation(tx, {
+      ownerId, mutationId: data.mutationId, requestHash: hash, action, entityType: "task", entityId: id,
       beforeState: [{ entityType: "task", record: before }], afterState: [{ entityType: "task", record: result }], result,
     });
     return result;

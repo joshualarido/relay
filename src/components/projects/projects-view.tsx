@@ -197,6 +197,13 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
     if (!("archived" in fields)) setProjects((all) => all.map((p) => p.id === project.id ? { ...p, ...fields } : p));
     return Boolean(await send<Project>(`/api/projects/${project.id}`, "PATCH", { expectedRevision: current.revision, ...fields }, message, (p) => merge(setProjects, p)));
   });
+  const archiveTask = (task: Task) => enqueue(async () => {
+    const current = latest.current.tasks.find((t) => t.id === task.id) ?? task;
+    if (params.get("task") === task.id) closeSheet();
+    setInstant(false);
+    setTasks((all) => all.filter((t) => t.id !== task.id));
+    await send<Task>(`/api/tasks/${task.id}`, "PATCH", { expectedRevision: current.revision, archived: true }, "Task archived.");
+  });
   const remove = (entityType: "task" | "project", id: string, name: string) => enqueue(() => removeNow(entityType, id, name));
   async function removeNow(entityType: "task" | "project", id: string, name: string) {
     let preview: DeletionPreview;
@@ -228,6 +235,7 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
     timezone, today: dateInTimezone(now, timezone), selectedKey, selected, level, sheetTask, projectSheet, pending: busy > 0, error, setError, instant, completing,
     select, backToList, openTask, openProject, closeSheet, moveTask, completeTask, moveProject, createTask, createProject, patchTask, patchProject,
     scheduleTask: (taskId: string) => router.push(`/calendar?schedule=1&task=${taskId}`),
+    archiveTask,
     deleteTask: (t: Task) => remove("task", t.id, t.title), deleteProject: (p: Project) => remove("project", p.id, p.name),
     dialogs: <>{completionDialog}{confirmDialog}</>,
   };
