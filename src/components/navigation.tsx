@@ -11,6 +11,7 @@ import { CommandPalette } from "./command-palette";
 import { AccountMenu } from "./auth-controls";
 import { ScreenShortcuts } from "./screen-shortcuts";
 import { CaptureProvider, useCapture, type CaptureData } from "./capture-dialog";
+import { ShortcutSheetProvider } from "./shortcut-sheet";
 
 const SidebarContext = createContext({ collapsed: false, toggle: () => {} });
 
@@ -44,7 +45,7 @@ export function Navigation({ name, initialCollapsed, projects, capture, children
       <Button variant="ghost" className="sidebar-toggle" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={toggle}>
         {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
       </Button></div>
-    <Button className="palette-trigger" variant="outline" aria-label="Search and commands" title="Search and commands (Ctrl/Cmd+K)" onClick={(e) => {
+    <Button className="palette-trigger" variant="outline" aria-label="Search and commands" title="Search and commands (Ctrl+K)" onClick={(e) => {
       returnFocus.current = e.currentTarget; setSearchOpen(true);
     }}><Search size={17} aria-hidden="true" /><span className="nav-label">Search <kbd>Ctrl K</kbd></span></Button>
     <nav aria-label="Workspace">
@@ -58,18 +59,18 @@ export function Navigation({ name, initialCollapsed, projects, capture, children
     </nav>
     <AccountMenu name={name} />
   </div>;
-  return <MotionConfig reducedMotion="user"><SidebarContext.Provider value={{ collapsed, toggle }}><CaptureProvider data={capture}><div className="workspace-shell" data-collapsed={collapsed}>
+  return <MotionConfig reducedMotion="user"><SidebarContext.Provider value={{ collapsed, toggle }}><ShortcutSheetProvider><CaptureProvider data={{ ...capture, projects }}><div className="workspace-shell" data-collapsed={collapsed}>
     <aside className="desktop-sidebar">{content("desktop")}</aside>
     <header className="mobile-header">
       <Link href="/" className="wordmark" aria-label="Relay home">relay<span aria-hidden="true">.</span></Link>
-      <Button variant="ghost" className="header-search" aria-label="Search and commands" onClick={(e) => { returnFocus.current = e.currentTarget; setSearchOpen(true); }}><Search size={20} /></Button>
+      <Button variant="ghost" className="header-search" aria-label="Search and commands" title="Search and commands (/)" onClick={(e) => { returnFocus.current = e.currentTarget; setSearchOpen(true); }}><Search size={20} /></Button>
       <AccountMenu name={name} />
     </header>
     {children}
     <TabBar pathname={pathname} />
     <ScreenShortcuts />
-    <CommandPalette timezone={capture.timezone} projects={projects} open={searchOpen} onOpenChange={setSearchOpen} returnFocus={returnFocus} />
-  </div></CaptureProvider></SidebarContext.Provider></MotionConfig>;
+    <CommandPalette projects={projects} open={searchOpen} onOpenChange={setSearchOpen} returnFocus={returnFocus} />
+  </div></CaptureProvider></ShortcutSheetProvider></SidebarContext.Provider></MotionConfig>;
 }
 
 function TabBar({ pathname }: { pathname: string }) {

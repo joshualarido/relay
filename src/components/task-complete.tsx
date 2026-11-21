@@ -10,7 +10,7 @@ import { notifyMutation } from "./mutation-notice";
 export function TaskComplete({ task }: { task: Task }) {
   const [pending, setPending] = useState(false), [error, setError] = useState("");
   const router = useRouter();
-  return <div><Button className="complete-task" variant="outline" aria-label={`Complete ${task.title}`} disabled={pending} onClick={async () => {
+  return <div><Button className="complete-task" variant="outline" aria-label={`Complete ${task.title}`} title="Complete task (X)" disabled={pending} onClick={async () => {
     setPending(true); setError("");
     try {
       const response = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },

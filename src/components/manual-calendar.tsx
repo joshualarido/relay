@@ -1119,6 +1119,7 @@ export function ManualCalendar({
           <Button
             ref={scheduleBtnRef}
             variant="outline"
+            title="Schedule mode (S)"
             aria-pressed={scheduleOpen}
             onClick={(e) => {
               if (scheduleOpen) closeSchedule();

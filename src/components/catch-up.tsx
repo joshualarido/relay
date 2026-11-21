@@ -40,9 +40,9 @@ function CatchUpRow({ task, today, tomorrow, timezone }: { task: Task; today: st
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not move task. Try again."); }
     finally { setPending(false); }
   }
-  return <li className="today-row catch-up-row">
+  return <li className="today-row catch-up-row" data-task-row={task.id}>
     <div className="today-row-body">
-      <Link className="task-title" data-task-link={task.id} href={`/?task=${task.id}`} scroll={false}>{task.title}</Link>
+      <Link className="task-title" data-task-link={task.id} href={`/?task=${task.id}`} title="Edit task (E)" scroll={false}>{task.title}</Link>
       <span className="today-meta">Due {dueText(task, timezone)}</span>
     </div>
     <div className="catch-up-actions" role="group" aria-label={`Move ${task.title}`}>
