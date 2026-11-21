@@ -14,9 +14,10 @@ spec: "[[Relay PRD v3]] (v3.2)"
 |---|---|---|---|
 | **0: Cut** | Strip the app down to the v3 model without losing data | App runs with Today, Projects and Calendar in the navigation; statuses migrated; planned dates turned into linked events; all checks green; upgrade tested on a copy of the real DB | [[2026-11-17 Relay v3 Phase 0 - Cut]] |
 | **1: Design reset and Today** | New DESIGN.md and PRODUCT.md (Impeccable); new shell and navigation (`Ctrl+←/→`, `1/2/3`, directional slide, prefetch); Today as a timeline with a now line, catch-up line, Capture button and "Day clear" | Passes the 5-second test at 1440×900 and 390×844; Impeccable critique has no clutter findings; screen switch has no loading flash | written at Phase 1 start |
-| **2: Projects split view** | Project list (No project first, status groups, drag), task board (To do / Doing / Done columns, drag, inline add), side sheet, `⋯` and context menus, completion animation. Delete the Inbox route | PRD acceptance #1 and #4 pass; drag works by mouse, touch and keyboard | written after Phase 1 |
+| **2: Projects split view** | Project list (No project first, status groups, drag), task board (To do / Done columns, drag, inline add; Doing removed in `862e077`), side sheet, `⋯` and context menus, completion animation. Delete the Inbox route | PRD acceptance #1 and #4 pass; drag works by mouse, touch and keyboard | written after Phase 1 |
 | **3: Calendar and Schedule mode** | Week, month and day views, inline create, move and resize; Schedule mode (`S`, floating panel, drop rules, Shift+drop, keyboard pick-up, tap-to-place) | PRD acceptance #3 passes, including Undo | written after Phase 2 |
-| **4: Input and anywhere** | Quick add with tokens, command palette, shortcut sheet `?`, mobile swipes, PWA, Vercel + Turso deploy, Google allow-list | PRD acceptance #2, #6, #7 and #8 pass on the deployed URL | written after Phase 3 |
+| **4: Input and gestures (local only)** | Quick add with tokens, command palette, shortcut sheet `?`, `E`/`X` shortcuts, mobile swipes, local PWA manifest/icons, project delete cascade + Undo rule, branch pruning | PRD acceptance #2, #6, #7 (local PWA + phone-viewport swipes) and #8 pass locally | written after Phase 3 |
+| **5: Deploy (deferred)** | Vercel + Turso (libSQL) deployment and Google sign-in allow-list | App deployed and installable from the live URL | deferred |
 
 ## How each phase runs
 
