@@ -136,10 +136,12 @@ test("acceptance #2: Capture tokens (#project, @fri, @fri 14:00-15:00, !), remov
   expect(impTask?.projectId).toBeNull();
   expect(impTask?.dueDate).toBeNull();
 
-  // Plain text creates a loose task, and Tab toggles Task <-> Event.
+  // Plain text creates a loose task, and Tab cycles Task -> Event -> Project -> Task.
   await page.keyboard.press("n");
   await page.keyboard.press("Tab");
   await expect(dialog.getByRole("radio", { name: "Event" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("radio", { name: "Project" })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Tab");
   await expect(dialog.getByRole("radio", { name: "Task" })).toHaveAttribute("aria-checked", "true");
   const looseTitle = `Plain loose task ${stamp}`;

@@ -17,21 +17,24 @@ import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useWorkspace } from "./workspace-store";
 
-type CaptureKind = "task" | "event";
+type CaptureKind = "task" | "event" | "project";
 
 const kinds: { kind: CaptureKind; label: string }[] = [
   { kind: "task", label: "Task" },
   { kind: "event", label: "Event" },
+  { kind: "project", label: "Project" },
 ];
 
 const messages: Record<CaptureKind, string> = {
   task: "Task captured.",
   event: "Event captured.",
+  project: "Project created.",
 };
 
 const endpoints: Record<CaptureKind, string> = {
   task: "/api/tasks",
   event: "/api/events",
+  project: "/api/projects",
 };
 
 /** One-line capture with deterministic tokens (#project, @date, @date HH:MM-HH:MM, !). */
@@ -112,7 +115,8 @@ export function QuickCapture({
   function onInputKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
-      choose(kind === "task" ? "event" : "task");
+      const idx = kinds.findIndex((k) => k.kind === kind);
+      choose(kinds[(idx + 1) % kinds.length].kind);
     }
   }
 
@@ -127,16 +131,27 @@ export function QuickCapture({
   }
 
   async function save() {
-    const cleanTitle = parsed.title;
+    const cleanTitle = kind === "project" && !parsed.dueDate ? rawInput.trim() : parsed.title;
     if (!cleanTitle) {
-      setError(kind === "event" ? "Enter an event title." : "Enter a task title.");
+      setError(
+        kind === "project"
+          ? "Enter a project name."
+          : kind === "event"
+            ? "Enter an event title."
+            : "Enter a task title.",
+      );
       titleInput.current?.focus();
       return;
     }
 
     const today = Temporal.Now.plainDateISO(timezone).toString();
     const bodyBase =
-      kind === "event"
+      kind === "project"
+        ? {
+            name: cleanTitle,
+            ...(parsed.dueDate ? { deadline: parsed.dueDate } : {}),
+          }
+        : kind === "event"
         ? parsed.timeRange
           ? (() => {
               const { start, end } = buildEventRangeFromToken(
@@ -211,6 +226,10 @@ export function QuickCapture({
         workspace?.setTasks((prev) =>
           prev.some((t) => t.id === result.id) ? prev : [...prev, result],
         );
+      } else if (kind === "project") {
+        workspace?.setProjects((prev) =>
+          prev.some((p) => p.id === result.id) ? prev : [...prev, result],
+        );
       } else {
         workspace?.setEvents((prev) =>
           prev.some((ev) => ev.id === result.id) ? prev : [...prev, result],
@@ -282,7 +301,7 @@ export function QuickCapture({
 
         <div className="field">
           <label className="sr-only" htmlFor={`${id}-title`}>
-            {kind === "event" ? "Event title" : "Quick capture"}
+            {kind === "project" ? "Project name" : kind === "event" ? "Event title" : "Quick capture"}
           </label>
           <input
             ref={titleInput}
@@ -300,9 +319,11 @@ export function QuickCapture({
             disabled={pending}
             autoComplete="off"
             placeholder={
-              kind === "event"
-                ? "Event title · @fri 14:00-15:00 #project"
-                : "Task title · #project @fri !"
+              kind === "project"
+                ? "Project name · @deadline"
+                : kind === "event"
+                  ? "Event title · @fri 14:00-15:00 #project"
+                  : "Task title · #project @fri !"
             }
             aria-invalid={Boolean(error)}
             aria-describedby={error ? `${id}-error` : undefined}
@@ -310,7 +331,13 @@ export function QuickCapture({
         </div>
 
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving..." : kind === "event" ? "Capture event" : "Capture task"}
+          {pending
+            ? "Saving..."
+            : kind === "project"
+              ? "Create project"
+              : kind === "event"
+                ? "Capture event"
+                : "Capture task"}
         </Button>
 
         {parsed.tokens.length > 0 && (
