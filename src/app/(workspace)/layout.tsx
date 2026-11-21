@@ -10,6 +10,7 @@ import { listTasks } from "@/lib/tasks";
 import { listEvents } from "@/lib/events";
 import { getPreferences } from "@/lib/preferences";
 import { WorkspaceProvider } from "@/components/workspace-store";
+import { SmoothScroll } from "@/components/smooth-scroll";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,6 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
     <Navigation name={session.user.name} initialCollapsed={collapsed} capture={capture}
       projects={projects.map(({ id, name }) => ({ id, name }))}>
       <main className="workspace-main" id="main" tabIndex={-1}><ScreenTransition>{children}</ScreenTransition></main>
-    </Navigation><MutationNotices />
+    </Navigation><SmoothScroll /><MutationNotices />
   </WorkspaceProvider>;
 }

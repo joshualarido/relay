@@ -185,13 +185,17 @@ export function SchedulePanel({
   let runningIndex = 0;
 
   return (
-    <aside
+    <motion.aside
       ref={panelRef}
       tabIndex={-1}
       className="schedule-panel"
       role="region"
       aria-label="Schedule panel"
       data-schedule-panel="true"
+      initial={reduce ? false : { opacity: 0, scale: 0.96, y: -4 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: -4 }}
+      transition={{ duration: reduce ? 0 : 0.15, ease: "easeOut" }}
       style={pos ? { left: `${pos.x}px`, top: `${pos.y}px` } : undefined}
       onKeyDown={onPanelKeyDown}
     >
@@ -417,6 +421,6 @@ export function SchedulePanel({
       </div>
 
       <div className="sr-only" aria-live="polite" role="status">{announcement}</div>
-    </aside>
+    </motion.aside>
   );
 }

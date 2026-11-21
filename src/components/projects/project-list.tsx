@@ -84,9 +84,12 @@ function Group({ status, projects, dragging }: { status: Project["status"]; proj
   const [open, setOpen] = useState(status !== "Done");
   const headingId = `group-${status}`;
   return <section ref={setNodeRef} className="project-group" aria-labelledby={headingId} data-over={dragging === "project" && isOver}>
-    <h2 id={headingId}>{status === "Done"
-      ? <button type="button" className="group-toggle" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronRight size={14} aria-hidden="true" />{status}</button>
-      : status}<span className="group-count">{projects.length}</span></h2>
+    <h2 id={headingId}>
+      <button type="button" className="group-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <ChevronRight size={14} aria-hidden="true" />{status}
+      </button>
+      <span className="group-count">{projects.length}</span>
+    </h2>
     {open && <SortableContext items={projects.map((p) => `project:${p.id}`)} strategy={verticalListSortingStrategy}>
       <ul className="project-rows">{projects.map((p) => <ProjectRow key={p.id} project={p} dragging={dragging} />)}</ul>
     </SortableContext>}
