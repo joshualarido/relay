@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback } from "react";
 import { Dialog } from "radix-ui";
 import { animate, useReducedMotion } from "motion/react";
@@ -45,7 +46,10 @@ function TaskDetails({ task }: { task: Task }) {
       <InlineText className="sheet-notes" value={task.description} label="task notes" multiline placeholder="Add notes"
         onSave={(description) => board.patchTask(task, { description }, "Notes saved.")} /></div>
     {task.completedAt && <p className="muted text-sm">Completed <time dateTime={task.completedAt}>{new Date(task.completedAt).toLocaleString("en-GB", { timeZone: board.timezone, dateStyle: "medium", timeStyle: "short" })}</time></p>}
-    <div className="sheet-actions"><button type="button" className="text-danger" onClick={() => board.deleteTask(task)}>Delete task</button></div>
+    <div className="sheet-actions">
+      <Link className="text-quiet" href={`/calendar?schedule=1&task=${task.id}`}>Schedule</Link>
+      <button type="button" className="text-danger" onClick={() => board.deleteTask(task)}>Delete task</button>
+    </div>
   </>;
 }
 

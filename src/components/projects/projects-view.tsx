@@ -215,6 +215,7 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
     projects, tasks, groups, byProject, summaries, events: upcomingEvents(events, tasks, selectedKey, now, timezone),
     timezone, today: dateInTimezone(now, timezone), selectedKey, selected, level, sheetTask, projectSheet, pending: busy > 0, error, setError, instant, completing,
     select, backToList, openTask, openProject, closeSheet, moveTask, completeTask, moveProject, createTask, createProject, patchTask, patchProject,
+    scheduleTask: (taskId: string) => router.push(`/calendar?schedule=1&task=${taskId}`),
     deleteTask: (t: Task) => remove("task", t.id, t.title), deleteProject: (p: Project) => remove("project", p.id, p.name),
     dialogs: <>{completionDialog}{confirmDialog}</>,
   };

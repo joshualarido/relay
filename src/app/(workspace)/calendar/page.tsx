@@ -10,7 +10,7 @@ import { EventForm } from "@/components/event-form";
 import { EventSelection } from "@/components/event-selection";
 import { TaskSelection } from "@/components/task-selection";
 
-export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ date?: string; event?: string; task?: string; focus?: string }> }) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ date?: string; event?: string; task?: string; focus?: string; schedule?: string; view?: string }> }) {
   const ownerId = await requireUserId(), db = getDatabase(), query = await searchParams;
   const preferences = getPreferences(db, ownerId);
   const projects = listProjects(db, ownerId), tasks = listTasks(db, ownerId);
@@ -19,6 +19,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   return <div className="page"><header className="page-heading"><div><h1>Calendar</h1></div><EventForm projects={projects} tasks={tasks} timezone={preferences.timezone} /></header>
     <ManualCalendar projects={projects} tasks={tasks} events={listEvents(db, ownerId)} timezone={preferences.timezone} weekStart={preferences.weekStart} date={date} />
     {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={listTasks(db, ownerId, true)} timezone={preferences.timezone} />
+      : query.schedule === "1" ? null
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} projects={allProjects} focus={Boolean(query.focus)} />}
   </div>;
 }

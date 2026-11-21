@@ -39,7 +39,7 @@ export default async function TodayPage({ searchParams }: {
         <TaskComplete task={task} />
         <div className="today-row-body"><Link className="task-title" data-task-link={task.id} href={`/?task=${task.id}`} scroll={false}>{task.title}</Link>
           {projectName(task.projectId) && <span className="today-meta">{projectName(task.projectId)}</span>}</div>
-        <Link className="today-quiet-action" href="/calendar">Schedule<span className="sr-only"> {task.title}</span></Link>
+        <Link className="today-quiet-action" href={`/calendar?schedule=1&task=${task.id}`}>Schedule<span className="sr-only"> {task.title}</span></Link>
       </li>)}</ul>
     </section>}
     {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>

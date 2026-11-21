@@ -23,6 +23,7 @@ export function taskMenu(board: BoardApi, task: Task): MenuEntry[] {
   const to = (status: Task["status"], index?: number) => ({ projectId: task.projectId, status, index });
   return [
     { label: "Open details", onSelect: () => board.openTask(task.id, document.querySelector(`[data-task-card="${task.id}"]`)) },
+    { label: "Schedule", onSelect: () => board.scheduleTask(task.id) },
     task.status === "Done"
       ? { label: "Reopen", onSelect: () => board.moveTask(task.id, to("To do"), "Task reopened.") }
       : { label: "Complete", onSelect: () => board.completeTask(task, false) },
