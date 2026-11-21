@@ -20,6 +20,7 @@ import { ProjectList } from "./project-list";
 import { TaskBoard } from "./board";
 import { DetailSheet } from "./detail-sheet";
 import { useWorkspace } from "../workspace-store";
+import { DragMomentum } from "../drag-momentum";
 
 type TaskTarget = { projectId: string | null; status: Task["status"]; index?: number };
 type DragData =
@@ -338,8 +339,8 @@ export function ProjectsView(props: Props) {
         <TaskBoard dragging={active?.type ?? null} reduce={Boolean(reduce)} />
       </div>
       <DragOverlay dropAnimation={null}>
-        {active?.type === "task" ? <div className="task-card is-overlay"><span className="task-card-title">{active.task.title}</span></div>
-          : active?.type === "project" ? <div className="project-row is-overlay"><span className="project-row-name">{active.project.name}</span></div> : null}
+        {active?.type === "task" ? <DragMomentum><div className="task-card is-overlay"><span className="task-card-title">{active.task.title}</span></div></DragMomentum>
+          : active?.type === "project" ? <DragMomentum><div className="project-row is-overlay"><span className="project-row-name">{active.project.name}</span></div></DragMomentum> : null}
       </DragOverlay>
     </DndContext>
     <DetailSheet />

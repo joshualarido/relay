@@ -35,6 +35,7 @@ import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { SchedulePanel, type ScheduleItem } from "./schedule-panel";
 import { useWorkspace } from "./workspace-store";
+import { DragMomentum } from "./drag-momentum";
 
 type Kind = "project" | "task" | "event";
 const labels: Record<Kind, string> = { project: "Project deadline", task: "Task deadline", event: "Event" };
@@ -1170,11 +1171,13 @@ export function ManualCalendar({
 
       {dragGhost && (
         <div
-          className="schedule-drag-ghost"
+          className="schedule-drag-ghost-wrap"
           style={{ left: `${dragGhost.x + 12}px`, top: `${dragGhost.y + 12}px` }}
           aria-hidden="true"
         >
-          {dragGhost.item.title}
+          <DragMomentum>
+            <div className="schedule-drag-ghost">{dragGhost.item.title}</div>
+          </DragMomentum>
         </div>
       )}
     </div>
