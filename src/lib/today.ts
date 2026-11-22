@@ -1,84 +1,208 @@
 import { Temporal } from "temporal-polyfill";
 import type { AppDatabase } from "./db";
-import type { Task } from "./db/schema";
+import type { Project, Task } from "./db/schema";
+import {
+  computeDayCapacity,
+  resolveDayWorkingWindow,
+  type DayCapacity,
+  type TaskTypeMinutes,
+} from "./capacity";
 import { dateInTimezone } from "./dates";
 import { listEvents } from "./events";
+import { getPreferences, listWorkingHoursOverrides } from "./preferences";
 import { listProjects } from "./projects";
 import { listTasks } from "./tasks";
 
-// One entry on Today's timeline. start/end are the event's own values (ISO instants for timed events,
-// YYYY-MM-DD with exclusive end for all-day ones); a timed event crossing midnight keeps its real bounds,
-// so the UI clamps it for display. All-day plain events are informational: never counted, never done.
 export type TodayItem = {
-  id: string; kind: "event" | "task-block"; title: string; start: string; end: string; allDay: boolean;
-  done: boolean; taskId?: string; task?: Task; projectName?: string;
+  id: string;
+  kind: "event" | "task-block" | "project-deadline";
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  done: boolean;
+  taskId?: string;
+  task?: Task;
+  projectId?: string;
+  project?: Project;
+  projectName?: string;
 };
-export type TodayNext = { id: string; title: string; minutes: number };
+
+export type TodayNext = {
+  id: string;
+  kind: "event" | "project-deadline";
+  title: string;
+  minutes: number;
+  at: string;
+  href: string;
+};
+
 export type TodaySummary = { remaining: number; total: number; next: TodayNext | null };
 export type DayState = "empty" | "active" | "clear";
+
 export type TodayTimeline = {
-  today: string; items: TodayItem[]; dueUnscheduled: Task[]; overdue: Task[]; summary: TodaySummary; dayState: DayState;
+  today: string;
+  capacity: DayCapacity;
+  taskTypeMinutes: TaskTypeMinutes;
+  /** Today's events and project deadlines in chronological order. */
+  schedule: TodayItem[];
+  /** Today's linear task queue (open ordered by dayOrder, then completed). */
+  tasks: Task[];
+  /** Backwards-compatible combined list (schedule items). */
+  items: TodayItem[];
+  /** Legacy alias kept empty/for compatibility. */
+  dueUnscheduled: Task[];
+  /** Non-recurring open tasks with executionDate (or legacy dueDate) before today. */
+  overdue: Task[];
+  summary: TodaySummary;
+  dayState: DayState;
 };
 
-const countable = (item: TodayItem) => item.kind === "task-block" || !item.allDay;
+function projectDeadlineDate(project: Project, fallbackTimezone: string): string | null {
+  if (project.deadlineAt) {
+    return dateInTimezone(project.deadlineAt, project.deadlineTimezone ?? fallbackTimezone);
+  }
+  return project.deadline ?? null;
+}
 
 // `timezone` is the owner's preference zone; "today" is the [midnight, next midnight) window there (DST-safe).
-export function todayTimeline(db: Pick<AppDatabase, "select">, ownerId: string, timezone: string, now = new Date().toISOString()): TodayTimeline {
+export function todayTimeline(
+  db: Pick<AppDatabase, "select">,
+  ownerId: string,
+  timezone: string,
+  now = new Date().toISOString(),
+): TodayTimeline {
   const zoned = Temporal.Instant.from(now).toZonedDateTimeISO(timezone).startOfDay();
   const today = zoned.toPlainDate().toString();
-  const dayStart = zoned.epochMilliseconds, dayEnd = zoned.add({ days: 1 }).epochMilliseconds, nowMs = Date.parse(now);
-  const tasks = listTasks(db, ownerId), taskById = new Map(tasks.map((t) => [t.id, t]));
-  const projectNames = new Map(listProjects(db, ownerId).map((p) => [p.id, p.name]));
+  const dayStart = zoned.epochMilliseconds;
+  const dayEnd = zoned.add({ days: 1 }).epochMilliseconds;
+  const nowMs = Date.parse(now);
 
-  const eventItems: TodayItem[] = listEvents(db, ownerId)
-    .filter((e) => Boolean(e.start && e.end) && (e.allDay ? e.start <= today && e.end > today : Date.parse(e.start) < dayEnd && Date.parse(e.end) > dayStart))
-    .map((e) => {
-      const linked = e.taskId ? taskById.get(e.taskId) : undefined;
-      const projectId = linked ? linked.projectId : e.projectId;
+  const prefs = getPreferences(db, ownerId);
+  const overrides = listWorkingHoursOverrides(db, ownerId, today, today);
+  const window = resolveDayWorkingWindow(today, prefs.workingHours, overrides[today]);
+
+  const allTasks = listTasks(db, ownerId);
+  const allProjects = listProjects(db, ownerId);
+  const allEvents = listEvents(db, ownerId);
+  const projectNames = new Map(allProjects.map((p) => [p.id, p.name]));
+
+  const capacity = computeDayCapacity({
+    date: today,
+    timezone,
+    window,
+    events: allEvents,
+    tasks: allTasks,
+    taskTypeMinutes: prefs.taskTypeMinutes,
+  });
+
+  // 1. Events occurring today (excluding legacy task-linked time blocks)
+  const eventItems: TodayItem[] = allEvents
+    .filter(
+      (e) =>
+        !e.taskId &&
+        Boolean(e.start && e.end) &&
+        (e.allDay
+          ? e.start <= today && e.end > today
+          : Date.parse(e.start) < dayEnd && Date.parse(e.end) > dayStart),
+    )
+    .map((e) => ({
+      id: e.id,
+      kind: "event" as const,
+      title: e.title,
+      start: e.start,
+      end: e.end,
+      allDay: e.allDay,
+      done: !e.allDay && Date.parse(e.end) <= nowMs,
+      ...(e.projectId && projectNames.has(e.projectId) && { projectName: projectNames.get(e.projectId) }),
+    }));
+
+  // 2. Project deadlines falling on today (both date-only and timed)
+  const deadlineItems: TodayItem[] = allProjects
+    .filter((p) => p.status !== "Done" && projectDeadlineDate(p, timezone) === today)
+    .map((p) => {
+      const timed = Boolean(p.deadlineAt);
+      const start = timed ? p.deadlineAt! : today;
+      const end = timed
+        ? p.deadlineAt!
+        : Temporal.PlainDate.from(today).add({ days: 1 }).toString();
       return {
-        id: e.id, kind: linked ? "task-block" as const : "event" as const, title: e.title, start: e.start, end: e.end, allDay: e.allDay,
-        done: linked ? linked.status === "Done" : !e.allDay && Date.parse(e.end) <= nowMs,
-        ...(linked && { taskId: linked.id, task: linked }),
-        ...(projectId && projectNames.has(projectId) && { projectName: projectNames.get(projectId) }),
+        id: `project-deadline-${p.id}`,
+        kind: "project-deadline" as const,
+        title: p.name,
+        start,
+        end,
+        allDay: !timed,
+        done: false,
+        projectId: p.id,
+        project: p,
+        projectName: p.name,
       };
     });
 
-  const eventTaskIds = new Set(eventItems.flatMap((i) => (i.taskId ? [i.taskId] : [])));
-  const directTaskItems: TodayItem[] = tasks
-    .filter((t) => !eventTaskIds.has(t.id) && Boolean(t.startAt && t.endAt) &&
-      (t.allDay ? t.startAt! <= today && t.endAt! > today : Date.parse(t.startAt!) < dayEnd && Date.parse(t.endAt!) > dayStart))
-    .map((t) => ({
-      id: `task-block-${t.id}`,
-      kind: "task-block" as const,
-      title: t.title,
-      start: t.startAt!,
-      end: t.endAt!,
-      allDay: t.allDay,
-      done: t.status === "Done",
-      taskId: t.id,
-      task: t,
-      ...(t.projectId && projectNames.has(t.projectId) && { projectName: projectNames.get(t.projectId) }),
-    }));
+  const schedule: TodayItem[] = [...eventItems, ...deadlineItems].sort(
+    (a, b) => Number(b.allDay) - Number(a.allDay) || startMs(a) - startMs(b) || a.title.localeCompare(b.title),
+  );
 
-  const items: TodayItem[] = [...eventItems, ...directTaskItems]
-    .sort((a, b) => Number(b.allDay) - Number(a.allDay) || startMs(a) - startMs(b) || a.title.localeCompare(b.title));
+  // 3. Today's linear task queue (executionDate === today)
+  const todayTasks = allTasks
+    .filter((t) => t.executionDate === today)
+    .sort(
+      (a, b) =>
+        Number(a.status === "Done") - Number(b.status === "Done") ||
+        a.dayOrder - b.dayOrder ||
+        a.position - b.position ||
+        a.createdAt.localeCompare(b.createdAt),
+    );
 
-  const scheduled = new Set(items.flatMap((i) => i.taskId ? [i.taskId] : []));
-  const dueOn = (t: Task) => t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, timezone) : null);
-  const dueToday = tasks.filter((t) => dueOn(t) === today && !scheduled.has(t.id));
-  const dueUnscheduled = dueToday.filter((t) => t.status !== "Done");
-  const overdue = tasks.filter((t) => t.status !== "Done" && (dueOn(t) ?? today) < today);
+  // 4. Overdue non-recurring tasks (recurring tasks auto-advance)
+  const overdue = allTasks.filter((t) => {
+    if (t.status === "Done" || t.recurrenceRule) return false;
+    const d = t.executionDate ?? t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, timezone) : null);
+    return Boolean(d && d < today);
+  });
 
-  const counted = items.filter(countable);
-  const next = counted.find((i) => !i.done && Date.parse(i.start) > nowMs);
-  const total = counted.length + dueToday.length;
-  const remaining = counted.filter((i) => !i.done).length + dueUnscheduled.length;
-  const summary: TodaySummary = {
-    remaining, total,
-    next: next ? { id: next.id, title: next.title, minutes: Math.ceil((Date.parse(next.start) - nowMs) / 60_000) } : null,
+  // 5. Summary & Next timed item (event or timed project deadline)
+  const upcomingTimed = schedule.find((i) => !i.allDay && !i.done && Date.parse(i.start) > nowMs);
+  const next: TodayNext | null = upcomingTimed
+    ? {
+        id: upcomingTimed.id,
+        kind: upcomingTimed.kind === "project-deadline" ? "project-deadline" : "event",
+        title: upcomingTimed.title,
+        minutes: Math.max(1, Math.ceil((Date.parse(upcomingTimed.start) - nowMs) / 60_000)),
+        at: upcomingTimed.start,
+        href:
+          upcomingTimed.kind === "project-deadline" && upcomingTimed.projectId
+            ? `/projects/${upcomingTimed.projectId}`
+            : `/?event=${upcomingTimed.id}`,
+      }
+    : null;
+
+  const timedEvents = eventItems.filter((e) => !e.allDay);
+  const total = todayTasks.length + timedEvents.length;
+  const remaining =
+    todayTasks.filter((t) => t.status !== "Done").length +
+    timedEvents.filter((e) => !e.done).length;
+
+  const hasAnything = todayTasks.length > 0 || schedule.length > 0;
+  const dayState: DayState = !hasAnything
+    ? "empty"
+    : total > 0 && remaining === 0 && deadlineItems.length === 0
+      ? "clear"
+      : "active";
+
+  return {
+    today,
+    capacity,
+    taskTypeMinutes: prefs.taskTypeMinutes,
+    schedule,
+    tasks: todayTasks,
+    items: schedule,
+    dueUnscheduled: [],
+    overdue,
+    summary: { remaining, total, next },
+    dayState,
   };
-  const dayState: DayState = total === 0 ? (items.length ? "active" : "empty") : remaining === 0 ? "clear" : "active";
-  return { today, items, dueUnscheduled, overdue, summary, dayState };
 
   function startMs(item: TodayItem) {
     return item.allDay ? Date.parse(`${item.start}T00:00:00Z`) : Date.parse(item.start);
@@ -87,7 +211,8 @@ export function todayTimeline(db: Pick<AppDatabase, "select">, ownerId: string, 
 
 const plural = (n: number) => `${n} ${n === 1 ? "thing" : "things"}`;
 const duration = (minutes: number) => {
-  const h = Math.floor(minutes / 60), m = minutes % 60;
+  const h = Math.floor(minutes / 60),
+    m = minutes % 60;
   return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
 };
 

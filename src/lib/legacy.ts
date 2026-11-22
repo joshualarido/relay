@@ -25,11 +25,31 @@ export function normalizeProjectStatus(s: string): "Planned" | "Active" | "Pause
 export function normalizeSnapshot(s: Snapshot): Snapshot {
   if (s.entityType === "task") {
     const status = (taskMap[s.record.status] ?? s.record.status) as typeof s.record.status;
-    return { ...s, record: { ...s.record, status, taskType: s.record.taskType ?? "Medium", plannedDate: null } };
+    return {
+      ...s,
+      record: {
+        ...s.record,
+        status,
+        taskType: s.record.taskType ?? "Medium",
+        plannedDate: null,
+        executionDate: s.record.executionDate ?? null,
+        dayOrder: s.record.dayOrder ?? 0,
+        recurrenceRule: s.record.recurrenceRule ?? null,
+        recurrenceSeriesId: s.record.recurrenceSeriesId ?? null,
+      },
+    };
   }
   if (s.entityType === "project") {
     const status = (projectMap[s.record.status] ?? s.record.status) as typeof s.record.status;
-    return { ...s, record: { ...s.record, status } };
+    return {
+      ...s,
+      record: {
+        ...s.record,
+        status,
+        deadlineAt: s.record.deadlineAt ?? null,
+        deadlineTimezone: s.record.deadlineTimezone ?? null,
+      },
+    };
   }
   return s;
 }

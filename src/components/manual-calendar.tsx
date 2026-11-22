@@ -21,9 +21,21 @@ import classic from "@fullcalendar/react/themes/classic";
 import "@fullcalendar/react/skeleton.css";
 import "@fullcalendar/react/themes/classic/theme.css";
 import type { Event, Project, Task } from "@/lib/db/schema";
+import {
+  computeDayCapacity,
+  DEFAULT_TASK_TYPE_MINUTES,
+  DEFAULT_WORKING_HOURS,
+  formatMinutes,
+  resolveDayWorkingWindow,
+  type DayWorkingWindow,
+  type TaskTypeMinutes,
+  type WeeklyWorkingHours,
+} from "@/lib/capacity";
 import { dateInTimezone } from "@/lib/dates";
+import { projectRecurringDates } from "@/lib/recurrence";
 import { isShortcutBlocked } from "@/lib/screens";
 import {
+  addMinutesInstant,
   buildEventDropAction,
   buildEventResizeEnd,
   buildProjectDropAction,
@@ -31,7 +43,7 @@ import {
   isWorkingHour,
   type ScheduleDropTarget,
 } from "@/lib/calendar-schedule";
-import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, SlidersHorizontal } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, Repeat, SlidersHorizontal } from "lucide-react";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { SchedulePanel, type ScheduleItem } from "./schedule-panel";
@@ -55,15 +67,6 @@ const VIEW_PARAM_MAP: Record<string, ViewName> = {
   week: "Week",
   day: "Day",
   agenda: "Agenda",
-};
-
-type InlineEditorState = {
-  allDay: boolean;
-  start: string;
-  end: string;
-  x: number;
-  y: number;
-  returnFocus: HTMLElement | null;
 };
 
 type HighlightBox = {
@@ -102,6 +105,9 @@ export function ManualCalendar({
   events: serverEvents,
   timezone,
   weekStart,
+  workingHours = DEFAULT_WORKING_HOURS,
+  taskTypeMinutes = DEFAULT_TASK_TYPE_MINUTES,
+  workingHoursOverrides = {},
   date,
 }: {
   projects: Project[];
@@ -109,12 +115,14 @@ export function ManualCalendar({
   events: Event[];
   timezone: string;
   weekStart: number;
+  workingHours?: WeeklyWorkingHours;
+  taskTypeMinutes?: TaskTypeMinutes;
+  workingHoursOverrides?: Record<string, DayWorkingWindow>;
   date: string;
 }) {
   const ref = useRef<CalendarRef>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const scheduleBtnRef = useRef<HTMLButtonElement>(null);
-  const inlineTitleRef = useRef<HTMLInputElement>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const router = useRouter();
   const params = useSearchParams();
@@ -178,7 +186,7 @@ export function ManualCalendar({
 
   // View & date state
   const paramView = VIEW_PARAM_MAP[(params.get("view") ?? "").toLowerCase()];
-  const [view, setView] = useState<ViewName>(paramView ?? "Month");
+  const [view, setView] = useState<ViewName>(paramView ?? "Week");
   const [activeDate, setActiveDate] = useState(date);
   const [title, setTitle] = useState("");
   const [enabled, setEnabled] = useState<Record<Kind, boolean>>({ project: true, task: true, event: true });
@@ -306,52 +314,105 @@ export function ManualCalendar({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [scheduleOpen, pickedItem, dragGhost, closeSchedule]);
 
-  const taskTypeById = useMemo(() => new Map(tasks.map((t) => [t.id, t.taskType])), [tasks]);
+  // Exit animation for FullCalendar's "+more" popover: it unmounts instantly, so animate a clone out.
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        r.removedNodes.forEach((node) => {
+          if (!(node instanceof HTMLElement) || !node.classList.contains("calendar-more-popover") || node.classList.contains("is-closing")) return;
+          const ghost = node.cloneNode(true) as HTMLElement;
+          ghost.classList.add("is-closing");
+          ghost.setAttribute("aria-hidden", "true");
+          (r.target as Node).appendChild(ghost);
+          window.setTimeout(() => ghost.remove(), 140);
+        });
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
-  const records = useMemo(
-    () => [
-      ...projects
-        .filter((p) => p.deadline)
-        .map((p) => ({
-          kind: "project" as const,
-          id: p.id,
-          title: p.name,
-          start: p.deadline!,
-          end: undefined,
-          allDay: true,
-          revision: p.revision,
-          done: false,
-          taskType: undefined as Task["taskType"] | undefined,
-        })),
-      ...tasks
-        .filter((t) => Boolean(t.startAt || t.dueDate || t.dueAt))
-        .map((t) => ({
-          kind: "task" as const,
-          id: t.id,
-          title: t.title,
-          start: (t.startAt ?? t.dueDate ?? t.dueAt)!,
-          end: t.endAt ?? undefined,
-          allDay: t.startAt ? t.allDay : Boolean(t.dueDate),
-          revision: t.revision,
-          done: t.status === "Done",
-          taskType: t.taskType,
-        })),
-      ...events
-        .filter((e) => Boolean(e.start && e.end))
-        .map((e) => ({
-          kind: "event" as const,
-          id: e.id,
-          title: e.title,
-          start: e.start,
-          end: e.end,
-          allDay: e.allDay,
-          revision: e.revision,
-          done: false,
-          taskType: e.taskId ? taskTypeById.get(e.taskId) : undefined,
-        })),
-    ],
-    [projects, tasks, events, taskTypeById],
-  );
+  const records = useMemo(() => {
+    const rangeStart = Temporal.PlainDate.from(activeDate).subtract({ days: 7 }).toString();
+    const rangeEnd = Temporal.PlainDate.from(activeDate).add({ days: 45 }).toString();
+
+    const projectRecords = projects
+      .filter((p) => Boolean(p.deadline || p.deadlineAt))
+      .map((p) => ({
+        kind: "project" as const,
+        display: "project" as Kind,
+        linkId: p.id,
+        id: p.id,
+        title: p.name,
+        start: p.deadlineAt ?? p.deadline!,
+        end: p.deadlineAt ? addMinutesInstant(p.deadlineAt, 30) : undefined,
+        allDay: !p.deadlineAt,
+        revision: p.revision,
+        done: p.status === "Done",
+        taskType: undefined as Task["taskType"] | undefined,
+        recurring: false,
+        virtual: false,
+      }));
+
+    const realTaskRecords = tasks
+      .filter((t) => Boolean(t.executionDate))
+      .map((t) => ({
+        kind: "task" as const,
+        display: "task" as Kind,
+        linkId: t.id,
+        id: t.id,
+        title: t.title,
+        start: t.executionDate!,
+        end: undefined,
+        allDay: true,
+        revision: t.revision,
+        done: t.status === "Done",
+        taskType: t.taskType,
+        recurring: Boolean(t.recurrenceRule),
+        virtual: false,
+      }));
+
+    const virtualTaskRecords = tasks.flatMap((t) => {
+      if (t.status === "Done" || !t.recurrenceRule || !t.executionDate) return [];
+      const dates = projectRecurringDates(t.recurrenceRule, t.executionDate, rangeStart, rangeEnd, 30);
+      return dates.map((d) => ({
+        kind: "task" as const,
+        display: "task" as Kind,
+        linkId: t.id,
+        id: `${t.id}::virtual::${d}`,
+        title: t.title,
+        start: d,
+        end: undefined,
+        allDay: true,
+        revision: t.revision,
+        done: false,
+        taskType: t.taskType,
+        recurring: true,
+        virtual: true,
+      }));
+    });
+
+    const eventRecords = events
+      .filter((e) => !e.taskId && Boolean(e.start && e.end))
+      .map((e) => ({
+        kind: "event" as const,
+        display: "event" as Kind,
+        linkId: e.id,
+        id: e.id,
+        title: e.title,
+        start: e.start,
+        end: e.end,
+        allDay: e.allDay,
+        revision: e.revision,
+        done: false,
+        taskType: undefined as Task["taskType"] | undefined,
+        recurring: false,
+        virtual: false,
+      }));
+
+    return [...projectRecords, ...realTaskRecords, ...virtualTaskRecords, ...eventRecords];
+  }, [projects, tasks, events, activeDate]);
 
   function href(kind: Kind, id: string) {
     if (kind === "project") return projectHref(id);
@@ -386,16 +447,19 @@ export function ManualCalendar({
           info.revert();
           return;
         }
-        const isAllDay = kind === "event" ? (record as Event).allDay : kind === "project" ? true : Boolean((record as Task).dueDate);
+        const isAllDay =
+          kind === "event" ? (record as Event).allDay : kind === "task" ? true : info.event.allDay;
         const start = isAllDay ? info.event.startStr.slice(0, 10) : info.event.start!.toISOString();
-        const input =
-          kind === "event"
-            ? { reschedule: true, start }
-            : kind === "project"
-              ? { deadline: start }
-              : isAllDay
-                ? { dueDate: start }
-                : { dueAt: start };
+        let input: Record<string, unknown>;
+        if (kind === "event") input = { reschedule: true, start };
+        else if (kind === "project") {
+          input = isAllDay
+            ? { deadline: start, deadlineAt: null, deadlineTimezone: null }
+            : { deadline: null, deadlineAt: start, deadlineTimezone: timezone };
+        } else {
+          // Tasks are time-agnostic: moving a task on the calendar sets its executionDate.
+          input = { executionDate: start };
+        }
         const endpoint = `/api/${kind === "project" ? "projects" : kind === "event" ? "events" : "tasks"}/${id}`;
         const response = await fetch(endpoint, {
           method: "PATCH",
@@ -500,13 +564,17 @@ export function ManualCalendar({
 
       const action =
         item.kind === "task"
-          ? buildTaskDropAction(freshTask!, target, timezone)
+          ? buildTaskDropAction(freshTask!, target)
           : item.kind === "event"
             ? buildEventDropAction(freshEvent!, target, timezone)
             : buildProjectDropAction(freshProject!, target);
 
       if (!action) {
-        setScheduleAnnouncement("Projects can only be dropped onto a day or all-day row.");
+        setScheduleAnnouncement(
+          item.kind === "task"
+            ? "Tasks can only be dropped onto a day (no time blocks)."
+            : "Projects can only be dropped onto a day or all-day row.",
+        );
         return;
       }
 
@@ -515,11 +583,11 @@ export function ManualCalendar({
       const prevProjects = cur.projects;
 
       // Optimistic update
-      if ("startAt" in action.payload) {
-        const { startAt, endAt, allDay, dueDate, timezone: tz } = action.payload;
+      if ("executionDate" in action.payload) {
+        const { executionDate } = action.payload;
         setTasks((prev) => {
           const next = prev.map((t) =>
-            t.id === item.id ? { ...t, startAt, endAt, allDay, dueDate, dueAt: null, timezone: tz } : t,
+            t.id === item.id ? { ...t, executionDate } : t,
           );
           latestRef.current = { ...latestRef.current, tasks: next };
           return next;
@@ -538,7 +606,7 @@ export function ManualCalendar({
       } else if ("deadline" in action.payload) {
         const deadline = action.payload.deadline;
         setProjects((prev) => {
-          const next = prev.map((p) => (p.id === item.id ? { ...p, deadline } : p));
+          const next = prev.map((p) => (p.id === item.id ? { ...p, deadline, deadlineAt: null, deadlineTimezone: null } : p));
           latestRef.current = { ...latestRef.current, projects: next };
           return next;
         });
@@ -567,7 +635,7 @@ export function ManualCalendar({
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "Could not schedule item.");
 
-          if ("startAt" in action.payload) {
+          if ("executionDate" in action.payload) {
             setTasks((prev) => {
               const next = prev.map((t) => (t.id === item.id ? (result as Task) : t));
               latestRef.current = { ...latestRef.current, tasks: next };
@@ -739,7 +807,7 @@ export function ManualCalendar({
         }
         if (!dragging) return;
         setDragGhost({ item, x: ev.clientX, y: ev.clientY });
-        const dayOnly = item.kind === "project";
+        const dayOnly = item.kind === "project" || item.kind === "task";
         lastHit = hitTestCalendar(ev.clientX, ev.clientY, dayOnly);
         setHoverHighlight(lastHit ? lastHit.box : null);
       };
@@ -756,12 +824,16 @@ export function ManualCalendar({
         }
         setDragGhost(null);
         setHoverHighlight(null);
-        const dayOnly = item.kind === "project";
+        const dayOnly = item.kind === "project" || item.kind === "task";
         const hit = hitTestCalendar(ev.clientX, ev.clientY, dayOnly) ?? lastHit;
         if (hit) {
           void placeItem(item, hit.target, { keepInPanel: ev.shiftKey });
-        } else if (item.kind === "project") {
-          setScheduleAnnouncement("Projects can only be dropped onto a day or all-day row.");
+        } else if (dayOnly) {
+          setScheduleAnnouncement(
+            item.kind === "task"
+              ? "Tasks can only be dropped onto a day or all-day row."
+              : "Projects can only be dropped onto a day or all-day row.",
+          );
         }
       };
 
@@ -1061,6 +1133,7 @@ export function ManualCalendar({
         ref={frameRef}
         className="calendar-frame"
         data-schedule-mode={scheduleOpen ? "true" : undefined}
+        data-view={view}
         aria-busy={busyCount > 0}
         role="region"
         aria-label="Calendar grid; scroll horizontally on narrow screens"
@@ -1093,21 +1166,63 @@ export function ManualCalendar({
           }}
           editable={true}
           eventDurationEditable={true}
-          dayMaxEvents={false}
+          dayMaxEvents={5}
+          popoverClass="calendar-more-popover"
           eventAllow={eventAllow}
           events={records
-            .filter((r) => enabled[r.kind])
+            .filter((r) => enabled[r.display])
             .map((r) => ({
               id: `${r.kind}:${r.id}`,
               title: r.title,
               start: r.start,
               end: r.end,
               allDay: r.allDay,
+              editable: !r.virtual,
               durationEditable: r.kind === "event",
               color: "transparent",
               contrastColor: "var(--foreground)",
-              extendedProps: { kind: r.kind, id: r.id, done: r.done },
+              extendedProps: {
+                kind: r.kind,
+                id: r.id,
+                display: r.display,
+                linkId: r.linkId,
+                taskType: r.taskType,
+                done: r.done,
+                recurring: r.recurring,
+                virtual: r.virtual,
+              },
             }))}
+          dayHeaderContent={(arg) => {
+            if (view === "Month") return arg.text;
+            const iso = dateInTimezone(arg.date.toISOString(), timezone);
+            const win = resolveDayWorkingWindow(iso, workingHours, workingHoursOverrides[iso]);
+            const cap = computeDayCapacity({
+              date: iso,
+              timezone,
+              window: win,
+              events,
+              tasks,
+              taskTypeMinutes,
+            });
+            const over = cap.overbookedMinutes > 0;
+            return (
+              <div className="calendar-day-header-stack">
+                <span>{arg.text}</span>
+                <span
+                  className={`calendar-capacity-pill${over ? " is-overbooked" : ""}${!win.enabled ? " is-off" : ""}`}
+                  title={
+                    win.enabled
+                      ? `${formatMinutes(cap.plannedMinutes)} planned / ${formatMinutes(cap.usableMinutes)} usable (${win.start}–${win.end})`
+                      : "Day off"
+                  }
+                >
+                  {win.enabled
+                    ? `${formatMinutes(cap.plannedMinutes)}/${formatMinutes(cap.usableMinutes)}`
+                    : "Off"}
+                </span>
+              </div>
+            );
+          }}
           eventDrop={(info) => {
             void handleEventDrop(info);
           }}
@@ -1115,9 +1230,11 @@ export function ManualCalendar({
             void handleEventResize(info);
           }}
           eventContent={(info) => {
-            const kind = info.event.extendedProps.kind as Kind;
-            const id = info.event.extendedProps.id as string;
+            const kind = info.event.extendedProps.display as Kind;
+            const id = info.event.extendedProps.linkId as string;
             const taskType = info.event.extendedProps.taskType as Task["taskType"] | undefined;
+            const recurring = Boolean(info.event.extendedProps.recurring);
+            const virtual = Boolean(info.event.extendedProps.virtual);
             const recordColor = taskType ? taskTypeColors[taskType] : colors[kind];
             const Icon = icons[kind];
             return (
@@ -1125,20 +1242,39 @@ export function ManualCalendar({
                 href={href(kind, id)}
                 scroll={false}
                 draggable={false}
-                className="calendar-record"
+                className={`calendar-record${virtual ? " is-virtual" : ""}`}
                 data-calendar-record={`${kind}:${id}`}
                 data-task-link={kind === "task" ? id : undefined}
-                style={{ "--record-color": recordColor, opacity: info.event.extendedProps.done ? 0.6 : 1 } as React.CSSProperties}
+                style={{ "--record-color": recordColor, opacity: info.event.extendedProps.done ? 0.6 : virtual ? 0.72 : 1 } as React.CSSProperties}
                 aria-label={`${labels[kind]}${taskType ? ` (${taskType})` : ""}: ${info.event.title}`}
               >
-                <Icon size={12} aria-hidden="true" />
-                <span aria-hidden="true">
-                  {info.timeText && <time suppressHydrationWarning>{info.timeText}</time>}
-                  {info.event.title}
+                <span className="calendar-record-meta" aria-hidden="true">
+                  <Icon size={12} />
+                  {recurring && <Repeat size={11} />}
+                  <time suppressHydrationWarning>{info.event.allDay ? "Day" : info.timeText}</time>
                 </span>
+                <span className="calendar-record-title" aria-hidden="true">{info.event.title}</span>
+                {taskType && <span className="calendar-record-tag" aria-hidden="true">{taskType}</span>}
               </Link>
             );
           }}
+          nowIndicator={true}
+          nowIndicatorLineClass="cal-now-line"
+          nowIndicatorDotClass="cal-now-dot"
+          nowIndicatorHeaderClass="cal-now-label"
+          listDayClass="agenda-day"
+          listDayHeaderClass="agenda-day-header"
+          listItemEventClass={(i) => (i.event.allDay ? "agenda-item" : "agenda-item is-timed")}
+          listItemEventBeforeClass="agenda-item-before"
+          listItemEventInnerClass="agenda-item-inner"
+          listDayFormat={{ year: "numeric", month: "long", day: "numeric" }}
+          listDayAltFormat={{ weekday: "long" }}
+          listDayHeaderContent={(h) => (
+            <span className="agenda-day-label">
+              {h.text}
+              {h.level === 0 && h.isToday && <span className="agenda-today-pill">Today</span>}
+            </span>
+          )}
           dayCellClass={dayCellClass}
           dayLaneClass={dayLaneClass}
           slotLaneClass={slotLaneClass}

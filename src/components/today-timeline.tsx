@@ -2,23 +2,19 @@
 
 import { Fragment, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Check, Clock, SquareCheck } from "lucide-react";
+import { Clock, Flag } from "lucide-react";
 import type { TodayItem } from "@/lib/today";
-import { TaskComplete } from "./task-complete";
 import { NowLine } from "./now-line";
-import { SwipeableTaskRow } from "./swipeable-task-row";
-import { pushTaskTomorrow, toggleTaskDone } from "./today-due-list";
 
 const tick = 30_000;
 const subscribe = (notify: () => void) => {
   const id = setInterval(notify, tick);
   return () => clearInterval(id);
 };
-// Stable within each 30 s window, so React sees one value per tick; null on the server (the line appears after hydration).
 const useNow = () =>
   useSyncExternalStore(subscribe, () => Math.floor(Date.now() / tick) * tick, () => null);
 
+/** Chronological schedule & deadlines strip for Today (events + project deadlines). */
 export function TodayTimeline({
   items,
   timezone,
@@ -30,7 +26,6 @@ export function TodayTimeline({
   dayStart: number;
   dayEnd: number;
 }) {
-  const router = useRouter();
   const now = useNow();
   const clock = new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
@@ -52,6 +47,9 @@ export function TodayTimeline({
     : -1;
 
   function time(item: TodayItem) {
+    if (item.kind === "project-deadline") {
+      return item.allDay ? "Deadline" : `Due ${clock.format(Date.parse(item.start))}`;
+    }
     if (item.allDay) return "All day";
     const start = Date.parse(item.start);
     const end = Date.parse(item.end);
@@ -62,60 +60,38 @@ export function TodayTimeline({
   }
 
   return (
-    <section className="today-section" aria-labelledby="timeline-heading">
-      <h2 id="timeline-heading" className="sr-only">
-        Timeline
-      </h2>
+    <section className="today-section" aria-labelledby="schedule-heading">
+      <h2 id="schedule-heading">Schedule &amp; deadlines</h2>
       <ol className="today-list timeline">
         {items.map((item, index) => {
-          const block = item.kind === "task-block" && item.task;
-          const Icon = block ? SquareCheck : Clock;
-          const href = block ? `/?task=${item.taskId}` : `/?event=${item.id}`;
-          const rowInner = (
-            <div className={`today-row timeline-row${item.done ? (block ? " is-done" : " is-past") : ""}`}>
-              <span className="timeline-time">{time(item)}</span>
-              <Icon className="timeline-icon" size={15} aria-hidden="true" />
-              <div className="today-row-body">
-                <span className="sr-only">{block ? "Task block: " : "Event: "}</span>
-                <Link
-                  className="task-title"
-                  data-task-link={block ? item.taskId : undefined}
-                  href={href}
-                  title={block ? "Edit task (E)" : undefined}
-                  scroll={false}
-                >
-                  {item.title}
-                </Link>
-                {item.projectName && <span className="today-meta">{item.projectName}</span>}
-                {block && <span className="task-type-pill" data-task-type={item.task!.taskType}>{item.task!.taskType}</span>}
-              </div>
-              {block &&
-                (item.done ? (
-                  <span className="complete-mark" role="img" aria-label="Completed">
-                    <Check size={13} aria-hidden="true" />
-                  </span>
-                ) : (
-                  <TaskComplete task={item.task!} />
-                ))}
-            </div>
-          );
+          const isDeadline = item.kind === "project-deadline";
+          const Icon = isDeadline ? Flag : Clock;
+          const href = isDeadline && item.projectId ? `/projects/${item.projectId}` : `/?event=${item.id}`;
 
           return (
             <Fragment key={item.id}>
               {index === nowAt && <NowLine label={clock.format(now!)} />}
               <li className="today-row-wrap">
-                {block ? (
-                  <SwipeableTaskRow
-                    taskId={item.task!.id}
-                    canComplete={!item.done}
-                    onComplete={() => toggleTaskDone(item.task!, () => router.refresh())}
-                    onTomorrow={() => pushTaskTomorrow(item.task!, timezone, () => router.refresh())}
-                  >
-                    {rowInner}
-                  </SwipeableTaskRow>
-                ) : (
-                  rowInner
-                )}
+                <div
+                  className={`today-row timeline-row${item.done ? " is-past" : ""}${isDeadline ? " is-deadline" : ""}`}
+                >
+                  <span className="timeline-time">{time(item)}</span>
+                  <Icon
+                    className={`timeline-icon${isDeadline ? " timeline-icon-deadline" : ""}`}
+                    size={15}
+                    aria-hidden="true"
+                  />
+                  <div className="today-row-body">
+                    <span className="sr-only">{isDeadline ? "Project deadline: " : "Event: "}</span>
+                    <Link className="task-title" href={href} scroll={false}>
+                      {item.title}
+                    </Link>
+                    {!isDeadline && item.projectName && (
+                      <span className="today-meta">{item.projectName}</span>
+                    )}
+                    {isDeadline && <span className="deadline-pill">Project deadline</span>}
+                  </div>
+                </div>
               </li>
             </Fragment>
           );

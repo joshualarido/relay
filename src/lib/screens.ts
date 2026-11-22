@@ -40,5 +40,5 @@ export function isShortcutBlocked(event: KeyboardEvent): boolean {
   if (event.defaultPrevented) return true;
   const target = event.target as Element | null;
   if (target?.closest?.("input, textarea, select, [contenteditable]:not([contenteditable='false'])")) return true;
-  return !!document.querySelector("[role=dialog], [role=alertdialog], [role=menu][data-state=open], [role=menu]:not([data-state])");
+  return !!document.querySelector("[role=dialog]:not([data-state=closed]), [role=alertdialog]:not([data-state=closed]), [role=menu][data-state=open], [role=menu]:not([data-state])");
 }

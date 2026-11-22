@@ -2,9 +2,12 @@ import { Temporal } from "temporal-polyfill";
 import { requireUserId } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
 import { getCachedPreferences, getCachedProjects, getCachedTasks } from "@/lib/request-data";
-import { summarySentence, todayTimeline } from "@/lib/today";
+import { advanceMissedRecurringTasks } from "@/services/tasks";
+import { todayTimeline } from "@/lib/today";
+import { TodayGlance } from "@/components/today-glance";
 import { TodayTimeline } from "@/components/today-timeline";
-import { TodayDueList, TodayShortcuts } from "@/components/today-due-list";
+import { TodayQueue } from "@/components/today-queue";
+import { TodayShortcuts } from "@/components/today-due-list";
 import { TodayProgress } from "@/components/today-progress";
 import { CatchUp } from "@/components/catch-up";
 import { DayClear } from "@/components/day-clear";
@@ -16,38 +19,46 @@ export default async function TodayPage({ searchParams }: {
   searchParams: Promise<{ task?: string; focus?: string; event?: string }>;
 }) {
   const ownerId = await requireUserId(), db = getDatabase(), query = await searchParams;
-  const timezone = getCachedPreferences(ownerId).timezone;
-  const day = todayTimeline(db, ownerId, timezone);
+  const prefs = getCachedPreferences(ownerId);
+  const timezone = prefs.timezone;
+  const nowIso = new Date().toISOString();
+  const todayDate = Temporal.Instant.from(nowIso).toZonedDateTimeISO(timezone).toPlainDate().toString();
+  advanceMissedRecurringTasks(db, ownerId, todayDate);
+
+  const day = todayTimeline(db, ownerId, timezone, nowIso);
   const start = Temporal.PlainDate.from(day.today).toZonedDateTime({ timeZone: timezone });
   const tomorrow = start.add({ days: 1 });
   const projects = getCachedProjects(ownerId);
   const allProjects = [...projects, ...getCachedProjects(ownerId, true)];
   const allTasks = getCachedTasks(ownerId, true);
-  const nowIso = new Date().toISOString();
   const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
   const dateLabel = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${day.today}T12:00:00Z`));
-  const todayTasks = [
-    ...day.overdue,
-    ...day.dueUnscheduled,
-    ...day.items.flatMap((item) => (item.kind === "task-block" && item.task ? [item.task] : [])),
-  ];
+  const todayTasks = [...day.overdue, ...day.tasks];
 
   return <div className="page today-page">
     <TodayShortcuts tasks={todayTasks} />
     <header className="today-header">
-      <div><h1>Today</h1><p className="today-summary"><span>{dateLabel}</span>{day.dayState === "active" && <> · <span>{summarySentence(day.summary, day.dayState)}</span></>}</p></div>
+      <div><p className="today-eyebrow">{dateLabel}</p><h1>Today</h1></div>
       {day.dayState !== "empty" && <CaptureButton />}
     </header>
+    <TodayGlance day={day} timezone={timezone} />
     <div className="today-layout">
       <div className="today-primary">
         {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
-        {day.dueUnscheduled.length > 0 && <section className="today-section" aria-labelledby="due-today-heading">
-          <h2 id="due-today-heading">Due today</h2>
-          <TodayDueList tasks={day.dueUnscheduled} projectNames={projectNames} timezone={timezone} />
-        </section>}
-        {day.dayState === "empty" ? <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
-          : day.dayState === "clear" ? <DayClear day={day.today} />
-          : <TodayTimeline items={day.items} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
+        {day.schedule.length > 0 && <TodayTimeline items={day.schedule} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
+        {day.dayState === "empty" ? (
+          <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
+        ) : day.dayState === "clear" ? (
+          <DayClear day={day.today} />
+        ) : day.tasks.length > 0 ? (
+          <TodayQueue
+            today={day.today}
+            tasks={day.tasks}
+            projectNames={projectNames}
+            taskTypeMinutes={day.taskTypeMinutes}
+            timezone={timezone}
+          />
+        ) : null}
       </div>
       <aside className="today-secondary" aria-label="Progress">
         <TodayProgress tasks={allTasks} projects={projects} timezone={timezone} now={nowIso} />

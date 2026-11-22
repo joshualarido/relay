@@ -40,8 +40,7 @@ export function TaskForm({ task, projects, projectId = null, initialOpen = false
           status: form.get("status"),
           taskType: form.get("taskType"),
           important: form.get("important") === "" ? null : form.get("important") === "true",
-          dueDate: form.get("dueDate") || null,
-          dueAt: form.get("dueAt") || null, timezone: form.get("dueAt") ? form.get("timezone") : null,
+          executionDate: form.get("executionDate") || null,
           ...(task ? { expectedRevision: task.revision } : {}),
         };
         const payload = JSON.stringify(input);
@@ -64,19 +63,11 @@ export function TaskForm({ task, projects, projectId = null, initialOpen = false
         <div className="field"><label htmlFor={`${prefix}-projectId`}>Project</label><select {...field("projectId")} defaultValue={task?.projectId ?? projectId ?? ""}><option value="">No project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.archivedAt ? " (archived)" : ""}</option>)}</select>{errors("projectId")}</div>
         <div className="form-grid">
           <div className="field"><label htmlFor={`${prefix}-status`}>Task status</label><select {...field("status")} defaultValue={task?.status ?? "To do"}>{statuses.map((s) => <option key={s}>{s}</option>)}</select>{errors("status")}</div>
-          <div className="field"><label htmlFor={`${prefix}-taskType`}>Task type</label><select {...field("taskType")} defaultValue={task?.taskType ?? "Medium"}><option value="Instant">Instant (15m)</option><option value="Medium">Medium (30m)</option><option value="Deep">Deep (1h)</option></select>{errors("taskType")}</div>
+          <div className="field"><label htmlFor={`${prefix}-taskType`}>Task type</label><select {...field("taskType")} defaultValue={task?.taskType ?? "Medium"}><option value="Instant">Instant (15m)</option><option value="Medium">Medium (45m)</option><option value="Deep">Deep (1.5h)</option></select>{errors("taskType")}</div>
           <div className="field"><label htmlFor={`${prefix}-important`}>Important</label>
             <select {...field("important")} defaultValue={task?.important == null ? "" : String(task.important)}><option value="">Unset</option><option value="true">Yes</option><option value="false">No</option></select>{errors("important")}</div>
         </div>
-        <div className="field"><label htmlFor={`${prefix}-dueDate`}>Due date</label><input {...field("dueDate")} type="date" defaultValue={task?.dueDate ?? ""} />{errors("dueDate")}</div>
-        {/* ponytail: explicit ISO offsets avoid ambiguous local times; use a zoned picker when shared calendar inputs exist. */}
-        <details open={Boolean(task?.dueAt)}><summary className="muted cursor-pointer">Use a timed deadline instead</summary>
-          <div className="stack mt-4">
-            <p className="muted text-sm">Clear the date above. Include an explicit offset, for example 2027-02-10T16:00:00+07:00.</p>
-            <div className="field"><label htmlFor={`${prefix}-dueAt`}>Timed deadline (ISO 8601)</label><input {...field("dueAt")} defaultValue={task?.dueAt ?? ""} placeholder="2027-02-10T16:00:00+07:00" />{errors("dueAt")}</div>
-            <div className="field"><label htmlFor={`${prefix}-timezone`}>Deadline timezone</label><input {...field("timezone")} defaultValue={task?.timezone ?? "Asia/Jakarta"} />{errors("timezone")}</div>
-          </div>
-        </details>
+        <div className="field"><label htmlFor={`${prefix}-executionDate`}>Execution date</label><input {...field("executionDate")} type="date" defaultValue={task?.executionDate ?? ""} />{errors("executionDate")}</div>
         {error && <p role="alert" className="error-message">{error}</p>}
         <div className="form-actions"><Dialog.Close asChild><Button variant="outline" type="button" disabled={pending}>Cancel</Button></Dialog.Close><Button type="submit" disabled={pending}>{pending ? "Saving..." : task ? "Save task" : "Create task"}</Button></div>
       </fieldset>

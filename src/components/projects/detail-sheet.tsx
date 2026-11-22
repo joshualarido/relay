@@ -6,7 +6,9 @@ import { Dialog } from "radix-ui";
 import { animate, useReducedMotion } from "motion/react";
 import { Star, X } from "lucide-react";
 import type { Project, Task } from "@/lib/db/schema";
+import { instantToLocal, localToInstant } from "@/lib/dates";
 import { NO_PROJECT, projectGroups, taskColumns } from "@/lib/project-board";
+import { RecurrencePicker } from "../recurrence-picker";
 import { takeSheetOrigin, useBoard } from "./projects-view";
 import { InlineText } from "./inline-text";
 
@@ -33,13 +35,17 @@ function TaskDetails({ task }: { task: Task }) {
         <option value={NO_PROJECT}>No project</option>
         {projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.archivedAt ? " (archived)" : ""}</option>)}
       </select></div>
-    {task.dueAt
-      ? <div className="sheet-field"><span className="sheet-label">Due</span><p><time dateTime={task.dueAt}>{new Intl.DateTimeFormat("en-GB", { timeZone: task.timezone!, dateStyle: "medium", timeStyle: "short" }).format(new Date(task.dueAt))}</time> ({task.timezone})</p></div>
-      : <div className="sheet-field"><label className="sheet-label" htmlFor="sheet-due">Due date</label>
-        <input id="sheet-due" type="date" key={`${task.id}-${task.dueDate}`} defaultValue={task.dueDate ?? ""} onBlur={(e) => {
-          const dueDate = e.target.value || null;
-          if (dueDate !== task.dueDate) void board.patchTask(task, { dueDate }, dueDate ? "Due date set." : "Due date cleared.");
-        }} /></div>}
+    <div className="sheet-field"><label className="sheet-label" htmlFor="sheet-exec-date">Execution date</label>
+      <input id="sheet-exec-date" type="date" key={`${task.id}-${task.executionDate}`} defaultValue={task.executionDate ?? ""} onBlur={(e) => {
+        const executionDate = e.target.value || null;
+        if (executionDate !== task.executionDate) void board.patchTask(task, { executionDate }, executionDate ? "Execution date set." : "Execution date cleared.");
+      }} /></div>
+    <div className="sheet-field"><span className="sheet-label">Repeat</span>
+      <RecurrencePicker
+        value={task.recurrenceRule ?? null}
+        onChange={(recurrenceRule) => void board.patchTask(task, { recurrenceRule }, recurrenceRule ? "Recurrence updated." : "Recurrence removed.")}
+      />
+    </div>
     <div className="sheet-field"><span className="sheet-label">Important</span>
       <button type="button" className="toggle-button" aria-pressed={Boolean(task.important)} onClick={() => board.patchTask(task, { important: !task.important }, task.important ? "Unmarked important." : "Marked important.")}>
         <Star size={15} aria-hidden="true" />{task.important ? "Important" : "Mark important"}</button></div>
@@ -56,15 +62,44 @@ function TaskDetails({ task }: { task: Task }) {
 
 function ProjectDetails({ project }: { project: Project }) {
   const board = useBoard();
+  const timedLocal = project.deadlineAt
+    ? instantToLocal(project.deadlineAt, project.deadlineTimezone ?? board.timezone)
+    : "";
+  const currentDate = timedLocal ? timedLocal.slice(0, 10) : (project.deadline ?? "");
+  const currentTime = timedLocal ? timedLocal.slice(11, 16) : "";
+
+  function saveDeadline(nextDate: string, nextTime: string) {
+    if (!nextDate) {
+      if (project.deadline || project.deadlineAt) {
+        void board.patchProject(project, { deadline: null, deadlineAt: null, deadlineTimezone: null }, "Deadline cleared.");
+      }
+      return;
+    }
+    if (nextTime) {
+      const deadlineAt = localToInstant(`${nextDate}T${nextTime}`, board.timezone);
+      void board.patchProject(project, { deadline: null, deadlineAt, deadlineTimezone: board.timezone }, "Deadline set.");
+    } else {
+      void board.patchProject(project, { deadline: nextDate, deadlineAt: null, deadlineTimezone: null }, "Deadline set.");
+    }
+  }
+
   return <>
     <Dialog.Title asChild><h2 className="sheet-title"><InlineText value={project.name} label="project name" required onSave={(name) => board.patchProject(project, { name }, "Project renamed.")} /></h2></Dialog.Title>
     <Dialog.Description className="sr-only">Project details. Changes save as you make them.</Dialog.Description>
     {!project.archivedAt && <Segmented label="Status" options={projectGroups} value={project.status} onChange={(status) => board.moveProject(project, { status }, `Moved to ${status}.`)} />}
-    <div className="sheet-field"><label className="sheet-label" htmlFor="sheet-deadline">Deadline</label>
-      <input id="sheet-deadline" type="date" key={`${project.id}-${project.deadline}`} defaultValue={project.deadline ?? ""} onBlur={(e) => {
-        const deadline = e.target.value || null;
-        if (deadline !== project.deadline) void board.patchProject(project, { deadline }, deadline ? "Deadline set." : "Deadline cleared.");
-      }} /></div>
+    <div className="sheet-field">
+      <label className="sheet-label" htmlFor="sheet-deadline">Deadline</label>
+      <div className="sheet-deadline-inputs">
+        <input id="sheet-deadline" type="date" key={`${project.id}-${currentDate}`} defaultValue={currentDate} onBlur={(e) => {
+          const nextDate = e.target.value;
+          if (nextDate !== currentDate) saveDeadline(nextDate, currentTime);
+        }} />
+        <input aria-label="Deadline time (optional)" type="time" key={`${project.id}-${currentTime}`} defaultValue={currentTime} disabled={!currentDate} onBlur={(e) => {
+          const nextTime = e.target.value;
+          if (nextTime !== currentTime) saveDeadline(currentDate, nextTime);
+        }} />
+      </div>
+    </div>
     <div className="sheet-field"><span className="sheet-label">Description</span>
       <InlineText className="sheet-notes" value={project.description} label="project description" multiline placeholder="Add a description"
         onSave={(description) => board.patchProject(project, { description }, "Description saved.")} /></div>
