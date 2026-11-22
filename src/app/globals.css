@@ -1113,6 +1113,8 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .capture-type-minutes { color: var(--muted-foreground); font-variant-numeric: tabular-nums; margin-left: 2px; }
 .capture-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .capture-inline .checkbox-row { margin-left: 4px; }
+.capture-tab-hint { font-size: .75rem; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 5px; }
+@media (max-width: 760px) { .capture-tab-hint { display: none; } }
 .capture-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--border); }
 .capture-footer .capture-chips { flex: 1; min-width: 0; }
 .capture-footer > button[type="submit"] { margin-left: auto; min-height: 40px; }

@@ -136,18 +136,15 @@ test("acceptance #2: Capture tokens (#project, @fri, @fri 14:00-15:00, !), remov
   expect(impTask?.projectId).toBeNull();
   expect(impTask?.executionDate).toBeNull();
 
-  // Plain text creates a loose task. Shift+Tab reaches the type switch, arrows cycle it,
-  // and Tab from the title moves on to the property fields (no Tab hijack).
+  // Tab on an empty title cycles Task -> Event -> Project -> Task; with text, Tab reaches the fields.
   await page.keyboard.press("n");
-  await page.keyboard.press("Shift+Tab");
-  await page.keyboard.press("ArrowRight");
-  await expect(dialog.getByRole("radio", { name: "Event" })).toHaveAttribute("aria-checked", "true");
-  await page.keyboard.press("ArrowRight");
-  await expect(dialog.getByRole("radio", { name: "Project" })).toHaveAttribute("aria-checked", "true");
-  await page.keyboard.press("ArrowRight");
-  await expect(dialog.getByRole("radio", { name: "Task" })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Tab");
-  await expect(dialog.getByLabel("Quick capture")).toBeFocused();
+  await expect(dialog.getByRole("radio", { name: "Event" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("radio", { name: "Project" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("radio", { name: "Task" })).toHaveAttribute("aria-checked", "true");
+  await dialog.getByLabel("Quick capture").fill("x");
   await page.keyboard.press("Tab");
   await expect(dialog.getByRole("button", { name: "Today" })).toBeFocused();
   const looseTitle = `Plain loose task ${stamp}`;

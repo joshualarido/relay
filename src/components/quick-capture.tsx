@@ -165,6 +165,16 @@ export function QuickCapture({
     e.currentTarget.querySelector<HTMLElement>(`[data-kind=${next}]`)?.focus();
   }
 
+  // Tab on an empty title cycles Task -> Event -> Project; once there is text,
+  // Tab moves on into the property fields so they stay keyboard-reachable.
+  function onInputKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (rawInput.trim()) return;
+    e.preventDefault();
+    const idx = kinds.findIndex((k) => k.kind === kind);
+    choose(kinds[(idx + 1) % kinds.length].kind);
+  }
+
   function removeChip(token: CaptureToken) {
     const updated = removeTokenFromInput(rawInput, token);
     setRawInput(updated);
@@ -362,6 +372,9 @@ export function QuickCapture({
               </button>
             ))}
           </div>
+          <span className="capture-tab-hint">
+            <kbd>Tab</kbd> switch
+          </span>
         </div>
 
         <div className="field capture-title">
@@ -373,6 +386,7 @@ export function QuickCapture({
             id={`${id}-title`}
             name="title"
             value={rawInput}
+            onKeyDown={onInputKeyDown}
             onChange={(e) => {
               setRawInput(e.target.value);
               if (error) setError("");
