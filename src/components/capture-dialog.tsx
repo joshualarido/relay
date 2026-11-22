@@ -5,6 +5,7 @@ import { Dialog } from "radix-ui";
 import { Plus, X } from "lucide-react";
 import { isShortcutBlocked } from "@/lib/screens";
 import type { CaptureProjectOption } from "@/lib/capture-parser";
+import type { TaskTypeMinutes } from "@/lib/capacity";
 import { Button } from "./ui/button";
 import { QuickCapture } from "./quick-capture";
 
@@ -12,6 +13,7 @@ export type CaptureData = {
   timezone: string;
   weekStart: number;
   projects?: CaptureProjectOption[];
+  taskTypeMinutes?: TaskTypeMinutes;
 };
 
 const CaptureContext = createContext<{
@@ -98,6 +100,7 @@ export function CaptureProvider({ data, children }: { data: CaptureData; childre
               timezone={data.timezone}
               weekStart={data.weekStart}
               projects={data.projects}
+              taskTypeMinutes={data.taskTypeMinutes}
               initialValue={initialValue}
               inlineConfirmation={false}
               onPendingChange={setPending}

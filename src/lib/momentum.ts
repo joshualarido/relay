@@ -68,11 +68,12 @@ export function computeMomentum(
       }
     }
 
-    const scheduledDay = t.startAt
-      ? t.allDay
-        ? t.startAt
-        : dateInTimezone(t.startAt, timezone)
-      : t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, timezone) : null);
+    const scheduledDay = t.executionDate
+      ?? (t.startAt
+        ? t.allDay
+          ? t.startAt
+          : dateInTimezone(t.startAt, timezone)
+        : t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, timezone) : null));
 
     if (scheduledDay && scheduledDay >= windowStartStr && scheduledDay <= todayStr) {
       scheduledInWindow++;

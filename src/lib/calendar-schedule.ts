@@ -22,12 +22,7 @@ export type ScheduleDropAction =
       method: "PATCH";
       entityKey: string;
       payload: {
-        startAt: string;
-        endAt: string;
-        allDay: boolean;
-        dueDate: string | null;
-        dueAt: null;
-        timezone: string | null;
+        executionDate: string;
         expectedRevision: number;
       };
     }
@@ -49,6 +44,8 @@ export type ScheduleDropAction =
       entityKey: string;
       payload: {
         deadline: string;
+        deadlineAt: null;
+        deadlineTimezone: null;
         expectedRevision: number;
       };
     };
@@ -81,7 +78,7 @@ export function groupUnscheduledTasks(
   const eligible = tasks.filter((t) => {
     if (t.deletedAt || t.archivedAt || t.status === "Done") return false;
     const forceInclude = include?.has(t.id) ?? false;
-    if (!forceInclude && (Boolean(t.startAt) || scheduledTaskIds.has(t.id))) return false;
+    if (!forceInclude && Boolean(t.executionDate)) return false;
     if (!q) return true;
     const projectName = t.projectId ? (projectMap.get(t.projectId)?.name ?? "") : "No project";
     return t.title.toLowerCase().includes(q) || projectName.toLowerCase().includes(q);
@@ -157,7 +154,7 @@ export function listDatelessProjects(
 ): Project[] {
   const q = query.trim().toLowerCase();
   return projects.filter((p) => {
-    if (p.deletedAt || p.archivedAt || p.status === "Done" || p.deadline !== null) return false;
+    if (p.deletedAt || p.archivedAt || p.status === "Done" || Boolean(p.deadline || p.deadlineAt)) return false;
     if (!q) return true;
     return p.name.toLowerCase().includes(q);
   });
@@ -220,43 +217,19 @@ export function buildEventDropAction(
   };
 }
 
-/** Build the server mutation for dropping a task onto a time slot (duration by taskType: 15/30/60m) or day/all-day row (all-day). */
+/** Build the server mutation for dropping a task onto a day (sets executionDate; time slots are disallowed). */
 export function buildTaskDropAction(
   task: Pick<Task, "id" | "title" | "revision"> & { taskType?: Task["taskType"] | null },
   target: ScheduleDropTarget,
-  timezone: string,
-): ScheduleDropAction {
-  if (target.kind === "time") {
-    const start = Temporal.Instant.from(target.startInstant).toString();
-    const minutes = task.taskType === "Instant" ? 15 : task.taskType === "Deep" ? 60 : 30;
-    const end = addMinutesInstant(start, minutes);
-    return {
-      endpoint: `/api/tasks/${task.id}`,
-      method: "PATCH",
-      entityKey: `task:${task.id}`,
-      payload: {
-        startAt: start,
-        endAt: end,
-        allDay: false,
-        dueDate: null,
-        dueAt: null,
-        timezone,
-        expectedRevision: task.revision,
-      },
-    };
-  }
+): ScheduleDropAction | null {
+  if (target.kind !== "day") return null;
   dateOnlySchema.parse(target.date);
   return {
     endpoint: `/api/tasks/${task.id}`,
     method: "PATCH",
     entityKey: `task:${task.id}`,
     payload: {
-      startAt: target.date,
-      endAt: nextCalendarDate(target.date),
-      allDay: true,
-      dueDate: target.date,
-      dueAt: null,
-      timezone: null,
+      executionDate: target.date,
       expectedRevision: task.revision,
     },
   };
@@ -275,6 +248,8 @@ export function buildProjectDropAction(
     entityKey: `project:${project.id}`,
     payload: {
       deadline: target.date,
+      deadlineAt: null,
+      deadlineTimezone: null,
       expectedRevision: project.revision,
     },
   };

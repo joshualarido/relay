@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AppDatabase } from "../lib/db";
 import { project, task, type Project, type Snapshot } from "../lib/db/schema";
 import { dateOnlySchema } from "../lib/dates";
+import { timezoneSchema } from "../lib/preferences";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "../lib/activity";
 import { AppError } from "../lib/errors";
 
@@ -13,6 +14,8 @@ export const projectFields = {
   description: z.string().max(20_000),
   status: z.enum(projectStatuses),
   deadline: dateOnlySchema.nullable(),
+  deadlineAt: z.iso.datetime({ offset: true }).nullable(),
+  deadlineTimezone: timezoneSchema.nullable(),
   position: z.number().int().min(0).max(1_000_000),
 };
 
@@ -21,9 +24,30 @@ export const createProjectSchema = z.object({
   description: projectFields.description.default(""),
   status: projectFields.status.default("Planned"),
   deadline: projectFields.deadline.default(null),
+  deadlineAt: projectFields.deadlineAt.default(null),
+  deadlineTimezone: projectFields.deadlineTimezone.default(null),
   position: projectFields.position.default(0),
   mutationId: mutationIdSchema,
 }).strict();
+
+export function validateProjectDeadline(data: {
+  deadline: string | null;
+  deadlineAt: string | null;
+  deadlineTimezone: string | null;
+}) {
+  z.object({
+    deadline: projectFields.deadline,
+    deadlineAt: projectFields.deadlineAt,
+    deadlineTimezone: projectFields.deadlineTimezone,
+  }).superRefine((value, ctx) => {
+    if (value.deadline && value.deadlineAt) {
+      ctx.addIssue({ code: "custom", path: ["deadlineAt"], message: "Choose a date-only or timed deadline, not both." });
+    }
+    if (Boolean(value.deadlineAt) !== Boolean(value.deadlineTimezone)) {
+      ctx.addIssue({ code: "custom", path: ["deadlineTimezone"], message: "A timed project deadline needs an IANA timezone." });
+    }
+  }).parse(data);
+}
 
 export const completionPreviewSchema = z.object({
   projectId: z.string(),
@@ -139,13 +163,16 @@ export function completeProjectChildrenInTx(
 
 export function createProject(db: AppDatabase, ownerId: string, input: unknown): Project {
   const { mutationId, ...data } = createProjectSchema.parse(input);
+  validateProjectDeadline(data);
   const hash = requestHash("create", null, data);
   return db.transaction((tx) => {
     const previous = replayMutation(tx, ownerId, mutationId, hash);
     if (previous) return previous.result as Project;
     const now = new Date().toISOString();
     const result = tx.insert(project).values({
-      ...data, id: crypto.randomUUID(), ownerId, createdAt: now, updatedAt: now,
+      ...data,
+      deadlineAt: data.deadlineAt ? new Date(data.deadlineAt).toISOString() : null,
+      id: crypto.randomUUID(), ownerId, createdAt: now, updatedAt: now,
     }).returning().get();
     recordOperation(tx, {
       ownerId, mutationId, requestHash: hash, action: "create", entityType: "project", entityId: result.id,
@@ -164,9 +191,15 @@ export function updateProject(db: AppDatabase, ownerId: string, id: string, expe
     if (previous) return previous.result as Project;
     const before = getProject(tx, ownerId, id);
     if (before.revision !== expectedRevision) throw new AppError(409, "Project changed. Reload and try again.");
+    const merged = { ...before, ...data };
+    validateProjectDeadline(merged);
     const children = data.status === "Done" && before.status !== "Done"
       ? completeProjectChildrenInTx(tx, ownerId, id, completionPreview) : { beforeState: [], afterState: [] };
-    const result = tx.update(project).set({ ...data, revision: before.revision + 1, updatedAt: new Date().toISOString() })
+    const result = tx.update(project).set({
+      ...data,
+      deadlineAt: merged.deadlineAt ? new Date(merged.deadlineAt).toISOString() : null,
+      revision: before.revision + 1, updatedAt: new Date().toISOString(),
+    })
       .where(and(eq(project.id, id), eq(project.ownerId, ownerId), eq(project.revision, expectedRevision))).returning().get()!;
     recordOperation(tx, {
       ownerId, mutationId, requestHash: hash, action: "edit", entityType: "project", entityId: id,

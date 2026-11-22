@@ -50,7 +50,8 @@ export async function pushTaskTomorrow(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         expectedRevision: task.revision,
-        dueDate: tomorrow,
+        executionDate: tomorrow,
+        ...(task.dueDate ? { dueDate: null } : {}),
         ...(task.dueAt ? { dueAt: null, timezone: null } : {}),
         mutationId: crypto.randomUUID(),
       }),

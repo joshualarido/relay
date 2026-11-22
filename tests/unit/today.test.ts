@@ -22,30 +22,30 @@ describe("todayTimeline", () => {
 
   it("returns an empty day", () => {
     const t = run();
-    expect(t).toMatchObject({ items: [], dueUnscheduled: [], overdue: [], dayState: "empty", summary: { remaining: 0, total: 0, next: null } });
+    expect(t).toMatchObject({ schedule: [], tasks: [], overdue: [], dayState: "empty", summary: { remaining: 0, total: 0, next: null } });
   });
 
   it("uses the owner zone, not UTC, for the day boundary", () => {
     event({ title: "UTC today, Jakarta yesterday", start: "2027-01-01T10:00:00Z", end: "2027-01-01T11:00:00Z" });
     const today = event({ title: "Jakarta morning", start: "2027-01-02T09:00:00+07:00", end: "2027-01-02T10:00:00+07:00" });
-    const late = task({ title: "Due Jakarta today", dueDate: "2027-01-02" });
-    task({ title: "Due UTC today", dueDate: "2027-01-01" });
+    const execToday = task({ title: "Planned Jakarta today", executionDate: "2027-01-02" });
+    task({ title: "Planned UTC today", executionDate: "2027-01-01" });
     const t = run();
-    expect(t.items.map((i) => i.id)).toEqual([today.id]);
-    expect(t.dueUnscheduled.map((x) => x.id)).toEqual([late.id]);
+    expect(t.schedule.map((i) => i.id)).toEqual([today.id]);
+    expect(t.tasks.map((x) => x.id)).toEqual([execToday.id]);
   });
 
-  it("lists two sessions of one task as two task blocks with the project name", () => {
-    const p = createProject(w.db, w.alice.id, { name: "Launch", status: "Active", mutationId: id() });
-    const tk = task({ title: "Write spec", projectId: p.id, dueDate: "2027-01-02" });
-    event({ title: "Write spec (2)", taskId: tk.id, start: "2027-01-02T14:00:00+07:00", end: "2027-01-02T15:00:00+07:00" });
-    event({ title: "Write spec (1)", taskId: tk.id, start: "2027-01-02T09:00:00+07:00", end: "2027-01-02T10:00:00+07:00" });
+  it("includes project deadlines (date-only and timed) in Today schedule", () => {
+    const p1 = createProject(w.db, w.alice.id, { name: "Launch", status: "Active", deadline: "2027-01-02", mutationId: id() });
+    const p2 = createProject(w.db, w.alice.id, {
+      name: "Demo", status: "Active", deadlineAt: "2027-01-02T14:00:00+07:00", deadlineTimezone: TZ, mutationId: id(),
+    });
     const t = run();
-    expect(t.items.map((i) => [i.kind, i.title, i.taskId, i.projectName, i.task?.id])).toEqual([
-      ["task-block", "Write spec (1)", tk.id, "Launch", tk.id], ["task-block", "Write spec (2)", tk.id, "Launch", tk.id],
+    expect(t.schedule.map((i) => [i.kind, i.projectId, i.allDay])).toEqual([
+      ["project-deadline", p1.id, true],
+      ["project-deadline", p2.id, false],
     ]);
-    expect(t.dueUnscheduled).toEqual([]);
-    expect(t.summary).toMatchObject({ remaining: 2, total: 2, next: { title: "Write spec (1)", minutes: 450 } });
+    expect(t.summary.next).toMatchObject({ kind: "project-deadline", title: "Demo" });
   });
 
   it("includes events crossing midnight in either direction, and all-day events first", () => {
@@ -55,9 +55,9 @@ describe("todayTimeline", () => {
     event({ title: "Ends at midnight", start: "2027-01-01T22:00:00+07:00", end: "2027-01-02T00:00:00+07:00" });
     event({ title: "Yesterday all day", allDay: true, start: "2027-01-01", end: "2027-01-02" });
     const t = run();
-    expect(t.items.map((i) => i.id)).toEqual([allDay.id, into.id, out.id]);
-    expect(t.items[1]).toMatchObject({ kind: "event", start: into.start, end: into.end, done: true });
-    expect(t.items[0]).toMatchObject({ allDay: true, done: false });
+    expect(t.schedule.map((i) => i.id)).toEqual([allDay.id, into.id, out.id]);
+    expect(t.schedule[1]).toMatchObject({ kind: "event", start: into.start, end: into.end, done: true });
+    expect(t.schedule[0]).toMatchObject({ allDay: true, done: false });
     expect(t.summary).toMatchObject({ remaining: 1, total: 2, next: { id: out.id } });
   });
 
@@ -68,56 +68,36 @@ describe("todayTimeline", () => {
     expect(t.summary).toMatchObject({ remaining: 0, total: 0 });
   });
 
-  it("shows Done work but counts it done, and clears the day", () => {
-    const a = task({ title: "Block", status: "Done" });
-    event({ title: "Block", taskId: a.id, start: "2027-01-02T09:00:00+07:00", end: "2027-01-02T10:00:00+07:00" });
-    const due = task({ title: "Due", dueDate: "2027-01-02" });
-    let t = run();
-    expect(t.items[0]).toMatchObject({ kind: "task-block", done: true });
-    expect(t.summary).toMatchObject({ remaining: 1, total: 2, next: null });
-    expect(t.dayState).toBe("active");
-    updateTask(w.db, w.alice.id, due.id, due.revision, { status: "Done", mutationId: id() });
-    t = run();
-    expect(t.dueUnscheduled).toEqual([]);
-    expect(t.summary).toMatchObject({ remaining: 0, total: 2 });
-    expect(t.dayState).toBe("clear");
-  });
-
-  it("clears (not empties) when the only due task is completed", () => {
-    const due = task({ title: "Due", dueDate: "2027-01-02" });
-    updateTask(w.db, w.alice.id, due.id, due.revision, { status: "Done", mutationId: id() });
+  it("clears (not empties) when the only task for today is completed", () => {
+    const tk = task({ title: "Ship it", executionDate: "2027-01-02" });
+    expect(run().dayState).toBe("active");
+    updateTask(w.db, w.alice.id, tk.id, tk.revision, { status: "Done", mutationId: id() });
     expect(run().dayState).toBe("clear");
   });
 
   it("excludes soft-deleted events and tasks", () => {
     const e = event({ title: "Gone", start: "2027-01-02T09:00:00+07:00", end: "2027-01-02T10:00:00+07:00" });
-    const tk = task({ title: "Gone task", dueDate: "2027-01-02" });
-    const old = task({ title: "Gone overdue", dueDate: "2026-12-01" });
+    const tk = task({ title: "Gone task", executionDate: "2027-01-02" });
+    const old = task({ title: "Gone overdue", executionDate: "2026-12-01" });
     remove("event", e.id); remove("task", tk.id); remove("task", old.id);
-    expect(run()).toMatchObject({ items: [], dueUnscheduled: [], overdue: [], dayState: "empty" });
+    expect(run()).toMatchObject({ schedule: [], tasks: [], overdue: [], dayState: "empty" });
   });
 
-  it("puts past deadlines in overdue but keeps today's (even earlier today) as due", () => {
-    const past = task({ title: "Past", dueDate: "2027-01-01" });
-    const pastTimed = task({ title: "Past timed", dueAt: "2027-01-01T16:00:00Z", timezone: TZ }); // 23:00 Jan 1 Jakarta
-    const earlier = task({ title: "Earlier today", dueAt: "2027-01-01T17:30:00Z", timezone: TZ }); // 00:30 Jan 2 Jakarta, before now
-    const dueToday = task({ title: "Today", dueDate: "2027-01-02" });
-    task({ title: "Done past", dueDate: "2026-12-30", status: "Done" });
+  it("puts past execution dates in overdue and isolates owners", () => {
+    const past = task({ title: "Past", executionDate: "2027-01-01" });
+    task({ title: "Done past", executionDate: "2026-12-30", status: "Done" });
     const t = run();
-    expect(t.overdue.map((x) => x.id).sort()).toEqual([past.id, pastTimed.id].sort());
-    expect(t.dueUnscheduled.map((x) => x.id).sort()).toEqual([earlier.id, dueToday.id].sort());
-    expect(t.summary).toMatchObject({ remaining: 2, total: 2, next: null });
-  });
-
-  it("isolates owners", () => {
-    event({ title: "Alice", start: "2027-01-02T09:00:00+07:00", end: "2027-01-02T10:00:00+07:00" });
-    expect(todayTimeline(w.db, w.bob.id, TZ, NOW).items).toEqual([]);
+    expect(t.overdue.map((x) => x.id)).toEqual([past.id]);
+    expect(todayTimeline(w.db, w.bob.id, TZ, NOW).schedule).toEqual([]);
   });
 });
 
 describe("summarySentence", () => {
   const s = (remaining: number, total: number, next: { title: string; minutes: number } | null, dayState: "empty" | "active" | "clear") =>
-    summarySentence({ remaining, total, next: next && { id: "x", ...next } }, dayState);
+    summarySentence(
+      { remaining, total, next: next && { id: "x", kind: "event", at: NOW, href: "/?event=x", ...next } },
+      dayState,
+    );
   it("builds the sentence with singular and plural", () => {
     expect(s(4, 5, { title: "Design review", minutes: 40 }, "active")).toBe("4 things today · next: Design review in 40 min");
     expect(s(1, 1, { title: "Call", minutes: 1 }, "active")).toBe("1 thing today · next: Call in 1 min");

@@ -192,7 +192,7 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
       expect(scheduled.start).toBe("2026-11-22T03:00:00.000Z");
       expect(scheduled.end).toBe("2026-11-22T04:30:00.000Z");
 
-      // Default scheduling durations by taskType: Instant=15m, Medium=30m, Deep=60m
+      // Default scheduling durations by taskType: Instant=15m, Medium=45m, Deep=90m
       const instantTask = aliceHandlers.create_task({ title: "Quick reply", taskType: "Instant" });
       const mediumTask = aliceHandlers.create_task({ title: "Review PR", taskType: "Medium" });
       const deepTask = aliceHandlers.create_task({ title: "Design architecture", taskType: "Deep" });
@@ -200,8 +200,8 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
       const evMedium = aliceHandlers.schedule_task({ taskId: mediumTask.id, start: "2026-11-23T10:00:00+07:00", timezone: "Asia/Jakarta" });
       const evDeep = aliceHandlers.schedule_task({ taskId: deepTask.id, start: "2026-11-23T11:00:00+07:00", timezone: "Asia/Jakarta" });
       expect(Date.parse(evInstant.end) - Date.parse(evInstant.start)).toBe(15 * 60_000);
-      expect(Date.parse(evMedium.end) - Date.parse(evMedium.start)).toBe(30 * 60_000);
-      expect(Date.parse(evDeep.end) - Date.parse(evDeep.start)).toBe(60 * 60_000);
+      expect(Date.parse(evMedium.end) - Date.parse(evMedium.start)).toBe(45 * 60_000);
+      expect(Date.parse(evDeep.end) - Date.parse(evDeep.start)).toBe(90 * 60_000);
       aliceHandlers.delete_task({ id: instantTask.id });
       aliceHandlers.delete_task({ id: mediumTask.id });
       aliceHandlers.delete_task({ id: deepTask.id });
@@ -232,13 +232,17 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
       expect(searchRes.items.some((i) => i.kind === "task" && i.id === taskItem.id)).toBe(true);
       expect(searchRes.items.some((i) => i.kind === "event" && i.id === scheduled.id)).toBe(true);
 
-      // get_today reflects timeline and summary
+      // Schedule task on executionDate for linear Today queue
+      aliceHandlers.update_task({ id: taskItem.id, executionDate: "2026-11-22" });
+
+      // get_today reflects standalone events in schedule/items and linear tasks in tasks
       const todayRes = aliceHandlers.get_today({
         now: "2026-11-22T08:00:00+07:00",
         timezone: "Asia/Jakarta",
       });
       expect(todayRes.today).toBe("2026-11-22");
-      expect(todayRes.items.map((i) => i.id)).toEqual(expect.arrayContaining([standup.id, scheduled.id]));
+      expect(todayRes.items.map((i) => i.id)).toContain(standup.id);
+      expect(todayRes.tasks.map((t) => t.id)).toContain(taskItem.id);
       expect(todayRes.summary.total).toBeGreaterThanOrEqual(2);
       expect(todayRes.summarySentence).toContain("Team sync");
 

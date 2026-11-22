@@ -193,7 +193,7 @@ function useBoardState({ projects: serverProjects, tasks: serverTasks, events, t
     setInstant(false); setTasks((all) => all.map((t) => t.id === task.id ? { ...t, ...fields } : t));
     return Boolean(await send<Task>(`/api/tasks/${task.id}`, "PATCH", { expectedRevision: current.revision, ...fields }, message, (t) => merge(setTasks, t)));
   });
-  const patchProject = (project: Project, fields: Partial<Pick<Project, "name" | "description" | "deadline">> | { archived: boolean }, message: string) => enqueue(async () => {
+  const patchProject = (project: Project, fields: Partial<Pick<Project, "name" | "description" | "deadline" | "deadlineAt" | "deadlineTimezone">> | { archived: boolean }, message: string) => enqueue(async () => {
     const current = latest.current.projects.find((p) => p.id === project.id) ?? project;
     if (!("archived" in fields)) setProjects((all) => all.map((p) => p.id === project.id ? { ...p, ...fields } : p));
     return Boolean(await send<Project>(`/api/projects/${project.id}`, "PATCH", { expectedRevision: current.revision, ...fields }, message, (p) => merge(setProjects, p)));

@@ -4,18 +4,18 @@ import Link from "next/link";
 import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, CalendarClock, CalendarDays, Check, CircleDot, Folder, Gauge, SquareCheck, Star, X } from "lucide-react";
-import { Temporal } from "temporal-polyfill";
+import { Archive, CalendarClock, CalendarDays, Check, CircleDot, Folder, Gauge, Repeat, SquareCheck, Star, X } from "lucide-react";
 import type { Project, Task } from "@/lib/db/schema";
 import { taskColumns } from "@/lib/project-board";
 
 const taskTypeOptions: Array<{ value: Task["taskType"]; label: string }> = [
   { value: "Instant", label: "Instant · 15m" },
-  { value: "Medium", label: "Medium · 30m" },
-  { value: "Deep", label: "Deep · 1h" },
+  { value: "Medium", label: "Medium · 45m" },
+  { value: "Deep", label: "Deep · 1.5h" },
 ];
 import { notifyMutation } from "./mutation-notice";
 import { InlineText } from "./projects/inline-text";
+import { RecurrencePicker } from "./recurrence-picker";
 import { useWorkspace } from "./workspace-store";
 
 function relativeTime(iso: string): string {
@@ -92,7 +92,7 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
   }
 
   const activeProjects = projects.filter((p) => !p.archivedAt || p.id === current?.projectId);
-  const dateValue = current?.startAt ? current.startAt.slice(0, 10) : current?.dueDate ?? "";
+  const dateValue = current?.executionDate ?? "";
 
   return (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !pending) close(); }}>
@@ -197,7 +197,7 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
                 <div className="detail-prop-row">
                   <label className="detail-prop-label" htmlFor="task-sheet-date">
                     <CalendarDays size={14} aria-hidden="true" />
-                    When
+                    Execution date
                   </label>
                   <div className="detail-prop-value">
                     <input
@@ -210,19 +210,30 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
                         const val = e.target.value || null;
                         if (val === (dateValue || null)) return;
                         void patch(
-                          val
-                            ? {
-                                startAt: val,
-                                endAt: Temporal.PlainDate.from(val).add({ days: 1 }).toString(),
-                                allDay: true,
-                                dueDate: val,
-                                dueAt: null,
-                                timezone: null,
-                              }
-                            : { startAt: null, endAt: null, allDay: false, dueDate: null, dueAt: null, timezone: null },
-                          val ? "Date set." : "Schedule cleared.",
+                          { executionDate: val },
+                          val ? "Execution date set." : "Execution date cleared.",
                         );
                       }}
+                    />
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <span className="detail-prop-label">
+                    <Repeat size={14} aria-hidden="true" />
+                    Repeat
+                  </span>
+                  <div className="detail-prop-value">
+                    <RecurrencePicker
+                      value={current.recurrenceRule ?? null}
+                      disabled={pending}
+                      compact
+                      onChange={(recurrenceRule) =>
+                        void patch(
+                          { recurrenceRule },
+                          recurrenceRule ? "Recurrence updated." : "Recurrence removed.",
+                        )
+                      }
                     />
                   </div>
                 </div>

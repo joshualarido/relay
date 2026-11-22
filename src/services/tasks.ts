@@ -1,9 +1,11 @@
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { AppDatabase } from "../lib/db";
-import { event, task, type Task } from "../lib/db/schema";
+import { event, task, type Snapshot, type Task } from "../lib/db/schema";
+import { DEFAULT_TASK_TYPE_MINUTES, type TaskTypeMinutes } from "../lib/capacity";
 import { dateInTimezone, dateOnlySchema } from "../lib/dates";
 import { getPreferences, timezoneSchema } from "../lib/preferences";
+import { nextOccurrenceDate, nextOccurrenceOnOrAfter, recurrenceRuleSchema } from "../lib/recurrence";
 import { getProject, listProjects } from "./projects";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "../lib/activity";
 import { AppError } from "../lib/errors";
@@ -12,14 +14,11 @@ export const taskStatuses = ["To do", "Done"] as const;
 export const taskTypes = ["Instant", "Medium", "Deep"] as const;
 export type TaskType = (typeof taskTypes)[number];
 
-export const TASK_TYPE_MINUTES: Record<TaskType, number> = {
-  Instant: 15,
-  Medium: 30,
-  Deep: 60,
-};
+export const TASK_TYPE_MINUTES: Record<TaskType, number> = { ...DEFAULT_TASK_TYPE_MINUTES };
 
-export function taskTypeDurationMinutes(taskType?: TaskType | null): number {
-  return TASK_TYPE_MINUTES[taskType ?? "Medium"] ?? 30;
+export function taskTypeDurationMinutes(taskType?: TaskType | null, weights?: TaskTypeMinutes): number {
+  const map = weights ?? TASK_TYPE_MINUTES;
+  return map[taskType ?? "Medium"] ?? map.Medium;
 }
 
 export const taskFields = {
@@ -29,6 +28,10 @@ export const taskFields = {
   status: z.enum(taskStatuses),
   taskType: z.enum(taskTypes),
   important: z.boolean().nullable(),
+  executionDate: dateOnlySchema.nullable(),
+  dayOrder: z.number().int().min(0).max(1_000_000),
+  recurrenceRule: recurrenceRuleSchema.nullable(),
+  recurrenceSeriesId: z.string().min(1).nullable(),
   dueDate: dateOnlySchema.nullable(),
   dueAt: z.iso.datetime({ offset: true }).nullable(),
   startAt: z.string().max(100).nullable(),
@@ -45,6 +48,10 @@ export const createTaskSchema = z.object({
   status: taskFields.status.default("To do"),
   taskType: taskFields.taskType.default("Medium"),
   important: taskFields.important.default(null),
+  executionDate: taskFields.executionDate.default(null),
+  dayOrder: taskFields.dayOrder.default(0),
+  recurrenceRule: taskFields.recurrenceRule.default(null),
+  recurrenceSeriesId: taskFields.recurrenceSeriesId.default(null),
   dueDate: taskFields.dueDate.default(null),
   dueAt: taskFields.dueAt.default(null),
   startAt: taskFields.startAt.default(null),
@@ -74,7 +81,16 @@ export const moveTaskSchema = z.object({
   projectId: z.string().min(1).nullable().optional(),
   status: z.enum(taskStatuses).optional(),
   taskType: z.enum(taskTypes).optional(),
+  executionDate: dateOnlySchema.nullable().optional(),
+  dayOrder: z.number().int().min(0).max(1_000_000).optional(),
   position: z.number().int().min(0).max(1_000_000).optional(),
+  mutationId: mutationIdSchema,
+}).strict();
+
+export const reorderDayTasksSchema = z.object({
+  executionDate: dateOnlySchema,
+  orderedIds: z.array(z.string()).max(2000),
+  expectedRevisions: z.array(z.object({ id: z.string(), revision: z.number().int().positive() }).strict()),
   mutationId: mutationIdSchema,
 }).strict();
 
@@ -128,7 +144,8 @@ export function listTasksWithOptions(
       .where(and(eq(event.ownerId, ownerId), isNull(event.deletedAt), isNull(event.archivedAt))).all();
     scheduledTaskIds = new Set(activeEvents.flatMap((e) => (e.taskId ? [e.taskId] : [])));
   }
-  const effectiveDueDate = (t: Task) => t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, t.timezone ?? timezone) : null);
+  const effectiveDate = (t: Task) =>
+    t.executionDate ?? t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, t.timezone ?? timezone) : null);
 
   return rows.filter((t) => {
     if (options.projectId !== undefined) {
@@ -148,12 +165,12 @@ export function listTasksWithOptions(
       }
     }
     if (options.dueBefore || options.dueAfter) {
-      const due = effectiveDueDate(t);
+      const due = effectiveDate(t);
       if (!due) return false;
       if (options.dueBefore && due > options.dueBefore) return false;
       if (options.dueAfter && due < options.dueAfter) return false;
     }
-    if (options.unscheduledOnly && (Boolean(t.startAt) || scheduledTaskIds?.has(t.id))) {
+    if (options.unscheduledOnly && (Boolean(t.executionDate) || Boolean(t.startAt) || scheduledTaskIds?.has(t.id))) {
       return false;
     }
     return true;
@@ -201,8 +218,13 @@ export function createTask(db: AppDatabase, ownerId: string, input: unknown): Ta
     }
     if (data.projectId) getProject(tx, ownerId, data.projectId);
     const now = new Date().toISOString();
+    const recurrenceSeriesId = data.recurrenceRule
+      ? (data.recurrenceSeriesId ?? crypto.randomUUID())
+      : data.recurrenceSeriesId;
     const result = tx.insert(task).values({
-      ...data, dueAt: data.dueAt ? new Date(data.dueAt).toISOString() : null,
+      ...data,
+      recurrenceSeriesId,
+      dueAt: data.dueAt ? new Date(data.dueAt).toISOString() : null,
       id: crypto.randomUUID(), ownerId, completedAt: data.status === "Done" ? now : null,
       createdAt: now, updatedAt: now,
     }).returning().get();
@@ -227,14 +249,128 @@ export function updateTask(db: AppDatabase, ownerId: string, id: string, expecte
     validateTaskDeadline(merged);
     if (merged.projectId) getProject(tx, ownerId, merged.projectId);
     const now = new Date().toISOString();
+    const seriesId = merged.recurrenceRule
+      ? (merged.recurrenceSeriesId ?? before.id)
+      : merged.recurrenceSeriesId;
     const result = tx.update(task).set({
-      ...data, dueAt: merged.dueAt ? new Date(merged.dueAt).toISOString() : null,
+      ...data,
+      recurrenceSeriesId: seriesId,
+      dueAt: merged.dueAt ? new Date(merged.dueAt).toISOString() : null,
       completedAt: merged.status === "Done" ? before.completedAt ?? now : null,
       revision: before.revision + 1, updatedAt: now,
     }).where(and(eq(task.id, id), eq(task.ownerId, ownerId))).returning().get()!;
+
+    const afterState: Snapshot[] = [{ entityType: "task", record: result }];
+
+    // Completing a recurring task atomically spawns the next occurrence in the same Undoable operation.
+    if (before.status !== "Done" && result.status === "Done" && result.recurrenceRule) {
+      const tz = getPreferences(tx, ownerId).timezone;
+      const anchor = result.executionDate ?? dateInTimezone(now, tz);
+      const nextDate = nextOccurrenceDate(result.recurrenceRule, anchor);
+      if (nextDate) {
+        const spawned = tx.insert(task).values({
+          id: crypto.randomUUID(),
+          ownerId,
+          projectId: result.projectId,
+          title: result.title,
+          description: result.description,
+          status: "To do",
+          taskType: result.taskType,
+          important: result.important,
+          executionDate: nextDate,
+          dayOrder: result.dayOrder,
+          recurrenceRule: result.recurrenceRule,
+          recurrenceSeriesId: seriesId ?? result.id,
+          position: result.position,
+          completedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        }).returning().get();
+        afterState.push({ entityType: "task", record: spawned });
+      }
+    }
+
     recordOperation(tx, {
       ownerId, mutationId, requestHash: hash, action: "edit", entityType: "task", entityId: id,
-      beforeState: [{ entityType: "task", record: before }], afterState: [{ entityType: "task", record: result }], result,
+      beforeState: [{ entityType: "task", record: before }], afterState, result,
+    });
+    return result;
+  }, { behavior: "immediate" });
+}
+
+/**
+ * Auto-advances open recurring tasks whose executionDate is before `today`
+ * to the earliest matching occurrence on or after `today`.
+ */
+export function advanceMissedRecurringTasks(db: AppDatabase, ownerId: string, today: string): number {
+  const openTasks = db.select().from(task).where(
+    and(eq(task.ownerId, ownerId), isNull(task.deletedAt), isNull(task.archivedAt), eq(task.status, "To do")),
+  ).all();
+  const missed = openTasks.filter(
+    (t) => Boolean(t.recurrenceRule && t.executionDate && t.executionDate < today),
+  );
+  if (missed.length === 0) return 0;
+  const now = new Date().toISOString();
+  let updated = 0;
+  db.transaction((tx) => {
+    for (const t of missed) {
+      const next = nextOccurrenceOnOrAfter(t.recurrenceRule!, t.executionDate!, today);
+      if (next) {
+        tx.update(task).set({
+          executionDate: next,
+          revision: t.revision + 1,
+          updatedAt: now,
+        }).where(and(eq(task.id, t.id), eq(task.ownerId, ownerId))).run();
+      } else {
+        tx.update(task).set({
+          recurrenceRule: null,
+          revision: t.revision + 1,
+          updatedAt: now,
+        }).where(and(eq(task.id, t.id), eq(task.ownerId, ownerId))).run();
+      }
+      updated++;
+    }
+  }, { behavior: "immediate" });
+  return updated;
+}
+
+export function reorderDayTasks(db: AppDatabase, ownerId: string, input: unknown): Task[] {
+  const data = reorderDayTasksSchema.parse(input);
+  const hash = requestHash("task-day-reorder", data.executionDate, data);
+  return db.transaction((tx) => {
+    const previous = replayMutation(tx, ownerId, data.mutationId, hash);
+    if (previous) return previous.result as Task[];
+    const all = listTasks(tx, ownerId);
+    const affected = all.filter((t) => t.executionDate === data.executionDate && t.status !== "Done");
+    const ids = new Set(data.orderedIds);
+    if (
+      ids.size !== data.orderedIds.length ||
+      ids.size !== affected.length ||
+      affected.some((t) => !ids.has(t.id)) ||
+      data.expectedRevisions.length !== affected.length ||
+      affected.some((t) => data.expectedRevisions.filter((r) => r.id === t.id && r.revision === t.revision).length !== 1)
+    ) {
+      throw new AppError(409, "Today's queue changed. Reload and try again.");
+    }
+    const now = new Date().toISOString();
+    const result = data.orderedIds.map((id, dayOrder) => {
+      const before = affected.find((t) => t.id === id)!;
+      return tx.update(task).set({
+        dayOrder,
+        revision: before.revision + 1,
+        updatedAt: now,
+      }).where(and(eq(task.id, id), eq(task.ownerId, ownerId))).returning().get()!;
+    });
+    recordOperation(tx, {
+      ownerId,
+      mutationId: data.mutationId,
+      requestHash: hash,
+      action: "reorder",
+      entityType: "task",
+      entityId: data.orderedIds[0] ?? data.executionDate,
+      beforeState: affected.map((record) => ({ entityType: "task", record })),
+      afterState: result.map((record) => ({ entityType: "task", record })),
+      result,
     });
     return result;
   }, { behavior: "immediate" });

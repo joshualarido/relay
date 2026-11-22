@@ -18,7 +18,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   const tasks = getCachedTasks(session.user.id);
   const events = getCachedEvents(session.user.id);
   const prefs = getCachedPreferences(session.user.id);
-  const capture = { timezone: prefs.timezone, weekStart: prefs.weekStart };
+  const capture = { timezone: prefs.timezone, weekStart: prefs.weekStart, taskTypeMinutes: prefs.taskTypeMinutes };
   return <WorkspaceProvider initialProjects={projects} initialTasks={tasks} initialEvents={events}>
     <Navigation name={session.user.name} initialCollapsed={collapsed} capture={capture}
       projects={projects.map(({ id, name }) => ({ id, name }))}>

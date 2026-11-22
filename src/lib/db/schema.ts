@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { RecurrenceRule } from "../recurrence";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -50,8 +51,22 @@ export const preferences = sqliteTable("preferences", {
   userId: text("user_id").primaryKey().references(() => user.id),
   timezone: text("timezone").notNull().default("Asia/Jakarta"),
   weekStart: integer("week_start").notNull().default(1),
+  workingHoursJson: text("working_hours_json"),
+  taskTypeMinutesJson: text("task_type_minutes_json"),
   revision: integer("revision").notNull().default(1),
 });
+
+export const dayWorkingHoursOverride = sqliteTable("day_working_hours_override", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  date: text("date").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  start: text("start").notNull().default("09:00"),
+  end: text("end").notNull().default("17:00"),
+  updatedAt: text("updated_at").notNull(),
+}, (t) => [uniqueIndex("day_wh_override_owner_date_idx").on(t.ownerId, t.date)]);
+
+export type DayWorkingHoursOverride = typeof dayWorkingHoursOverride.$inferSelect;
 
 export const project = sqliteTable("project", {
   id: text("id").primaryKey(),
@@ -60,6 +75,8 @@ export const project = sqliteTable("project", {
   description: text("description").notNull().default(""),
   status: text("status", { enum: ["Planned", "Active", "Paused", "Done"] }).notNull().default("Planned"),
   deadline: text("deadline"),
+  deadlineAt: text("deadline_at"),
+  deadlineTimezone: text("deadline_timezone"),
   position: integer("position").notNull().default(0),
   revision: integer("revision").notNull().default(1),
   archivedAt: text("archived_at"),
@@ -89,6 +106,10 @@ export const task = sqliteTable("task", {
   urgent: integer("urgent", { mode: "boolean" }),
   // dormant (v3): planned dates are task-linked all-day events since migration 0008; kept for old snapshots.
   plannedDate: text("planned_date"),
+  executionDate: text("execution_date"),
+  dayOrder: integer("day_order").notNull().default(0),
+  recurrenceRule: text("recurrence_rule", { mode: "json" }).$type<RecurrenceRule | null>(),
+  recurrenceSeriesId: text("recurrence_series_id"),
   dueDate: text("due_date"),
   dueAt: text("due_at"),
   startAt: text("start_at"),

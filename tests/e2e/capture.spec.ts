@@ -40,7 +40,7 @@ async function touchSwipe(
   await cdp.detach();
 }
 
-test("acceptance #2: Capture tokens (#project, @fri, @fri 14:00-15:00, !), removable chips, unknown #project, Tab toggle, and Undo", async ({
+test("acceptance #2: Capture tokens (#project, @fri, @fri 14:00-15:00, !), removable chips, unknown #project, type switch keyboard access, and Undo", async ({
   page,
   request,
   baseURL,
@@ -88,19 +88,19 @@ test("acceptance #2: Capture tokens (#project, @fri, @fri 14:00-15:00, !), remov
   const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Task captured." }).last();
   await expect(toast).toBeVisible();
 
-  type TaskRow = { id: string; title: string; projectId: string | null; dueDate: string | null; important: boolean | null };
+  type TaskRow = { id: string; title: string; projectId: string | null; dueDate: string | null; executionDate: string | null; important: boolean | null };
   const tasksAfterCreate = (await (await request.get("/api/tasks")).json()) as TaskRow[];
   const created = tasksAfterCreate.find((t) => t.title === bugTitle);
   expect(created).toBeDefined();
   expect(created?.projectId).toBe(project.id);
-  expect(created?.dueDate).toBe(expectedFri);
+  expect(created?.executionDate).toBe(expectedFri);
 
   await toast.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByText("Change undone.")).toBeVisible();
   const tasksAfterUndo = (await (await request.get("/api/tasks")).json()) as TaskRow[];
   expect(tasksAfterUndo.some((t) => t.title === bugTitle)).toBe(false);
 
-  // @fri 14:00-15:00 creates a scheduled event; Tab toggles Task/Event.
+  // @fri 14:00-15:00 creates a scheduled event; token implies Event.
   await captureBtn.click();
   await expect(dialog.getByLabel("Quick capture")).toBeFocused();
   const eventTitle = `Design review ${stamp}`;
@@ -134,16 +134,22 @@ test("acceptance #2: Capture tokens (#project, @fri, @fri 14:00-15:00, !), remov
   expect(impTask).toBeDefined();
   expect(impTask?.important).toBe(true);
   expect(impTask?.projectId).toBeNull();
-  expect(impTask?.dueDate).toBeNull();
+  expect(impTask?.executionDate).toBeNull();
 
-  // Plain text creates a loose task, and Tab cycles Task -> Event -> Project -> Task.
+  // Plain text creates a loose task. Shift+Tab reaches the type switch, arrows cycle it,
+  // and Tab from the title moves on to the property fields (no Tab hijack).
   await page.keyboard.press("n");
-  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("ArrowRight");
   await expect(dialog.getByRole("radio", { name: "Event" })).toHaveAttribute("aria-checked", "true");
-  await page.keyboard.press("Tab");
+  await page.keyboard.press("ArrowRight");
   await expect(dialog.getByRole("radio", { name: "Project" })).toHaveAttribute("aria-checked", "true");
-  await page.keyboard.press("Tab");
+  await page.keyboard.press("ArrowRight");
   await expect(dialog.getByRole("radio", { name: "Task" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByLabel("Quick capture")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("button", { name: "Today" })).toBeFocused();
   const looseTitle = `Plain loose task ${stamp}`;
   await dialog.getByLabel("Quick capture").fill(looseTitle);
   await page.keyboard.press("Enter");

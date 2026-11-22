@@ -22,18 +22,27 @@ export function CatchUp({ tasks, today, tomorrow, timezone }: { tasks: Task[]; t
   </section>;
 }
 
-const dueText = (task: Task, timezone: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
-  .format(new Date(`${task.dueDate ?? dateInTimezone(task.dueAt!, timezone)}T12:00:00Z`));
+const dueText = (task: Task, timezone: string) => {
+  const dateStr = task.executionDate ?? task.dueDate ?? (task.dueAt ? dateInTimezone(task.dueAt, timezone) : null);
+  if (!dateStr) return "";
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
+    .format(new Date(`${dateStr}T12:00:00Z`));
+};
 
 function CatchUpRow({ task, today, tomorrow, timezone }: { task: Task; today: string; tomorrow: string; timezone: string }) {
   const router = useRouter(), inputId = useId();
   const [pending, setPending] = useState(false), [error, setError] = useState(""), [picking, setPicking] = useState(false);
-  async function move(dueDate: string) {
+  async function move(executionDate: string) {
     setPending(true); setError("");
     try {
-      // A timed deadline must be cleared when the task moves to a date-only one.
       const response = await fetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expectedRevision: task.revision, dueDate, ...(task.dueAt && { dueAt: null, timezone: null }), mutationId: crypto.randomUUID() }) });
+        body: JSON.stringify({
+          expectedRevision: task.revision,
+          executionDate,
+          ...(task.dueDate && { dueDate: null }),
+          ...(task.dueAt && { dueAt: null, timezone: null }),
+          mutationId: crypto.randomUUID(),
+        }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || Object.values(result.fields ?? {}).flat().join(" ") || "Could not move task. Try again.");
       notifyMutation(response, () => router.refresh()); router.refresh();
@@ -43,7 +52,7 @@ function CatchUpRow({ task, today, tomorrow, timezone }: { task: Task; today: st
   return <li className="today-row catch-up-row" data-task-row={task.id}>
     <div className="today-row-body">
       <Link className="task-title" data-task-link={task.id} href={`/?task=${task.id}`} title="Edit task (E)" scroll={false}>{task.title}</Link>
-      <span className="today-meta">Due {dueText(task, timezone)}</span>
+      <span className="today-meta">Planned {dueText(task, timezone)}</span>
     </div>
     <div className="catch-up-actions" role="group" aria-label={`Move ${task.title}`}>
       <Button variant="ghost" disabled={pending} onClick={() => move(today)}>Today</Button>

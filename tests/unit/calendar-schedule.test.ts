@@ -55,26 +55,6 @@ function makeTask(overrides: Partial<Task> & { id: string; title: string }): Tas
   } as Task;
 }
 
-function makeEvent(overrides: Partial<Event> & { id: string; title: string }): Event {
-  return {
-    ownerId: "u1",
-    description: "",
-    start: "2027-02-10T10:00:00.000Z",
-    end: "2027-02-10T11:00:00.000Z",
-    allDay: false,
-    timezone: "UTC",
-    projectId: null,
-    taskId: null,
-    location: "",
-    deletedAt: null,
-    deletionOperationId: null,
-    revision: 1,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  } as Event;
-}
-
 describe("calendar-schedule", () => {
   it("groups open unscheduled tasks with No project first and excludes done/scheduled tasks", () => {
     const p1 = makeProject({ id: "p1", name: "Alpha" });
@@ -83,10 +63,10 @@ describe("calendar-schedule", () => {
       makeTask({ id: "t1", title: "Loose task", projectId: null }),
       makeTask({ id: "t2", title: "Alpha task", projectId: "p1" }),
       makeTask({ id: "t3", title: "Done task", projectId: "p1", status: "Done" }),
-      makeTask({ id: "t4", title: "Scheduled task", projectId: "p2" }),
+      makeTask({ id: "t4", title: "Scheduled task", projectId: "p2", executionDate: "2027-02-10" }),
       makeTask({ id: "t5", title: "Beta open", projectId: "p2" }),
     ];
-    const events = [makeEvent({ id: "e1", title: "Session", taskId: "t4" })];
+    const events: Event[] = [];
 
     const groups = groupUnscheduledTasks(tasks, [p1, p2], events);
     expect(groups.map((g) => ({ key: g.key, name: g.name, ids: g.tasks.map((t) => t.id) }))).toEqual([
@@ -118,51 +98,29 @@ describe("calendar-schedule", () => {
     expect(listDatelessProjects(projects, "plan").map((p) => p.id)).toEqual(["p5"]);
   });
 
-  it("builds DST-safe 1-hour timed event drop payload for tasks", () => {
+  it("rejects task-to-time drops (no task time-blocking) and preserves DST-safe inline event ranges", () => {
     const task = makeTask({ id: "t1", title: "Focus block", revision: 3 });
+    expect(buildTaskDropAction(task, { kind: "time", startInstant: "2027-03-14T09:30:00Z" })).toBeNull();
     // Spring-forward in America/Los_Angeles: 2027-03-14 01:30 PST (09:30Z) + 60m = 03:30 PDT (10:30Z)
-    const action = buildTaskDropAction(
-      task,
-      { kind: "time", startInstant: "2027-03-14T09:30:00Z" },
-      "America/Los_Angeles",
-    );
-    expect(action).toEqual({
-      endpoint: "/api/events",
-      method: "POST",
-      entityKey: "task:t1",
-      payload: {
-        title: "Focus block",
-        start: "2027-03-14T09:30:00Z",
-        end: "2027-03-14T10:30:00Z",
-        allDay: false,
-        timezone: "America/Los_Angeles",
-        taskId: "t1",
-        projectId: null,
-      },
-    });
     expect(defaultInlineTimedRange("2027-03-14T09:30:00Z", "America/Los_Angeles")).toEqual({
       start: "2027-03-14T01:30",
       end: "2027-03-14T03:30",
     });
   });
 
-  it("builds task-to-day drop payload clearing dueAt and timezone", () => {
+  it("builds task-to-day drop payload setting executionDate", () => {
     const task = makeTask({
       id: "t2",
       title: "Submit report",
-      dueAt: "2027-03-10T15:00:00.000Z",
-      timezone: "America/Los_Angeles",
       revision: 4,
     });
-    const action = buildTaskDropAction(task, { kind: "day", date: "2027-03-12" }, "America/Los_Angeles");
+    const action = buildTaskDropAction(task, { kind: "day", date: "2027-03-12" });
     expect(action).toEqual({
       endpoint: "/api/tasks/t2",
       method: "PATCH",
       entityKey: "task:t2",
       payload: {
-        dueDate: "2027-03-12",
-        dueAt: null,
-        timezone: null,
+        executionDate: "2027-03-12",
         expectedRevision: 4,
       },
     });
@@ -177,6 +135,8 @@ describe("calendar-schedule", () => {
       entityKey: "project:p1",
       payload: {
         deadline: "2027-03-20",
+        deadlineAt: null,
+        deadlineTimezone: null,
         expectedRevision: 2,
       },
     });

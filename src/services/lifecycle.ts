@@ -118,6 +118,8 @@ export function confirmDeletion(db: AppDatabase, ownerId: string, input: unknown
 
 const tables = { project, task, event, "check-in": checkIn, dependency };
 const snapshotKey = (s: Snapshot) => `${s.entityType}:${s.record.id}`;
+const snapshotValuesEqual = (a: unknown, b: unknown) =>
+  a === b || (typeof a === "object" && typeof b === "object" && a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b));
 
 function recoverOperation(db: AppDatabase, ownerId: string, operationId: string, input: unknown, restore: boolean) {
   const { mutationId } = z.object({ mutationId: mutationIdSchema }).strict().parse(input);
@@ -140,7 +142,7 @@ function recoverOperation(db: AppDatabase, ownerId: string, operationId: string,
     for (const expected of original.afterState) {
       const table = tables[expected.entityType];
       const current = tx.select().from(table).where(and(eq(table.id, expected.record.id), eq(table.ownerId, ownerId))).get();
-      if (!current || Object.entries(expected.record).some(([key, value]) => current[key as keyof typeof current] !== value)) {
+      if (!current || Object.entries(expected.record).some(([key, value]) => !snapshotValuesEqual(current[key as keyof typeof current], value))) {
         throw new AppError(409, "Affected records changed. Recovery would overwrite later work; nothing was changed.");
       }
     }
