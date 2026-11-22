@@ -60,6 +60,7 @@ const batchCreateTaskOp = z.object({
   projectId: taskFields.projectId.default(null),
   status: taskFields.status.default("To do"),
   taskType: taskFields.taskType.default("Medium"),
+  durationMinutes: taskFields.durationMinutes.default(null),
   important: taskFields.important.default(null),
   dueDate: taskFields.dueDate.default(null),
   dueAt: taskFields.dueAt.default(null),
@@ -79,6 +80,7 @@ const batchUpdateTaskOp = z.object({
   projectId: taskFields.projectId.optional(),
   status: taskFields.status.optional(),
   taskType: taskFields.taskType.optional(),
+  durationMinutes: taskFields.durationMinutes.optional(),
   important: taskFields.important.optional(),
   dueDate: taskFields.dueDate.optional(),
   dueAt: taskFields.dueAt.optional(),
@@ -421,7 +423,7 @@ export function batchApply(db: AppDatabase, ownerId: string, input: unknown): Ba
               end = Temporal.PlainDate.from(step.start).add({ days: 1 }).toString();
             } else {
               z.iso.datetime({ offset: true }).parse(step.start);
-              const minutes = step.durationMinutes ?? taskTypeDurationMinutes(linkedTask.taskType);
+              const minutes = step.durationMinutes ?? linkedTask.durationMinutes ?? taskTypeDurationMinutes(linkedTask.taskType);
               end = Temporal.Instant.from(new Date(step.start).toISOString()).add({ minutes }).toString();
             }
           }

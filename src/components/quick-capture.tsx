@@ -4,7 +4,7 @@ import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Temporal } from "temporal-polyfill";
-import { AlertCircle, CalendarDays, Clock, Flag, Folder, Gauge, Repeat, Star, X } from "lucide-react";
+import { AlertCircle, CalendarDays, Clock, Flag, Folder, Gauge, Repeat, Star, Timer, X } from "lucide-react";
 import {
   buildEventRangeFromToken,
   parseCaptureInput,
@@ -23,6 +23,7 @@ import type { RecurrenceRule } from "@/lib/recurrence";
 import type { TaskType } from "@/services/tasks";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
+import { DurationField } from "./duration-field";
 import { RecurrencePicker } from "./recurrence-picker";
 import { useWorkspace } from "./workspace-store";
 
@@ -91,6 +92,7 @@ export function QuickCapture({
 
   // Task fields under title
   const [taskType, setTaskType] = useState<TaskType>("Medium");
+  const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
   const [manualExecDate, setManualExecDate] = useState<string | null>(null);
   const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(null);
   const [manualProjectId, setManualProjectId] = useState<string | null | undefined>(undefined);
@@ -258,6 +260,7 @@ export function QuickCapture({
         title: cleanTitle,
         projectId: effectiveProjectId,
         taskType,
+        durationMinutes,
         executionDate: execDate,
         recurrenceRule,
         important: parsed.important ? true : null,
@@ -312,6 +315,7 @@ export function QuickCapture({
       setManualKind(null);
       setManualExecDate(null);
       setRecurrenceRule(null);
+      setDurationMinutes(null);
       setManualProjectId(undefined);
       setManualProjectDeadlineDate(null);
       setProjectDeadlineTime("");
@@ -455,6 +459,23 @@ export function QuickCapture({
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              <div className="detail-prop-row">
+                <label className="detail-prop-label" htmlFor={`${id}-duration`}>
+                  <Timer size={14} aria-hidden="true" />
+                  Duration
+                </label>
+                <div className="detail-prop-value">
+                  <DurationField
+                    id={`${id}-duration`}
+                    value={durationMinutes}
+                    defaultMinutes={taskTypeMinutes[taskType]}
+                    commit="change"
+                    disabled={pending}
+                    onCommit={setDurationMinutes}
+                  />
                 </div>
               </div>
 

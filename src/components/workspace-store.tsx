@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useState } from "react";
 import type { Event, Project, Task } from "@/lib/db/schema";
+import { DEFAULT_TASK_TYPE_MINUTES, type TaskTypeMinutes } from "@/lib/capacity";
 
 type WorkspaceSnapshot = {
   projects: Project[];
@@ -10,6 +11,8 @@ type WorkspaceSnapshot = {
 };
 
 type WorkspaceContextValue = WorkspaceSnapshot & {
+  /** The user's default minutes per task type; a task's own durationMinutes overrides these. */
+  taskTypeMinutes: TaskTypeMinutes;
   setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   setEvents: React.Dispatch<React.SetStateAction<Event[]>>;
@@ -22,11 +25,13 @@ export function WorkspaceProvider({
   initialProjects,
   initialTasks,
   initialEvents,
+  taskTypeMinutes = DEFAULT_TASK_TYPE_MINUTES,
   children,
 }: {
   initialProjects: Project[];
   initialTasks: Task[];
   initialEvents: Event[];
+  taskTypeMinutes?: TaskTypeMinutes;
   children: React.ReactNode;
 }) {
   const [projects, setProjects] = useState(initialProjects);
@@ -52,7 +57,7 @@ export function WorkspaceProvider({
   }, []);
 
   return (
-    <WorkspaceContext.Provider value={{ projects, tasks, events, setProjects, setTasks, setEvents, syncSnapshot }}>
+    <WorkspaceContext.Provider value={{ projects, tasks, events, taskTypeMinutes, setProjects, setTasks, setEvents, syncSnapshot }}>
       {children}
     </WorkspaceContext.Provider>
   );

@@ -31,6 +31,7 @@ export function normalizeSnapshot(s: Snapshot): Snapshot {
         ...s.record,
         status,
         taskType: s.record.taskType ?? "Medium",
+        durationMinutes: s.record.durationMinutes ?? null,
         plannedDate: null,
         executionDate: s.record.executionDate ?? null,
         dayOrder: s.record.dayOrder ?? 0,

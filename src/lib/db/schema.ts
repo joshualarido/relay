@@ -98,6 +98,8 @@ export const task = sqliteTable("task", {
   // every app insert (createTask) sets status explicitly via the Zod default "To do".
   status: text("status", { enum: ["To do", "Done"] }).notNull().default("To do"),
   taskType: text("task_type", { enum: ["Instant", "Medium", "Deep"] }).notNull().default("Medium"),
+  // Optional per-task override of the task-type default duration (minutes). Null = use the type default.
+  durationMinutes: integer("duration_minutes"),
   // dormant (v3): priority is not part of the v3 model.
   // ponytail: retain legacy priority for old snapshots/replays; remove only with a versioned history migration.
   priority: text("priority", { enum: ["Low", "Medium", "High"] }).notNull().default("Medium"),
