@@ -116,10 +116,11 @@ export function validateEventLinks(
 }
 
 export function listEvents(db: Pick<AppDatabase, "select">, ownerId: string, includeArchived = false) {
+  const rows = db.select().from(event).where(and(eq(event.ownerId, ownerId), isNull(event.deletedAt))).orderBy(asc(event.start)).all();
+  if (includeArchived) return rows;
   const projects = new Set(listProjects(db, ownerId).map((p) => p.id));
   const tasks = new Set(listTasks(db, ownerId).map((t) => t.id));
-  return db.select().from(event).where(and(eq(event.ownerId, ownerId), isNull(event.deletedAt))).orderBy(asc(event.start)).all()
-    .filter((e) => includeArchived || (!e.archivedAt && (e.taskId ? tasks.has(e.taskId) : !e.projectId || projects.has(e.projectId))));
+  return rows.filter((e) => !e.archivedAt && (e.taskId ? tasks.has(e.taskId) : !e.projectId || projects.has(e.projectId)));
 }
 
 function boundaryToMs(value: string, bound: "start" | "end", timezone: string): number {

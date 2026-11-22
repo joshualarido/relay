@@ -54,7 +54,7 @@ export function SmoothScroll() {
         state.running = false;
         return;
       }
-      state.current += diff * 0.13;
+      state.current += diff * 0.28;
       if (container === window) window.scrollTo(0, state.current);
       else (container as HTMLElement).scrollTop = state.current;
       state.raf = requestAnimationFrame(() => animate(container, state));

@@ -4,11 +4,7 @@ import { currentSession } from "@/lib/auth";
 import { Navigation } from "@/components/navigation";
 import { ScreenTransition } from "@/components/screen-transition";
 import { MutationNotices } from "@/components/mutation-notice";
-import { getDatabase } from "@/lib/db";
-import { listProjects } from "@/lib/projects";
-import { listTasks } from "@/lib/tasks";
-import { listEvents } from "@/lib/events";
-import { getPreferences } from "@/lib/preferences";
+import { getCachedEvents, getCachedPreferences, getCachedProjects, getCachedTasks } from "@/lib/request-data";
 import { WorkspaceProvider } from "@/components/workspace-store";
 import { SmoothScroll } from "@/components/smooth-scroll";
 
@@ -18,10 +14,10 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   const session = await currentSession();
   if (!session) redirect("/login");
   const collapsed = (await cookies()).get("relay-sidebar")?.value === "collapsed";
-  const db = getDatabase(), projects = listProjects(db, session.user.id);
-  const tasks = listTasks(db, session.user.id);
-  const events = listEvents(db, session.user.id);
-  const prefs = getPreferences(db, session.user.id);
+  const projects = getCachedProjects(session.user.id);
+  const tasks = getCachedTasks(session.user.id);
+  const events = getCachedEvents(session.user.id);
+  const prefs = getCachedPreferences(session.user.id);
   const capture = { timezone: prefs.timezone, weekStart: prefs.weekStart };
   return <WorkspaceProvider initialProjects={projects} initialTasks={tasks} initialEvents={events}>
     <Navigation name={session.user.name} initialCollapsed={collapsed} capture={capture}

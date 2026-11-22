@@ -1,9 +1,7 @@
 import { Temporal } from "temporal-polyfill";
 import { requireUserId } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
-import { getPreferences } from "@/lib/preferences";
-import { listProjects } from "@/lib/projects";
-import { listTasks } from "@/lib/tasks";
+import { getCachedPreferences, getCachedProjects, getCachedTasks } from "@/lib/request-data";
 import { summarySentence, todayTimeline } from "@/lib/today";
 import { TodayTimeline } from "@/components/today-timeline";
 import { TodayDueList, TodayShortcuts } from "@/components/today-due-list";
@@ -18,13 +16,13 @@ export default async function TodayPage({ searchParams }: {
   searchParams: Promise<{ task?: string; focus?: string; event?: string }>;
 }) {
   const ownerId = await requireUserId(), db = getDatabase(), query = await searchParams;
-  const timezone = getPreferences(db, ownerId).timezone;
+  const timezone = getCachedPreferences(ownerId).timezone;
   const day = todayTimeline(db, ownerId, timezone);
   const start = Temporal.PlainDate.from(day.today).toZonedDateTime({ timeZone: timezone });
   const tomorrow = start.add({ days: 1 });
-  const projects = listProjects(db, ownerId);
-  const allProjects = [...projects, ...listProjects(db, ownerId, true)];
-  const allTasks = listTasks(db, ownerId, true);
+  const projects = getCachedProjects(ownerId);
+  const allProjects = [...projects, ...getCachedProjects(ownerId, true)];
+  const allTasks = getCachedTasks(ownerId, true);
   const nowIso = new Date().toISOString();
   const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
   const dateLabel = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${day.today}T12:00:00Z`));

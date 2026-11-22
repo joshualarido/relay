@@ -91,10 +91,11 @@ export function validateTaskDeadline(data: { dueDate: string | null; dueAt: stri
 }
 
 export function listTasks(db: Pick<AppDatabase, "select">, ownerId: string, includeArchived = false) {
+  const rows = db.select().from(task).where(and(eq(task.ownerId, ownerId), isNull(task.deletedAt)))
+    .orderBy(asc(task.position), asc(task.createdAt)).all();
+  if (includeArchived) return rows;
   const visibleProjects = new Set(listProjects(db, ownerId).map((p) => p.id));
-  return db.select().from(task).where(and(eq(task.ownerId, ownerId), isNull(task.deletedAt)))
-    .orderBy(asc(task.position), asc(task.createdAt)).all()
-    .filter((t) => includeArchived || (!t.archivedAt && (!t.projectId || visibleProjects.has(t.projectId))));
+  return rows.filter((t) => !t.archivedAt && (!t.projectId || visibleProjects.has(t.projectId)));
 }
 
 export function listTasksWithOptions(

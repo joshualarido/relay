@@ -56,9 +56,9 @@ export function Navigation({ name, initialCollapsed, projects, capture, children
       <span className="nav-group-label nav-label">Main</span>
       {links.map(({ href, label, icon: Icon }, i) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-        return <Link key={href} href={href} className={cn("nav-link", active && "active")} aria-label={label} title={`${label} (${i + 1})`}
+        return <Link key={href} href={href} prefetch={true} className={cn("nav-link", active && "active")} aria-label={label} title={`${label} (${i + 1})`}
           aria-current={active ? "page" : undefined}>
-          {active && <motion.span layoutId={`nav-indicator-${scope}`} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.18, ease: "easeOut" }} />}
+          {active && <motion.span layoutId={`nav-indicator-${scope}`} className="nav-indicator" aria-hidden="true" transition={{ duration: 0.12, ease: "easeOut" }} />}
           <Icon size={18} aria-hidden="true" /><span className="nav-label">{label}</span></Link>;
       })}
       <span className="nav-group-label nav-label">Other</span>

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { direction, clearDirectionHint, peekDirectionHint, type Direction } from "@/lib/screens";
 
-const OFFSET = 24;
+const OFFSET = 16;
 
 /**
  * Enter-only screen transition: the new screen replaces the old one at once and slides in
@@ -27,5 +27,5 @@ export function ScreenTransition({ children }: { children: ReactNode }) {
     : reduce || !dir ? { opacity: 0 }
     : { opacity: 0, x: dir === "right" ? OFFSET : -OFFSET };
   return <motion.div key={pathname} className="screen-transition" initial={initial} animate={{ opacity: 1, x: 0 }}
-    transition={{ duration: reduce ? 0.1 : dir ? 0.18 : 0.15, ease: "easeOut" }}>{children}</motion.div>;
+    transition={{ duration: reduce ? 0.08 : 0.12, ease: "easeOut" }}>{children}</motion.div>;
 }
