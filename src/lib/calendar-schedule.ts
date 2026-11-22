@@ -220,15 +220,16 @@ export function buildEventDropAction(
   };
 }
 
-/** Build the server mutation for dropping a task onto a time slot (1h timed) or day/all-day row (all-day). */
+/** Build the server mutation for dropping a task onto a time slot (duration by taskType: 15/30/60m) or day/all-day row (all-day). */
 export function buildTaskDropAction(
-  task: Pick<Task, "id" | "title" | "revision">,
+  task: Pick<Task, "id" | "title" | "revision"> & { taskType?: Task["taskType"] | null },
   target: ScheduleDropTarget,
   timezone: string,
 ): ScheduleDropAction {
   if (target.kind === "time") {
     const start = Temporal.Instant.from(target.startInstant).toString();
-    const end = addMinutesInstant(start, 60);
+    const minutes = task.taskType === "Instant" ? 15 : task.taskType === "Deep" ? 60 : 30;
+    const end = addMinutesInstant(start, minutes);
     return {
       endpoint: `/api/tasks/${task.id}`,
       method: "PATCH",

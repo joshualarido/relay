@@ -92,6 +92,13 @@
       "when": 1795271900000,
       "tag": "0012_v3_event_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1795358300000,
+      "tag": "0013_v3_task_type",
+      "breakpoints": true
     }
   ]
 }

@@ -14,7 +14,7 @@ import {
   previewProjectCompletion,
   projectFields,
 } from "./projects";
-import { getTask, taskFields, taskStatuses, validateTaskDeadline } from "./tasks";
+import { getTask, taskFields, taskStatuses, taskTypeDurationMinutes, validateTaskDeadline } from "./tasks";
 import { eventDatesSchema, eventFields, getEvent, validateEventLinks } from "./events";
 import { applyDeletionInTx, deletionPreviewSchema, previewDeletion } from "./lifecycle";
 
@@ -59,6 +59,7 @@ const batchCreateTaskOp = z.object({
   description: taskFields.description.default(""),
   projectId: taskFields.projectId.default(null),
   status: taskFields.status.default("To do"),
+  taskType: taskFields.taskType.default("Medium"),
   important: taskFields.important.default(null),
   dueDate: taskFields.dueDate.default(null),
   dueAt: taskFields.dueAt.default(null),
@@ -77,6 +78,7 @@ const batchUpdateTaskOp = z.object({
   description: taskFields.description.optional(),
   projectId: taskFields.projectId.optional(),
   status: taskFields.status.optional(),
+  taskType: taskFields.taskType.optional(),
   important: taskFields.important.optional(),
   dueDate: taskFields.dueDate.optional(),
   dueAt: taskFields.dueAt.optional(),
@@ -148,7 +150,7 @@ const batchScheduleTaskOp = z.object({
   taskId: z.string().min(1),
   start: z.string().min(1).max(100),
   end: z.string().min(1).max(100).optional(),
-  durationMinutes: z.number().int().min(15).max(720).default(60),
+  durationMinutes: z.number().int().min(15).max(720).optional(),
   allDay: z.boolean().default(false),
   timezone: timezoneSchema.optional(),
   title: eventFields.title.optional(),
@@ -419,7 +421,8 @@ export function batchApply(db: AppDatabase, ownerId: string, input: unknown): Ba
               end = Temporal.PlainDate.from(step.start).add({ days: 1 }).toString();
             } else {
               z.iso.datetime({ offset: true }).parse(step.start);
-              end = Temporal.Instant.from(new Date(step.start).toISOString()).add({ minutes: step.durationMinutes }).toString();
+              const minutes = step.durationMinutes ?? taskTypeDurationMinutes(linkedTask.taskType);
+              end = Temporal.Instant.from(new Date(step.start).toISOString()).add({ minutes }).toString();
             }
           }
           const data = {

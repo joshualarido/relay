@@ -9,12 +9,25 @@ import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "
 import { AppError } from "../lib/errors";
 
 export const taskStatuses = ["To do", "Done"] as const;
+export const taskTypes = ["Instant", "Medium", "Deep"] as const;
+export type TaskType = (typeof taskTypes)[number];
+
+export const TASK_TYPE_MINUTES: Record<TaskType, number> = {
+  Instant: 15,
+  Medium: 30,
+  Deep: 60,
+};
+
+export function taskTypeDurationMinutes(taskType?: TaskType | null): number {
+  return TASK_TYPE_MINUTES[taskType ?? "Medium"] ?? 30;
+}
 
 export const taskFields = {
   title: z.string().min(1).max(500).refine((v) => v.trim().length > 0, "Enter a task title."),
   description: z.string().max(20_000),
   projectId: z.string().min(1).nullable(),
   status: z.enum(taskStatuses),
+  taskType: z.enum(taskTypes),
   important: z.boolean().nullable(),
   dueDate: dateOnlySchema.nullable(),
   dueAt: z.iso.datetime({ offset: true }).nullable(),
@@ -30,6 +43,7 @@ export const createTaskSchema = z.object({
   description: taskFields.description.default(""),
   projectId: taskFields.projectId.default(null),
   status: taskFields.status.default("To do"),
+  taskType: taskFields.taskType.default("Medium"),
   important: taskFields.important.default(null),
   dueDate: taskFields.dueDate.default(null),
   dueAt: taskFields.dueAt.default(null),
@@ -59,6 +73,7 @@ export const completeTaskSchema = z.object({
 export const moveTaskSchema = z.object({
   projectId: z.string().min(1).nullable().optional(),
   status: z.enum(taskStatuses).optional(),
+  taskType: z.enum(taskTypes).optional(),
   position: z.number().int().min(0).max(1_000_000).optional(),
   mutationId: mutationIdSchema,
 }).strict();
@@ -75,6 +90,7 @@ export const reorderTasksSchema = z.object({
 export const listTasksOptionsSchema = z.object({
   projectId: z.string().min(1).nullable().optional(),
   status: z.enum(taskStatuses).optional(),
+  taskType: z.enum(taskTypes).optional(),
   important: z.union([z.boolean(), z.literal("unset")]).optional(),
   dueBefore: dateOnlySchema.optional(),
   dueAfter: dateOnlySchema.optional(),
@@ -123,6 +139,7 @@ export function listTasksWithOptions(
       }
     }
     if (options.status && t.status !== options.status) return false;
+    if (options.taskType && t.taskType !== options.taskType) return false;
     if (options.important !== undefined) {
       if (options.important === "unset") {
         if (t.important !== null) return false;

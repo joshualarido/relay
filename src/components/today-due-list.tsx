@@ -126,6 +126,7 @@ export function TodayDueList({
                 {task.projectId && projectNames[task.projectId] && (
                   <span className="today-meta">{projectNames[task.projectId]}</span>
                 )}
+                <span className="task-type-pill" data-task-type={task.taskType}>{task.taskType}</span>
               </div>
               <Link
                 className="today-quiet-action"

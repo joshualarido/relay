@@ -14,6 +14,9 @@
   --primary-foreground: #FFFFFF;
   --destructive: #C23A2B;
   --task-deadline: #A86A00;
+  --task-instant: #1F8A4C;
+  --task-medium: #B86B00;
+  --task-deep: #7C3AED;
   --project-deadline: #0E8C7C;
   --event: var(--primary);
   --shadow-float: 0 12px 32px -12px rgb(20 21 25 / .22), 0 2px 6px rgb(20 21 25 / .06);
@@ -38,6 +41,9 @@
     --primary-foreground: #FFFFFF;
     --destructive: #F2887B;
     --task-deadline: #E0A84B;
+    --task-instant: #49C97E;
+    --task-medium: #E6A94C;
+    --task-deep: #A78BFA;
     --project-deadline: #4CC2B0;
     --shadow-float: 0 16px 40px -12px rgb(0 0 0 / .6), 0 2px 8px rgb(0 0 0 / .3);
     --overlay: rgb(0 0 0 / .55);
@@ -107,6 +113,11 @@ progress::-moz-progress-bar { background: var(--primary); }
 .skeleton { min-height: 20px; border-radius: 6px; background: var(--secondary); }
 .badge { font-size: .75rem; line-height: 1.4; color: var(--muted-foreground); background: var(--secondary); border-radius: 999px; padding: 1px 8px; flex-shrink: 0; }
 .badge-danger { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 12%, transparent); }
+.task-type-pill { display: inline-flex; align-items: center; gap: 5px; font-size: .6875rem; font-weight: 500; line-height: 1.3; padding: 1px 7px; border-radius: 999px; flex-shrink: 0; color: var(--task-medium); background: color-mix(in srgb, var(--task-medium) 12%, transparent); }
+.task-type-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.task-type-pill[data-task-type="Instant"] { color: var(--task-instant); background: color-mix(in srgb, var(--task-instant) 12%, transparent); }
+.task-type-pill[data-task-type="Medium"] { color: var(--task-medium); background: color-mix(in srgb, var(--task-medium) 12%, transparent); }
+.task-type-pill[data-task-type="Deep"] { color: var(--task-deep); background: color-mix(in srgb, var(--task-deep) 14%, transparent); }
 .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted-foreground); flex-shrink: 0; }
 .status-active { background: var(--primary); }
 .status-paused { background: var(--task-deadline); }

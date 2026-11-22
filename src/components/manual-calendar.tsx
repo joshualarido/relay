@@ -40,7 +40,12 @@ import { DragMomentum } from "./drag-momentum";
 
 type Kind = "project" | "task" | "event";
 const labels: Record<Kind, string> = { project: "Project deadline", task: "Task deadline", event: "Event" };
-const colors: Record<Kind, string> = { project: "var(--project-deadline)", task: "var(--task-deadline)", event: "var(--event)" };
+const colors: Record<Kind, string> = { project: "var(--project-deadline)", task: "var(--task-medium)", event: "var(--event)" };
+const taskTypeColors: Record<Task["taskType"], string> = {
+  Instant: "var(--task-instant)",
+  Medium: "var(--task-medium)",
+  Deep: "var(--task-deep)",
+};
 const icons = { project: Flag, task: CircleCheck, event: Clock };
 
 const VIEWS = { Month: "dayGridMonth", Week: "timeGridWeek", Day: "timeGridDay", Agenda: "listMonth" } as const;
@@ -301,6 +306,8 @@ export function ManualCalendar({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [scheduleOpen, pickedItem, dragGhost, closeSchedule]);
 
+  const taskTypeById = useMemo(() => new Map(tasks.map((t) => [t.id, t.taskType])), [tasks]);
+
   const records = useMemo(
     () => [
       ...projects
@@ -314,6 +321,7 @@ export function ManualCalendar({
           allDay: true,
           revision: p.revision,
           done: false,
+          taskType: undefined as Task["taskType"] | undefined,
         })),
       ...tasks
         .filter((t) => Boolean(t.startAt || t.dueDate || t.dueAt))
@@ -326,6 +334,7 @@ export function ManualCalendar({
           allDay: t.startAt ? t.allDay : Boolean(t.dueDate),
           revision: t.revision,
           done: t.status === "Done",
+          taskType: t.taskType,
         })),
       ...events
         .filter((e) => Boolean(e.start && e.end))
@@ -338,9 +347,10 @@ export function ManualCalendar({
           allDay: e.allDay,
           revision: e.revision,
           done: false,
+          taskType: e.taskId ? taskTypeById.get(e.taskId) : undefined,
         })),
     ],
-    [projects, tasks, events],
+    [projects, tasks, events, taskTypeById],
   );
 
   function href(kind: Kind, id: string) {
@@ -1107,6 +1117,8 @@ export function ManualCalendar({
           eventContent={(info) => {
             const kind = info.event.extendedProps.kind as Kind;
             const id = info.event.extendedProps.id as string;
+            const taskType = info.event.extendedProps.taskType as Task["taskType"] | undefined;
+            const recordColor = taskType ? taskTypeColors[taskType] : colors[kind];
             const Icon = icons[kind];
             return (
               <Link
@@ -1116,8 +1128,8 @@ export function ManualCalendar({
                 className="calendar-record"
                 data-calendar-record={`${kind}:${id}`}
                 data-task-link={kind === "task" ? id : undefined}
-                style={{ "--record-color": colors[kind], opacity: info.event.extendedProps.done ? 0.6 : 1 } as React.CSSProperties}
-                aria-label={`${labels[kind]}: ${info.event.title}`}
+                style={{ "--record-color": recordColor, opacity: info.event.extendedProps.done ? 0.6 : 1 } as React.CSSProperties}
+                aria-label={`${labels[kind]}${taskType ? ` (${taskType})` : ""}: ${info.event.title}`}
               >
                 <Icon size={12} aria-hidden="true" />
                 <span aria-hidden="true">

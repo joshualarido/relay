@@ -192,6 +192,20 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
       expect(scheduled.start).toBe("2026-11-22T03:00:00.000Z");
       expect(scheduled.end).toBe("2026-11-22T04:30:00.000Z");
 
+      // Default scheduling durations by taskType: Instant=15m, Medium=30m, Deep=60m
+      const instantTask = aliceHandlers.create_task({ title: "Quick reply", taskType: "Instant" });
+      const mediumTask = aliceHandlers.create_task({ title: "Review PR", taskType: "Medium" });
+      const deepTask = aliceHandlers.create_task({ title: "Design architecture", taskType: "Deep" });
+      const evInstant = aliceHandlers.schedule_task({ taskId: instantTask.id, start: "2026-11-23T09:00:00+07:00", timezone: "Asia/Jakarta" });
+      const evMedium = aliceHandlers.schedule_task({ taskId: mediumTask.id, start: "2026-11-23T10:00:00+07:00", timezone: "Asia/Jakarta" });
+      const evDeep = aliceHandlers.schedule_task({ taskId: deepTask.id, start: "2026-11-23T11:00:00+07:00", timezone: "Asia/Jakarta" });
+      expect(Date.parse(evInstant.end) - Date.parse(evInstant.start)).toBe(15 * 60_000);
+      expect(Date.parse(evMedium.end) - Date.parse(evMedium.start)).toBe(30 * 60_000);
+      expect(Date.parse(evDeep.end) - Date.parse(evDeep.start)).toBe(60 * 60_000);
+      aliceHandlers.delete_task({ id: instantTask.id });
+      aliceHandlers.delete_task({ id: mediumTask.id });
+      aliceHandlers.delete_task({ id: deepTask.id });
+
       // Task is no longer unscheduled
       expect(aliceHandlers.list_tasks({ unscheduledOnly: true }).some((t) => t.id === taskItem.id)).toBe(false);
 

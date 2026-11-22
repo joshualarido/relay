@@ -4,10 +4,16 @@ import Link from "next/link";
 import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, CalendarClock, CalendarDays, Check, CircleDot, Folder, SquareCheck, Star, X } from "lucide-react";
+import { Archive, CalendarClock, CalendarDays, Check, CircleDot, Folder, Gauge, SquareCheck, Star, X } from "lucide-react";
 import { Temporal } from "temporal-polyfill";
 import type { Project, Task } from "@/lib/db/schema";
 import { taskColumns } from "@/lib/project-board";
+
+const taskTypeOptions: Array<{ value: Task["taskType"]; label: string }> = [
+  { value: "Instant", label: "Instant · 15m" },
+  { value: "Medium", label: "Medium · 30m" },
+  { value: "Deep", label: "Deep · 1h" },
+];
 import { notifyMutation } from "./mutation-notice";
 import { InlineText } from "./projects/inline-text";
 import { useWorkspace } from "./workspace-store";
@@ -160,6 +166,28 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
                           onClick={() => s !== current.status && void patch({ status: s }, `Moved to ${s}.`)}
                         >
                           {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <span className="detail-prop-label">
+                    <Gauge size={14} aria-hidden="true" />
+                    Type
+                  </span>
+                  <div className="detail-prop-value">
+                    <div className="view-switch" role="group" aria-label="Task type">
+                      {taskTypeOptions.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          aria-pressed={current.taskType === opt.value}
+                          disabled={pending}
+                          onClick={() => opt.value !== current.taskType && void patch({ taskType: opt.value }, `Type set to ${opt.value}.`)}
+                        >
+                          {opt.label}
                         </button>
                       ))}
                     </div>

@@ -87,6 +87,7 @@ export function TodayTimeline({
                   {item.title}
                 </Link>
                 {item.projectName && <span className="today-meta">{item.projectName}</span>}
+                {block && <span className="task-type-pill" data-task-type={item.task!.taskType}>{item.task!.taskType}</span>}
               </div>
               {block &&
                 (item.done ? (

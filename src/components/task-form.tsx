@@ -38,6 +38,7 @@ export function TaskForm({ task, projects, projectId = null, initialOpen = false
         const input = {
           title: form.get("title"), description: form.get("description"), projectId: form.get("projectId") || null,
           status: form.get("status"),
+          taskType: form.get("taskType"),
           important: form.get("important") === "" ? null : form.get("important") === "true",
           dueDate: form.get("dueDate") || null,
           dueAt: form.get("dueAt") || null, timezone: form.get("dueAt") ? form.get("timezone") : null,
@@ -63,6 +64,7 @@ export function TaskForm({ task, projects, projectId = null, initialOpen = false
         <div className="field"><label htmlFor={`${prefix}-projectId`}>Project</label><select {...field("projectId")} defaultValue={task?.projectId ?? projectId ?? ""}><option value="">No project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.archivedAt ? " (archived)" : ""}</option>)}</select>{errors("projectId")}</div>
         <div className="form-grid">
           <div className="field"><label htmlFor={`${prefix}-status`}>Task status</label><select {...field("status")} defaultValue={task?.status ?? "To do"}>{statuses.map((s) => <option key={s}>{s}</option>)}</select>{errors("status")}</div>
+          <div className="field"><label htmlFor={`${prefix}-taskType`}>Task type</label><select {...field("taskType")} defaultValue={task?.taskType ?? "Medium"}><option value="Instant">Instant (15m)</option><option value="Medium">Medium (30m)</option><option value="Deep">Deep (1h)</option></select>{errors("taskType")}</div>
           <div className="field"><label htmlFor={`${prefix}-important`}>Important</label>
             <select {...field("important")} defaultValue={task?.important == null ? "" : String(task.important)}><option value="">Unset</option><option value="true">Yes</option><option value="false">No</option></select>{errors("important")}</div>
         </div>

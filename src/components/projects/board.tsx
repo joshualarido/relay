@@ -86,6 +86,7 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
           <div className="task-card-body">
             <button type="button" className="task-card-title" data-task-link={task.id} title="Edit task (E)" onClick={(e) => board.openTask(task.id, e.currentTarget.closest("article"))}>{task.title}</button>
             <span className="task-card-meta">
+              <span className="task-type-pill" data-task-type={task.taskType}>{task.taskType}</span>
               {task.important && <span className="row-meta is-important"><Star size={12} aria-hidden="true" />Important</span>}
               {due && <span className={`row-meta deadline-task${due < board.today && task.status !== "Done" ? " is-overdue" : ""}`}>
                 <CalendarDays size={12} aria-hidden="true" /><span className="sr-only">Due </span>{due < board.today && task.status !== "Done" ? "Overdue · " : ""}<time dateTime={due}>{shortDate(due)}</time></span>}

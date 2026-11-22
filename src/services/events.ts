@@ -6,7 +6,7 @@ import { event, type Event } from "../lib/db/schema";
 import { dateOnlySchema } from "../lib/dates";
 import { getPreferences, timezoneSchema } from "../lib/preferences";
 import { getProject, listProjects } from "./projects";
-import { getTask, listTasks } from "./tasks";
+import { getTask, listTasks, taskTypeDurationMinutes } from "./tasks";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "../lib/activity";
 import { AppError } from "../lib/errors";
 
@@ -90,7 +90,7 @@ export const scheduleTaskSchema = z.object({
   taskId: z.string().min(1),
   start: z.string().min(1).max(100),
   end: z.string().min(1).max(100).optional(),
-  durationMinutes: z.number().int().min(15).max(720).default(60),
+  durationMinutes: z.number().int().min(15).max(720).optional(),
   allDay: z.boolean().default(false),
   timezone: timezoneSchema.optional(),
   title: z.string().max(500).refine((v) => v.trim().length > 0, "Enter an event title.").optional(),
@@ -293,7 +293,8 @@ export function resolveScheduleTaskEventPayload(
       end = Temporal.PlainDate.from(data.start).add({ days: 1 }).toString();
     } else {
       z.iso.datetime({ offset: true }).parse(data.start);
-      end = Temporal.Instant.from(new Date(data.start).toISOString()).add({ minutes: data.durationMinutes }).toString();
+      const minutes = data.durationMinutes ?? taskTypeDurationMinutes(linkedTask.taskType);
+      end = Temporal.Instant.from(new Date(data.start).toISOString()).add({ minutes }).toString();
     }
   }
   return {

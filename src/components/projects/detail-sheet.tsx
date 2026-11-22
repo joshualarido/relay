@@ -24,6 +24,7 @@ function TaskDetails({ task }: { task: Task }) {
     <Dialog.Title asChild><h2 className="sheet-title"><InlineText value={task.title} label="task title" required onSave={(title) => board.patchTask(task, { title }, "Task renamed.")} /></h2></Dialog.Title>
     <Dialog.Description className="sr-only">Task details. Changes save as you make them.</Dialog.Description>
     <Segmented label="Status" options={taskColumns} value={task.status} onChange={(status) => board.moveTask(task.id, { projectId: task.projectId, status }, `Moved to ${status}.`)} />
+    <Segmented label="Type" options={["Instant", "Medium", "Deep"] as const} value={task.taskType} onChange={(taskType) => board.patchTask(task, { taskType }, `Type set to ${taskType}.`)} />
     <div className="sheet-field"><label className="sheet-label" htmlFor="sheet-project">Project</label>
       <select id="sheet-project" value={task.projectId ?? NO_PROJECT} onChange={(e) => {
         const projectId = e.target.value === NO_PROJECT ? null : e.target.value;
