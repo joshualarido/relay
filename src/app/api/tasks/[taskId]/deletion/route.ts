@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { confirmDeletion, previewDeletion } from "@/lib/lifecycle";
+import { confirmDeletion, previewDeletion } from "@/services/lifecycle";
 import { AppError } from "@/lib/errors";
 
 type Context = { params: Promise<{ taskId: string }> };

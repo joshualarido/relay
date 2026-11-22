@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { archiveTask, getTask, updateTask } from "@/lib/tasks";
+import { archiveTask, getTask, updateTask } from "@/services/tasks";
 
 type Context = { params: Promise<{ taskId: string }> };
 export function GET(request: Request, context: Context) {

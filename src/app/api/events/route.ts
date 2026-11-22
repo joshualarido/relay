@@ -1,6 +1,6 @@
 import { getDatabase } from "@/lib/db";
 import { route } from "@/lib/http";
-import { createEvent, listEvents } from "@/lib/events";
+import { createEvent, listEvents } from "@/services/events";
 
 export function GET(request: Request) {
   return route(request, (userId) => listEvents(getDatabase(), userId));
