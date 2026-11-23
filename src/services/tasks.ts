@@ -113,6 +113,10 @@ export const listTasksOptionsSchema = z.object({
   dueBefore: dateOnlySchema.optional(),
   dueAfter: dateOnlySchema.optional(),
   unscheduledOnly: z.boolean().default(false),
+  executionDate: dateOnlySchema.optional(),
+  plannedFrom: dateOnlySchema.optional(),
+  plannedTo: dateOnlySchema.optional(),
+  unplannedOnly: z.boolean().default(false),
   includeArchived: z.boolean().default(false),
   timezone: timezoneSchema.optional(),
 }).strict();
@@ -172,6 +176,10 @@ export function listTasksWithOptions(
       if (options.dueBefore && due > options.dueBefore) return false;
       if (options.dueAfter && due < options.dueAfter) return false;
     }
+    if (options.executionDate && t.executionDate !== options.executionDate) return false;
+    if (options.plannedFrom && (!t.executionDate || t.executionDate < options.plannedFrom)) return false;
+    if (options.plannedTo && (!t.executionDate || t.executionDate > options.plannedTo)) return false;
+    if (options.unplannedOnly && t.executionDate) return false;
     if (options.unscheduledOnly && (Boolean(t.executionDate) || Boolean(t.startAt) || scheduledTaskIds?.has(t.id))) {
       return false;
     }
@@ -238,6 +246,43 @@ export function createTask(db: AppDatabase, ownerId: string, input: unknown): Ta
   }, { behavior: "immediate" });
 }
 
+/**
+ * When a recurring task moves to Done, create its next occurrence (same series) inside the caller's transaction.
+ * Returns the new task, or null when nothing should spawn.
+ */
+export function spawnNextOccurrence(
+  tx: Pick<AppDatabase, "insert" | "select">,
+  ownerId: string,
+  before: Task,
+  result: Task,
+  now: string,
+): Task | null {
+  if (before.status === "Done" || result.status !== "Done" || !result.recurrenceRule) return null;
+  const tz = getPreferences(tx, ownerId).timezone;
+  const anchor = result.executionDate ?? dateInTimezone(now, tz);
+  const nextDate = nextOccurrenceDate(result.recurrenceRule, anchor);
+  if (!nextDate) return null;
+  return tx.insert(task).values({
+    id: crypto.randomUUID(),
+    ownerId,
+    projectId: result.projectId,
+    title: result.title,
+    description: result.description,
+    status: "To do",
+    taskType: result.taskType,
+    durationMinutes: result.durationMinutes,
+    important: result.important,
+    executionDate: nextDate,
+    dayOrder: result.dayOrder,
+    recurrenceRule: result.recurrenceRule,
+    recurrenceSeriesId: result.recurrenceSeriesId ?? result.id,
+    position: result.position,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get();
+}
+
 export function updateTask(db: AppDatabase, ownerId: string, id: string, expectedRevision: number, input: unknown): Task {
   const { mutationId, ...data } = updateTaskSchema.parse(input);
   z.number().int().positive().parse(expectedRevision);
@@ -265,33 +310,8 @@ export function updateTask(db: AppDatabase, ownerId: string, id: string, expecte
     const afterState: Snapshot[] = [{ entityType: "task", record: result }];
 
     // Completing a recurring task atomically spawns the next occurrence in the same Undoable operation.
-    if (before.status !== "Done" && result.status === "Done" && result.recurrenceRule) {
-      const tz = getPreferences(tx, ownerId).timezone;
-      const anchor = result.executionDate ?? dateInTimezone(now, tz);
-      const nextDate = nextOccurrenceDate(result.recurrenceRule, anchor);
-      if (nextDate) {
-        const spawned = tx.insert(task).values({
-          id: crypto.randomUUID(),
-          ownerId,
-          projectId: result.projectId,
-          title: result.title,
-          description: result.description,
-          status: "To do",
-          taskType: result.taskType,
-          durationMinutes: result.durationMinutes,
-          important: result.important,
-          executionDate: nextDate,
-          dayOrder: result.dayOrder,
-          recurrenceRule: result.recurrenceRule,
-          recurrenceSeriesId: seriesId ?? result.id,
-          position: result.position,
-          completedAt: null,
-          createdAt: now,
-          updatedAt: now,
-        }).returning().get();
-        afterState.push({ entityType: "task", record: spawned });
-      }
-    }
+    const spawned = spawnNextOccurrence(tx, ownerId, before, result, now);
+    if (spawned) afterState.push({ entityType: "task", record: spawned });
 
     recordOperation(tx, {
       ownerId, mutationId, requestHash: hash, action: "edit", entityType: "task", entityId: id,

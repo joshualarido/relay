@@ -2,7 +2,7 @@ import { z } from "zod";
 import { mutationIdSchema } from "../lib/activity";
 import { dateOnlySchema } from "../lib/dates";
 import { AppError } from "../lib/errors";
-import { getPreferences, timezoneSchema } from "../lib/preferences";
+import { clearWorkingHoursOverride, getPreferences, setWorkingHoursOverride, timezoneSchema } from "../lib/preferences";
 import {
   archiveProject,
   batchApply,
@@ -18,8 +18,11 @@ import {
   findFreeSlots,
   getEvent,
   getNeglectedState,
+  getDayPlans,
   getProject,
   getTask,
+  listTasks,
+  reorderDayTasks,
   getTodayContext,
   listEventsWithOptions,
   listProjectsWithOptions,
@@ -60,9 +63,13 @@ export const listTasksInputSchema = z.object({
   status: z.enum(taskStatuses).optional().describe("Filter by status: 'To do' or 'Done'."),
   taskType: z.enum(taskTypes).optional().describe("Filter by task type: 'Instant', 'Medium', or 'Deep' (default 15m / 45m / 90m, adjustable in Settings)."),
   important: z.union([z.boolean(), z.literal("unset")]).optional().describe("Filter by important flag (true, false, or 'unset')."),
-  dueBefore: dateOnlySchema.optional().describe("Filter tasks due on or before YYYY-MM-DD."),
-  dueAfter: dateOnlySchema.optional().describe("Filter tasks due on or after YYYY-MM-DD."),
-  unscheduledOnly: z.boolean().optional().describe("Return only tasks without a linked calendar event or time block."),
+  executionDate: dateOnlySchema.optional().describe("Only tasks planned for this day (YYYY-MM-DD) - that day's queue."),
+  plannedFrom: dateOnlySchema.optional().describe("Only tasks planned on or after this day."),
+  plannedTo: dateOnlySchema.optional().describe("Only tasks planned on or before this day."),
+  unplannedOnly: z.boolean().optional().describe("Only backlog tasks with no planned day."),
+  dueBefore: dateOnlySchema.optional().describe("Planned day (or legacy due date) on or before YYYY-MM-DD."),
+  dueAfter: dateOnlySchema.optional().describe("Planned day (or legacy due date) on or after YYYY-MM-DD."),
+  unscheduledOnly: z.boolean().optional().describe("Only tasks with no planned day and no calendar booking."),
   includeArchived: z.boolean().optional().describe("Include archived tasks."),
   timezone: timezoneSchema.optional().describe("Override IANA timezone for date comparisons."),
 }).strict();
@@ -81,7 +88,7 @@ export const searchInputSchema = z.object({
   types: z.array(z.enum(["project", "task", "event"])).min(1).optional().describe("Restrict search to specific entity types."),
   status: z.enum([...projectStatuses, ...taskStatuses]).optional().describe("Filter by project or task status."),
   projectId: z.string().min(1).optional().describe("Filter by projectId (or 'none' for loose tasks)."),
-  date: dateOnlySchema.optional().describe("Filter items matching a calendar date (YYYY-MM-DD)."),
+  date: dateOnlySchema.optional().describe("Items on a date (YYYY-MM-DD): tasks planned that day, events on it, project deadlines on it."),
   important: z.union([z.boolean(), z.literal("unset")]).optional().describe("Filter tasks by important flag."),
   includeArchived: z.boolean().optional().describe("Include archived items."),
   limit: z.number().int().min(1).max(200).optional().describe("Maximum results to return (default 50)."),
@@ -93,8 +100,8 @@ export const findFreeSlotsInputSchema = z.object({
   startDate: dateOnlySchema.optional().describe("Start date (YYYY-MM-DD) for a multi-day search (max 14 days)."),
   endDate: dateOnlySchema.optional().describe("End date (YYYY-MM-DD) for a multi-day search (max 14 days)."),
   durationMinutes: z.number().int().min(15).max(720).optional().describe("Minimum slot duration in minutes (default 60)."),
-  workdayStartHour: z.number().int().min(0).max(23).optional().describe("Working-day start hour in local time (0-23, default 9)."),
-  workdayEndHour: z.number().int().min(1).max(24).optional().describe("Working-day end hour in local time (1-24, default 18)."),
+  workdayStartHour: z.number().int().min(0).max(23).optional().describe("Override start hour (0-23). Omit both hours to use the user's working window for each day."),
+  workdayEndHour: z.number().int().min(1).max(24).optional().describe("Override end hour (1-24). Omit both hours to use the user's working window for each day."),
   bufferMinutes: z.number().int().min(0).max(120).optional().describe("Buffer minutes required before/after existing events (default 0)."),
   excludePast: z.boolean().optional().describe("Clip slots earlier than `now` (default true)."),
   timezone: timezoneSchema.optional().describe("Override IANA timezone."),
@@ -104,7 +111,7 @@ export const findFreeSlotsInputSchema = z.object({
 export const getNeglectedStateInputSchema = z.object({
   now: z.iso.datetime({ offset: true }).optional().describe("Override current ISO timestamp with offset."),
   timezone: timezoneSchema.optional().describe("Override IANA timezone."),
-  dueSoonDays: z.number().int().min(1).max(30).optional().describe("Lookahead window in days for unscheduled due-soon tasks (default 3)."),
+  dueSoonDays: z.number().int().min(1).max(30).optional().describe("Lookahead in days for upcoming project deadlines and backlog tasks with legacy due dates (default 3)."),
   stalledProjectDays: z.number().int().min(1).max(90).optional().describe("Idle days threshold for Active projects to be flagged stalled (default 7)."),
 }).strict();
 
@@ -156,11 +163,11 @@ export const createTaskInputSchema = z.object({
   taskType: taskFields.taskType.optional().describe("Task type: 'Instant' (15m default), 'Medium' (45m default), or 'Deep' (90m default)."),
   durationMinutes: taskFields.durationMinutes.optional().describe("Planned minutes for this task (1-1440), overriding the task-type default. null clears the override."),
   important: taskFields.important.optional().describe("Whether task is marked important (true, false, or null)."),
-  executionDate: taskFields.executionDate.optional().describe("Planned execution date (YYYY-MM-DD) or null."),
-  dayOrder: taskFields.dayOrder.optional().describe("Linear queue order within executionDate."),
-  recurrenceRule: taskFields.recurrenceRule.optional().describe("Optional recurrence rule (daily, weekdays, weekly, monthly, custom)."),
-  dueDate: taskFields.dueDate.optional().describe("Legacy date-only due date (YYYY-MM-DD) or null."),
-  dueAt: taskFields.dueAt.optional().describe("Legacy timed deadline ISO datetime with offset."),
+  executionDate: taskFields.executionDate.optional().describe("The day the task is planned for (YYYY-MM-DD); it joins that day's queue. Omit or null for the backlog."),
+  dayOrder: taskFields.dayOrder.optional().describe("Position in that day's queue (0 = first). Use reorder_day to reorder a whole day."),
+  recurrenceRule: taskFields.recurrenceRule.optional().describe("Repeat rule, e.g. {frequency:'weekly', interval:1, weekdays:[1]}; needs an executionDate as its first occurrence."),
+  dueDate: taskFields.dueDate.optional().describe("Legacy; do not use for planning. Deadlines live on projects."),
+  dueAt: taskFields.dueAt.optional().describe("Legacy; do not use for planning."),
   startAt: taskFields.startAt.optional(),
   endAt: taskFields.endAt.optional(),
   allDay: taskFields.allDay.optional(),
@@ -179,11 +186,11 @@ export const updateTaskInputSchema = z.object({
   taskType: taskFields.taskType.optional(),
   durationMinutes: taskFields.durationMinutes.optional().describe("Planned minutes for this task (1-1440), overriding the task-type default. null clears the override."),
   important: taskFields.important.optional(),
-  executionDate: taskFields.executionDate.optional(),
+  executionDate: taskFields.executionDate.optional().describe("Planned day (YYYY-MM-DD), or null to send it back to the backlog."),
   dayOrder: taskFields.dayOrder.optional(),
   recurrenceRule: taskFields.recurrenceRule.optional(),
-  dueDate: taskFields.dueDate.optional(),
-  dueAt: taskFields.dueAt.optional(),
+  dueDate: taskFields.dueDate.optional().describe("Legacy; do not use for planning."),
+  dueAt: taskFields.dueAt.optional().describe("Legacy; do not use for planning."),
   startAt: taskFields.startAt.optional(),
   endAt: taskFields.endAt.optional(),
   allDay: taskFields.allDay.optional(),
@@ -263,6 +270,27 @@ export const scheduleTaskInputSchema = z.object({
   mutationId: mutationIdSchema.optional(),
 }).strict();
 
+export const getDayPlansInputSchema = z.object({
+  startDate: dateOnlySchema.optional().describe("First day (YYYY-MM-DD). Defaults to today."),
+  endDate: dateOnlySchema.optional().describe("Last day, inclusive (max 31 days). Defaults to startDate + 6."),
+  timezone: timezoneSchema.optional(),
+  now: z.iso.datetime({ offset: true }).optional(),
+}).strict();
+
+export const reorderDayInputSchema = z.object({
+  date: dateOnlySchema.describe("The day whose queue to reorder (YYYY-MM-DD)."),
+  orderedIds: z.array(z.string().min(1)).min(1).max(500).describe("Every open task planned that day, in the new order (first = do first)."),
+  mutationId: mutationIdSchema.optional(),
+}).strict();
+
+export const setWorkingHoursInputSchema = z.object({
+  date: dateOnlySchema.describe("Day to change (YYYY-MM-DD)."),
+  reset: z.boolean().optional().describe("True to drop the override and go back to the weekly default from Settings."),
+  enabled: z.boolean().optional().describe("False marks the day off (no usable time). Default true."),
+  start: z.string().regex(/^\d{2}:\d{2}$/).optional().describe("Window start HH:MM (local)."),
+  end: z.string().regex(/^\d{2}:\d{2}$/).optional().describe("Window end HH:MM (local)."),
+}).strict();
+
 export const batchApplyInputSchema = z.object({
   operations: z.array(batchOperationSchema).min(1).max(50).describe("Ordered list of mutations to apply atomically in one transaction and one undoable activity entry."),
   mutationId: mutationIdSchema.optional(),
@@ -328,6 +356,37 @@ export function createMcpHandlers(ctx: McpContext) {
       return getNeglectedState(ctx.db, ownerId(), {
         ...input,
         ...(now ? { now } : {}),
+      });
+    },
+
+    get_day_plans(rawInput: unknown = {}) {
+      const input = getDayPlansInputSchema.parse(rawInput);
+      const now = currentNow(ctx, input.now);
+      return getDayPlans(ctx.db, ownerId(), { ...input, ...(now ? { now } : {}) });
+    },
+
+    // Write: Planning
+    reorder_day(rawInput: unknown) {
+      const { date, orderedIds, mutationId } = reorderDayInputSchema.parse(rawInput);
+      const uid = ownerId();
+      const revisions = new Map(listTasks(ctx.db, uid).map((t) => [t.id, t.revision]));
+      return reorderDayTasks(ctx.db, uid, {
+        executionDate: date,
+        orderedIds,
+        expectedRevisions: orderedIds.map((id) => ({ id, revision: revisions.get(id) ?? 1 })),
+        mutationId: mutationId ?? crypto.randomUUID(),
+      });
+    },
+
+    set_working_hours(rawInput: unknown) {
+      const { date, reset, enabled, start, end } = setWorkingHoursInputSchema.parse(rawInput);
+      const uid = ownerId();
+      if (reset) return clearWorkingHoursOverride(ctx.db, uid, date);
+      const current = getDayPlans(ctx.db, uid, { startDate: date, endDate: date }).days[0]!.window;
+      return setWorkingHoursOverride(ctx.db, uid, date, {
+        enabled: enabled ?? true,
+        start: start ?? current.start,
+        end: end ?? current.end,
       });
     },
 

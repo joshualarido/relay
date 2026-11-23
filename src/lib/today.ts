@@ -3,6 +3,8 @@ import type { AppDatabase } from "./db";
 import type { Project, Task } from "./db/schema";
 import {
   computeDayCapacity,
+  formatMinutes,
+  taskMinutes,
   resolveDayWorkingWindow,
   type DayCapacity,
   type TaskTypeMinutes,
@@ -37,7 +39,24 @@ export type TodayNext = {
   href: string;
 };
 
-export type TodaySummary = { remaining: number; total: number; next: TodayNext | null };
+/** The first open task in today's queue. Tasks have no clock time, so this is "next" by order, not by time. */
+export type TodayNextTask = {
+  id: string;
+  title: string;
+  taskType: Task["taskType"];
+  minutes: number;
+  projectName: string | null;
+  href: string;
+};
+
+export type TodaySummary = {
+  remaining: number;
+  total: number;
+  /** Next upcoming timed event or timed project deadline. */
+  next: TodayNext | null;
+  /** First open task in today's queue (what the Today screen shows as "Next up"). */
+  nextTask?: TodayNextTask | null;
+};
 export type DayState = "empty" | "active" | "clear";
 
 export type TodayTimeline = {
@@ -178,6 +197,18 @@ export function todayTimeline(
       }
     : null;
 
+  const firstOpen = todayTasks.find((t) => t.status !== "Done");
+  const nextTask: TodayNextTask | null = firstOpen
+    ? {
+        id: firstOpen.id,
+        title: firstOpen.title,
+        taskType: firstOpen.taskType,
+        minutes: taskMinutes(firstOpen, prefs.taskTypeMinutes),
+        projectName: firstOpen.projectId ? (projectNames.get(firstOpen.projectId) ?? null) : null,
+        href: `/?task=${firstOpen.id}`,
+      }
+    : null;
+
   const timedEvents = eventItems.filter((e) => !e.allDay);
   const total = todayTasks.length + timedEvents.length;
   const remaining =
@@ -200,7 +231,7 @@ export function todayTimeline(
     items: schedule,
     dueUnscheduled: [],
     overdue,
-    summary: { remaining, total, next },
+    summary: { remaining, total, next, nextTask },
     dayState,
   };
 
@@ -220,6 +251,11 @@ const duration = (minutes: number) => {
 export function summarySentence(summary: TodaySummary, dayState: DayState) {
   if (dayState === "clear") return "Nothing left today";
   if (summary.remaining === 0) return dayState === "empty" ? "Nothing planned today" : "Nothing timed today";
+  const then = summary.next ? `${summary.next.title} in ${duration(summary.next.minutes)}` : "";
+  if (summary.nextTask) {
+    const t = summary.nextTask;
+    return `${plural(summary.remaining)} today · up next: ${t.title} (${t.taskType} · ${formatMinutes(t.minutes)})${then ? ` · then ${then}` : ""}`;
+  }
   if (!summary.next) return `${plural(summary.remaining)} left today`;
-  return `${plural(summary.remaining)} today · next: ${summary.next.title} in ${duration(summary.next.minutes)}`;
+  return `${plural(summary.remaining)} today · next: ${then}`;
 }

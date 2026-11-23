@@ -511,6 +511,45 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
       expect(aliceHandlers.list_tasks({}).some((t) => t.executionDate === "2026-12-02")).toBe(false);
     });
 
+    it("plans in Relay's model: day plans, queue reorder, working hours, next task, recurring batch completion", () => {
+      const now = "2026-12-07T08:00:00+07:00"; // Monday
+      const day = "2026-12-07";
+      const x = aliceHandlers.create_task({ title: "Q first", taskType: "Deep", executionDate: day, dayOrder: 0 });
+      const y = aliceHandlers.create_task({ title: "Q second", taskType: "Instant", executionDate: day, dayOrder: 1 });
+      const rec = aliceHandlers.create_task({ title: "Q daily", executionDate: day, dayOrder: 2, recurrenceRule: { frequency: "daily", interval: 1 } });
+
+      // Working hours for one day: override, then reset.
+      expect(aliceHandlers.set_working_hours({ date: day, start: "10:00", end: "14:00" })).toMatchObject({ enabled: true, start: "10:00", end: "14:00" });
+      let plan = aliceHandlers.get_day_plans({ startDate: day, endDate: day, timezone: "Asia/Jakarta", now }).days[0]!;
+      expect(plan.window).toMatchObject({ start: "10:00", end: "14:00", isOverride: true });
+      expect(plan.usableMinutes).toBe(240);
+      expect(plan.queue.map((t) => t.title)).toEqual(["Q first", "Q second", "Q daily"]);
+      expect(plan.plannedMinutes).toBe(plan.queue.reduce((n, t) => n + t.minutes, 0));
+
+      // Reorder the queue; Next up follows it.
+      aliceHandlers.reorder_day({ date: day, orderedIds: [y.id, x.id, rec.id] });
+      const today = aliceHandlers.get_today({ now, timezone: "Asia/Jakarta" });
+      expect(today.summary.nextTask).toMatchObject({ id: y.id, taskType: "Instant" });
+      expect(today.summarySentence).toContain("up next: Q second");
+      expect(aliceHandlers.list_tasks({ executionDate: day }).map((t) => t.id).sort()).toEqual([x.id, y.id, rec.id].sort());
+      expect(aliceHandlers.search({ query: "Q second" }).items[0]).toMatchObject({ executionDate: day, dayOrder: 0, taskType: "Instant" });
+
+      // Completing a recurring task inside a batch creates its next occurrence, undone together.
+      const res = aliceHandlers.batch_apply({ operations: [{ op: "complete_task", id: rec.id }] });
+      expect(res.results[0]!.nextOccurrence).toMatchObject({ title: "Q daily", executionDate: "2026-12-08", status: "To do" });
+      aliceHandlers.undo_last_action({});
+      expect(aliceHandlers.list_tasks({ executionDate: "2026-12-08" }).some((t) => t.title === "Q daily")).toBe(false);
+
+      // A passed planned day is overdue; recurring tasks never are.
+      const neglected = aliceHandlers.get_neglected_state({ now: "2026-12-09T08:00:00+07:00", timezone: "Asia/Jakarta" });
+      const overdueIds = neglected.overdueTasks.map((t) => t.id);
+      expect(overdueIds).toEqual(expect.arrayContaining([x.id, y.id]));
+      expect(overdueIds).not.toContain(rec.id);
+
+      expect(aliceHandlers.set_working_hours({ date: day, reset: true })).toMatchObject({ cleared: true });
+      for (const t of [x, y, rec]) aliceHandlers.delete_task({ id: t.id });
+    });
+
     it("rolls back all earlier steps if a later step in batch_apply fails", () => {
       const beforeTasks = aliceHandlers.list_tasks({}).length;
       expect(() =>
@@ -546,7 +585,7 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
   });
 
   describe("MCP protocol server (tools/list, resources/list, tool calls, resources/read)", () => {
-    it("exposes all 22 tools and 3 resources over MCP transport and handles valid & invalid calls cleanly", async () => {
+    it("exposes all 25 tools and 3 resources over MCP transport and handles valid & invalid calls cleanly", async () => {
       const server = createRelayMcpServer({
         db: w.db,
         resolveOwnerId: () => w.alice.id,
@@ -571,14 +610,17 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
           "delete_project",
           "delete_task",
           "find_free_slots",
+          "get_day_plans",
           "get_neglected_state",
           "get_today",
           "list_events",
           "list_projects",
           "list_tasks",
           "move_task",
+          "reorder_day",
           "schedule_task",
           "search",
+          "set_working_hours",
           "undo_last_action",
           "update_event",
           "update_project",

@@ -13,7 +13,10 @@ import {
   deleteTaskInputSchema,
   findFreeSlotsInputSchema,
   getNeglectedStateInputSchema,
+  getDayPlansInputSchema,
   getTodayInputSchema,
+  reorderDayInputSchema,
+  setWorkingHoursInputSchema,
   listEventsInputSchema,
   listProjectsInputSchema,
   listTasksInputSchema,
@@ -45,7 +48,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "get_today",
     {
       title: "Get Today",
-      description: "Return today's timeline, summary sentence, due-unscheduled tasks, overdue tasks, day state, and active projects with progress.",
+      description: "Today in Relay's model: capacity (working window, usable vs planned minutes), the ordered task queue (tasks have no clock times), summary.nextTask (first open task = Next up), summary.next (next timed event/deadline), fixed schedule (events + project deadlines), overdue tasks, and active projects.",
       inputSchema: getTodayInputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -67,7 +70,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "list_tasks",
     {
       title: "List Tasks",
-      description: "List tasks filtered by project, status, importance, due date window, or unscheduled status.",
+      description: "List tasks by project, status, type, importance, planned day (executionDate / plannedFrom / plannedTo) or backlog (unplannedOnly). Each task carries executionDate, dayOrder, taskType and durationMinutes.",
       inputSchema: listTasksInputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -78,7 +81,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "list_events",
     {
       title: "List Events",
-      description: "List calendar events and scheduled task blocks, optionally filtered by date/time range, project, or task.",
+      description: "List calendar events (the only items with clock times), optionally by date/time range, project, or task.",
       inputSchema: listEventsInputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -89,7 +92,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "search",
     {
       title: "Search Workspace",
-      description: "Search across projects, tasks, and events by text and optional status, project, date, or importance filters.",
+      description: "Search projects, tasks, and events by text with optional status, project, date, or importance filters. Task results include their planned day, queue position, type and duration.",
       inputSchema: searchInputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -100,7 +103,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "find_free_slots",
     {
       title: "Find Free Slots",
-      description: "Find open calendar windows within working hours around existing timed events and task blocks.",
+      description: "Find open clock-time windows around timed events, inside the user's working window for each day. Only for placing EVENTS (meetings, appointments). Tasks are planned by day + queue order; use get_day_plans for that.",
       inputSchema: findFreeSlotsInputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -111,11 +114,46 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "get_neglected_state",
     {
       title: "Get Neglected State",
-      description: "Diagnose drift: days since last activity, overdue tasks, unscheduled due-soon tasks, and stalled Active projects.",
+      description: "Diagnose drift: days since last activity, overdue tasks (planned day passed; recurring excluded), upcoming project deadlines with unplanned work, backlog size, and stalled Active projects.",
       inputSchema: getNeglectedStateInputSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (args) => runTool(() => handlers.get_neglected_state(args)),
+  );
+
+  server.registerTool(
+    "get_day_plans",
+    {
+      title: "Get Day Plans",
+      description: "For each day in a range (default: 7 days from today): working window, usable minutes (window minus timed events), planned minutes, loadPercent, overbooked minutes, the ordered task queue, and fixed items (events, project deadlines). The main tool for planning days and weeks.",
+      inputSchema: getDayPlansInputSchema,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (args) => runTool(() => handlers.get_day_plans(args)),
+  );
+
+  // --- Write Tools: Planning ---
+
+  server.registerTool(
+    "reorder_day",
+    {
+      title: "Reorder Day",
+      description: "Set the order of one day's task queue. Pass every open task planned that day, first = do first. Undoable.",
+      inputSchema: reorderDayInputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    (args) => runTool(() => handlers.reorder_day(args)),
+  );
+
+  server.registerTool(
+    "set_working_hours",
+    {
+      title: "Set Working Hours",
+      description: "Change one day's working window (e.g. leaving early, a day off) so usable time is right, or reset=true to go back to the weekly default. Same as 'Hours' on the Today screen.",
+      inputSchema: setWorkingHoursInputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    (args) => runTool(() => handlers.set_working_hours(args)),
   );
 
   // --- Write Tools: Projects ---
@@ -170,7 +208,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "create_task",
     {
       title: "Create Task",
-      description: "Create a task with its literal title, optionally linked to a project and deadline.",
+      description: "Create a task with its literal title. Plan it by giving executionDate (+ optional dayOrder); size it with taskType and optional durationMinutes. No executionDate = backlog.",
       inputSchema: createTaskInputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -181,7 +219,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "update_task",
     {
       title: "Update Task",
-      description: "Update a task's title, description, project, status, importance, or due date.",
+      description: "Update a task: title, project, type, durationMinutes, importance, planned day (executionDate; null = backlog), queue position, or repeat rule.",
       inputSchema: updateTaskInputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -192,7 +230,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "complete_task",
     {
       title: "Complete Task",
-      description: "Mark a task Done (completed=true) or reopen it to To do (completed=false) without creating follow-up tasks.",
+      description: "Mark a task Done (completed=true) or reopen it (completed=false). Completing a recurring task creates its next occurrence in the same undoable step; nothing else is created.",
       inputSchema: completeTaskInputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -260,7 +298,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "schedule_task",
     {
       title: "Schedule Task",
-      description: "Schedule a task onto the calendar by creating a linked event (time block or all-day).",
+      description: "Book a task at a fixed clock time by creating a linked calendar event. Only when the user explicitly asks for a specific time; normal planning uses executionDate + queue order.",
       inputSchema: scheduleTaskInputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -273,7 +311,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "batch_apply",
     {
       title: "Batch Apply",
-      description: "Apply an approved multi-step plan atomically in one transaction with a single undoable activity entry.",
+      description: "Apply an approved multi-step plan atomically as one undoable step. Task steps accept executionDate, dayOrder, durationMinutes and recurrenceRule; completing a recurring task creates its next occurrence.",
       inputSchema: batchApplyInputSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
@@ -298,7 +336,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "relay://today",
     {
       title: "Relay Today Snapshot",
-      description: "Live JSON snapshot of today's timeline, summary, due-unscheduled tasks, overdue tasks, and active projects.",
+      description: "Live JSON snapshot of today: capacity, ordered task queue, next task, fixed schedule, overdue tasks, and active projects.",
       mimeType: "application/json",
     },
     (uri) => ({
@@ -336,7 +374,7 @@ export function createRelayMcpServer(ctx: McpContext): McpServer {
     "relay://neglected",
     {
       title: "Relay Neglected State Snapshot",
-      description: "Live JSON snapshot of idle days, overdue tasks, unscheduled due-soon tasks, and stalled Active projects.",
+      description: "Live JSON snapshot of idle days, overdue tasks, upcoming project deadlines, backlog size, and stalled Active projects.",
       mimeType: "application/json",
     },
     (uri) => ({

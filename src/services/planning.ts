@@ -4,9 +4,9 @@ import { z } from "zod";
 import type { AppDatabase } from "../lib/db";
 import { activity, type Event, type Project, type Task } from "../lib/db/schema";
 import { dateInTimezone, dateOnlySchema, instantToLocal } from "../lib/dates";
-import { getPreferences, timezoneSchema } from "../lib/preferences";
+import { getPreferences, listWorkingHoursOverrides, timezoneSchema } from "../lib/preferences";
+import { computeDayCapacity, resolveDayWorkingWindow, taskMinutes, type DayCapacity } from "../lib/capacity";
 import { summarySentence, todayTimeline, type TodayTimeline } from "../lib/today";
-import { WORKING_HOURS_END, WORKING_HOURS_START } from "../lib/calendar-schedule";
 import { AppError } from "../lib/errors";
 import { getProjectProgress, listProjects, projectStatuses, type ProjectProgress } from "./projects";
 import { listTasks, taskStatuses } from "./tasks";
@@ -58,7 +58,7 @@ export const searchAllSchema = z.object({
 
 export type SearchResultItem =
   | { kind: "project"; id: string; title: string; status: Project["status"]; deadline: string | null; archivedAt: string | null; revision: number; updatedAt: string }
-  | { kind: "task"; id: string; title: string; status: Task["status"]; projectId: string | null; dueDate: string | null; dueAt: string | null; important: boolean | null; archivedAt: string | null; revision: number; updatedAt: string }
+  | { kind: "task"; id: string; title: string; status: Task["status"]; projectId: string | null; executionDate: string | null; dayOrder: number; taskType: Task["taskType"]; durationMinutes: number | null; recurrenceRule: Task["recurrenceRule"]; dueDate: string | null; dueAt: string | null; important: boolean | null; archivedAt: string | null; revision: number; updatedAt: string }
   | { kind: "event"; id: string; title: string; start: string; end: string; allDay: boolean; projectId: string | null; taskId: string | null; location: string; archivedAt: string | null; revision: number; updatedAt: string };
 
 export function searchAll(
@@ -94,7 +94,7 @@ export function searchAll(
       if (q && !`${p.name} ${p.description}`.toLowerCase().includes(q)) continue;
       if (data.status && p.status !== data.status) continue;
       if (data.projectId && p.id !== data.projectId) continue;
-      if (data.date && p.deadline !== data.date) continue;
+      if (data.date && (p.deadline ?? (p.deadlineAt ? dateInTimezone(p.deadlineAt, p.deadlineTimezone ?? timezone) : null)) !== data.date) continue;
       items.push({
         kind: "project",
         id: p.id,
@@ -124,7 +124,7 @@ export function searchAll(
       }
       if (data.date) {
         const dueOn = t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, t.timezone ?? timezone) : null);
-        if (dueOn !== data.date && !plannedByTask.get(t.id)?.includes(data.date)) continue;
+        if (t.executionDate !== data.date && dueOn !== data.date && !plannedByTask.get(t.id)?.includes(data.date)) continue;
       }
       items.push({
         kind: "task",
@@ -132,6 +132,11 @@ export function searchAll(
         title: t.title,
         status: t.status,
         projectId: t.projectId,
+        executionDate: t.executionDate,
+        dayOrder: t.dayOrder,
+        taskType: t.taskType,
+        durationMinutes: t.durationMinutes,
+        recurrenceRule: t.recurrenceRule,
         dueDate: t.dueDate,
         dueAt: t.dueAt,
         important: t.important,
@@ -190,14 +195,18 @@ export const findFreeSlotsSchema = z.object({
   startDate: dateOnlySchema.optional(),
   endDate: dateOnlySchema.optional(),
   durationMinutes: z.number().int().min(15).max(720).default(60),
-  workdayStartHour: z.number().int().min(0).max(23).default(WORKING_HOURS_START),
-  workdayEndHour: z.number().int().min(1).max(24).default(WORKING_HOURS_END),
+  // Omit both to use the user's working window for each day (Settings + per-day overrides; days off are skipped).
+  workdayStartHour: z.number().int().min(0).max(23).optional(),
+  workdayEndHour: z.number().int().min(1).max(24).optional(),
   bufferMinutes: z.number().int().min(0).max(120).default(0),
   excludePast: z.boolean().default(true),
   timezone: timezoneSchema.optional(),
   now: z.iso.datetime({ offset: true }).optional(),
 }).strict().superRefine((data, ctx) => {
-  if (data.workdayEndHour <= data.workdayStartHour) {
+  if ((data.workdayStartHour === undefined) !== (data.workdayEndHour === undefined)) {
+    ctx.addIssue({ code: "custom", path: ["workdayEndHour"], message: "Pass both workdayStartHour and workdayEndHour, or neither to use working hours." });
+  }
+  if (data.workdayStartHour !== undefined && data.workdayEndHour !== undefined && data.workdayEndHour <= data.workdayStartHour) {
     ctx.addIssue({ code: "custom", path: ["workdayEndHour"], message: "workdayEndHour must be after workdayStartHour." });
   }
   if (data.startDate && data.endDate && data.endDate < data.startDate) {
@@ -221,7 +230,8 @@ export function findFreeSlots(
   input: unknown = {},
 ): { timezone: string; startDate: string; endDate: string; durationMinutes: number; slots: FreeSlot[] } {
   const data = findFreeSlotsSchema.parse(input);
-  const timezone = data.timezone ?? getPreferences(db, ownerId).timezone;
+  const prefs = getPreferences(db, ownerId);
+  const timezone = data.timezone ?? prefs.timezone;
   const nowIso = data.now ? new Date(data.now).toISOString() : new Date().toISOString();
   const nowMs = Date.parse(nowIso);
   const today = dateInTimezone(nowIso, timezone);
@@ -258,20 +268,27 @@ export function findFreeSlots(
   }
 
   const slots: FreeSlot[] = [];
+  const overrides = data.workdayStartHour === undefined ? listWorkingHoursOverrides(db, ownerId, startDateStr, endDateStr) : {};
+  const at = (day: Temporal.PlainDate, hhmm: string) =>
+    hhmm === "24:00"
+      ? day.add({ days: 1 }).toZonedDateTime({ timeZone: timezone, plainTime: Temporal.PlainTime.from("00:00") })
+      : day.toZonedDateTime({ timeZone: timezone, plainTime: Temporal.PlainTime.from(hhmm) });
+  const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
   for (let offset = 0; offset < spanDays; offset++) {
     const day = startPlain.add({ days: offset });
     const dayStr = day.toString();
-    const windowStartZdt = day.toZonedDateTime({
-      timeZone: timezone,
-      plainTime: Temporal.PlainTime.from({ hour: data.workdayStartHour }),
-    });
-    const windowEndZdt = data.workdayEndHour === 24
-      ? day.add({ days: 1 }).toZonedDateTime({ timeZone: timezone, plainTime: Temporal.PlainTime.from({ hour: 0 }) })
-      : day.toZonedDateTime({
-          timeZone: timezone,
-          plainTime: Temporal.PlainTime.from({ hour: data.workdayEndHour }),
-        });
+    let windowStartZdt: Temporal.ZonedDateTime;
+    let windowEndZdt: Temporal.ZonedDateTime;
+    if (data.workdayStartHour !== undefined && data.workdayEndHour !== undefined) {
+      windowStartZdt = at(day, hh(data.workdayStartHour));
+      windowEndZdt = at(day, hh(data.workdayEndHour));
+    } else {
+      const window = resolveDayWorkingWindow(dayStr, prefs.workingHours, overrides[dayStr]);
+      if (!window.enabled) continue;
+      windowStartZdt = at(day, window.start);
+      windowEndZdt = at(day, window.end);
+    }
 
     let windowStart = windowStartZdt.epochMilliseconds;
     const windowEnd = windowEndZdt.epochMilliseconds;
@@ -343,6 +360,8 @@ export type NeglectedTaskSummary = {
   title: string;
   projectId: string | null;
   projectName: string | null;
+  /** Planned day (the queue the task sits in), or null for the backlog. */
+  executionDate: string | null;
   dueDate: string | null;
   dueAt: string | null;
   important: boolean | null;
@@ -351,6 +370,18 @@ export type NeglectedTaskSummary = {
 
 export type OverdueTaskSummary = NeglectedTaskSummary & { daysOverdue: number };
 export type DueSoonTaskSummary = NeglectedTaskSummary & { daysUntilDue: number };
+
+export type UpcomingDeadlineSummary = {
+  id: string;
+  name: string;
+  deadline: string;
+  deadlineAt: string | null;
+  daysUntilDeadline: number;
+  openTaskCount: number;
+  /** Open tasks with no planned day: work that still needs a slot before the deadline. */
+  unplannedTaskCount: number;
+  revision: number;
+};
 
 export type StalledProjectSummary = {
   id: string;
@@ -373,8 +404,11 @@ export type NeglectedState = {
   needsRecovery: boolean;
   overdueTasks: OverdueTaskSummary[];
   unscheduledDueSoonTasks: DueSoonTaskSummary[];
+  upcomingProjectDeadlines: UpcomingDeadlineSummary[];
   stalledActiveProjects: StalledProjectSummary[];
   summary: {
+    upcomingDeadlineCount: number;
+    unplannedTaskCount: number;
     overdueCount: number;
     unscheduledDueSoonCount: number;
     stalledActiveProjectCount: number;
@@ -432,12 +466,18 @@ export function getNeglectedState(
   const unscheduledDueSoonTasks: DueSoonTaskSummary[] = [];
 
   for (const t of openTasks) {
-    const dueOn = t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, t.timezone ?? timezone) : null);
-    const isOverdue = t.dueDate
-      ? t.dueDate < today
-      : t.dueAt
-        ? Date.parse(t.dueAt) < nowMs
-        : false;
+    // Same rule as Today: a task is overdue when its planned day (or legacy due date) has passed.
+    // Recurring tasks roll forward on their own, so they are never overdue.
+    const dueOn = t.executionDate ?? t.dueDate ?? (t.dueAt ? dateInTimezone(t.dueAt, t.timezone ?? timezone) : null);
+    const isOverdue = t.recurrenceRule
+      ? false
+      : t.executionDate
+        ? t.executionDate < today
+        : t.dueDate
+          ? t.dueDate < today
+          : t.dueAt
+            ? Date.parse(t.dueAt) < nowMs
+            : false;
 
     if (isOverdue && dueOn) {
       const daysOverdue = Math.max(1, Temporal.PlainDate.from(dueOn).until(todayPlain).days);
@@ -446,6 +486,7 @@ export function getNeglectedState(
         title: t.title,
         projectId: t.projectId,
         projectName: t.projectId ? (projectNames.get(t.projectId) ?? null) : null,
+        executionDate: t.executionDate,
         dueDate: t.dueDate,
         dueAt: t.dueAt,
         important: t.important,
@@ -456,7 +497,8 @@ export function getNeglectedState(
     }
 
     if (dueOn && dueOn >= today && dueOn <= dueSoonCutoff) {
-      const isScheduled = Boolean(t.startAt) || scheduledTaskIds.has(t.id);
+      // A planned day counts as scheduled: legacy due dates only matter for tasks still in the backlog.
+      const isScheduled = Boolean(t.executionDate) || Boolean(t.startAt) || scheduledTaskIds.has(t.id);
       if (!isScheduled) {
         const daysUntilDue = todayPlain.until(Temporal.PlainDate.from(dueOn)).days;
         unscheduledDueSoonTasks.push({
@@ -464,6 +506,7 @@ export function getNeglectedState(
           title: t.title,
           projectId: t.projectId,
           projectName: t.projectId ? (projectNames.get(t.projectId) ?? null) : null,
+          executionDate: t.executionDate,
           dueDate: t.dueDate,
           dueAt: t.dueAt,
           important: t.important,
@@ -532,6 +575,25 @@ export function getNeglectedState(
   }
   stalledActiveProjects.sort((a, b) => b.daysSinceMovement - a.daysSinceMovement || a.name.localeCompare(b.name));
 
+  const upcomingProjectDeadlines: UpcomingDeadlineSummary[] = [];
+  for (const p of projects) {
+    if (p.status === "Done") continue;
+    const deadline = p.deadline ?? (p.deadlineAt ? dateInTimezone(p.deadlineAt, p.deadlineTimezone ?? timezone) : null);
+    if (!deadline || deadline < today || deadline > dueSoonCutoff) continue;
+    const open = (tasksByProject.get(p.id) ?? []).filter((t) => t.status !== "Done");
+    upcomingProjectDeadlines.push({
+      id: p.id,
+      name: p.name,
+      deadline,
+      deadlineAt: p.deadlineAt,
+      daysUntilDeadline: todayPlain.until(Temporal.PlainDate.from(deadline)).days,
+      openTaskCount: open.length,
+      unplannedTaskCount: open.filter((t) => !t.executionDate).length,
+      revision: p.revision,
+    });
+  }
+  upcomingProjectDeadlines.sort((a, b) => a.daysUntilDeadline - b.daysUntilDeadline || a.name.localeCompare(b.name));
+
   const isIdle = daysSinceLastActivity !== null && daysSinceLastActivity >= 3;
   const needsRecovery = isIdle || overdueTasks.length > 0 || stalledActiveProjects.length > 0;
 
@@ -544,8 +606,11 @@ export function getNeglectedState(
     needsRecovery,
     overdueTasks,
     unscheduledDueSoonTasks,
+    upcomingProjectDeadlines,
     stalledActiveProjects,
     summary: {
+      upcomingDeadlineCount: upcomingProjectDeadlines.length,
+      unplannedTaskCount: openTasks.filter((t) => !t.executionDate).length,
       overdueCount: overdueTasks.length,
       unscheduledDueSoonCount: unscheduledDueSoonTasks.length,
       stalledActiveProjectCount: stalledActiveProjects.length,
@@ -553,4 +618,94 @@ export function getNeglectedState(
       activeProjectCount: activeProjects.length,
     },
   };
+}
+
+
+export const getDayPlansSchema = z.object({
+  startDate: dateOnlySchema.optional(),
+  endDate: dateOnlySchema.optional(),
+  timezone: timezoneSchema.optional(),
+  now: z.iso.datetime({ offset: true }).optional(),
+}).strict();
+
+export type DayPlanTask = {
+  id: string;
+  title: string;
+  status: Task["status"];
+  dayOrder: number;
+  taskType: Task["taskType"];
+  minutes: number;
+  durationMinutes: number | null;
+  projectId: string | null;
+  projectName: string | null;
+  recurrenceRule: Task["recurrenceRule"];
+  revision: number;
+};
+
+export type DayPlan = DayCapacity & {
+  /** The day's task queue in order (open first, then done). */
+  queue: DayPlanTask[];
+  /** Timed and all-day events plus project deadlines on this day. */
+  fixed: { kind: "event" | "project-deadline"; id: string; title: string; start: string | null; end: string | null; allDay: boolean }[];
+  /** Planned minutes as a share of usable minutes (null on a day off). */
+  loadPercent: number | null;
+};
+
+/** Per-day working window, usable time, planned load and ordered queue for a date range (max 31 days). */
+export function getDayPlans(db: Pick<AppDatabase, "select">, ownerId: string, input: unknown = {}): { timezone: string; days: DayPlan[] } {
+  const data = getDayPlansSchema.parse(input);
+  const prefs = getPreferences(db, ownerId);
+  const timezone = data.timezone ?? prefs.timezone;
+  const today = dateInTimezone(data.now ? new Date(data.now).toISOString() : new Date().toISOString(), timezone);
+  const start = Temporal.PlainDate.from(data.startDate ?? today);
+  const end = Temporal.PlainDate.from(data.endDate ?? start.add({ days: 6 }).toString());
+  const span = start.until(end).days;
+  if (span < 0) throw new AppError(400, "endDate must be on or after startDate.");
+  if (span > 30) throw new AppError(400, "Ask for at most 31 days at a time.");
+
+  const tasks = listTasks(db, ownerId);
+  const events = listEvents(db, ownerId);
+  const projects = listProjects(db, ownerId);
+  const projectNames = new Map(projects.map((p) => [p.id, p.name]));
+  const overrides = listWorkingHoursOverrides(db, ownerId, start.toString(), end.toString());
+
+  const days: DayPlan[] = [];
+  for (let d = start; Temporal.PlainDate.compare(d, end) <= 0; d = d.add({ days: 1 })) {
+    const date = d.toString();
+    const window = resolveDayWorkingWindow(date, prefs.workingHours, overrides[date]);
+    const capacity = computeDayCapacity({ date, timezone, window, events, tasks, taskTypeMinutes: prefs.taskTypeMinutes });
+    const queue = tasks
+      .filter((t) => t.executionDate === date)
+      .sort((a, b) => Number(a.status === "Done") - Number(b.status === "Done") || a.dayOrder - b.dayOrder || a.createdAt.localeCompare(b.createdAt))
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        dayOrder: t.dayOrder,
+        taskType: t.taskType,
+        minutes: taskMinutes(t, prefs.taskTypeMinutes),
+        durationMinutes: t.durationMinutes,
+        projectId: t.projectId,
+        projectName: t.projectId ? (projectNames.get(t.projectId) ?? null) : null,
+        recurrenceRule: t.recurrenceRule,
+        revision: t.revision,
+      }));
+    const dayStart = d.toZonedDateTime({ timeZone: timezone }).epochMilliseconds;
+    const dayEnd = d.add({ days: 1 }).toZonedDateTime({ timeZone: timezone }).epochMilliseconds;
+    const fixed: DayPlan["fixed"] = [
+      ...events
+        .filter((e) => !e.taskId && e.start && e.end && (e.allDay ? e.start <= date && e.end > date : Date.parse(e.start) < dayEnd && Date.parse(e.end) > dayStart))
+        .map((e) => ({ kind: "event" as const, id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay })),
+      ...projects
+        .filter((p) => p.status !== "Done" && (p.deadline ?? (p.deadlineAt ? dateInTimezone(p.deadlineAt, p.deadlineTimezone ?? timezone) : null)) === date)
+        .map((p) => ({ kind: "project-deadline" as const, id: p.id, title: p.name, start: p.deadlineAt, end: null, allDay: !p.deadlineAt })),
+    ].sort((a, b) => Number(b.allDay) - Number(a.allDay) || (a.start ?? "").localeCompare(b.start ?? ""));
+    days.push({
+      ...capacity,
+      queue,
+      fixed,
+      loadPercent: capacity.usableMinutes > 0 ? Math.round((capacity.plannedMinutes / capacity.usableMinutes) * 100) : null,
+    });
+  }
+  return { timezone, days };
 }

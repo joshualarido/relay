@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
 import type { AppDatabase } from "../lib/db";
-import { event, project, task, type Snapshot } from "../lib/db/schema";
+import { event, project, task, type Snapshot, type Task } from "../lib/db/schema";
 import { dateOnlySchema } from "../lib/dates";
 import { getPreferences, timezoneSchema } from "../lib/preferences";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "../lib/activity";
@@ -14,7 +14,7 @@ import {
   previewProjectCompletion,
   projectFields,
 } from "./projects";
-import { getTask, taskFields, taskStatuses, taskTypeDurationMinutes, validateTaskDeadline } from "./tasks";
+import { getTask, spawnNextOccurrence, taskFields, taskStatuses, taskTypeDurationMinutes, validateTaskDeadline } from "./tasks";
 import { eventDatesSchema, eventFields, getEvent, validateEventLinks } from "./events";
 import { applyDeletionInTx, deletionPreviewSchema, previewDeletion } from "./lifecycle";
 
@@ -198,6 +198,8 @@ export type BatchStepResult = {
   entityId: string;
   record?: unknown;
   deletedCount?: number;
+  /** For a completed recurring task: the next occurrence that was created. */
+  nextOccurrence?: Task;
 };
 
 export type BatchApplyResult = {
@@ -357,7 +359,10 @@ export function batchApply(db: AppDatabase, ownerId: string, input: unknown): Ba
             updatedAt: now,
           }).where(and(eq(task.id, id), eq(task.ownerId, ownerId))).returning().get()!;
           trackChanged({ entityType: "task", record: before }, { entityType: "task", record });
-          results.push({ index, op: step.op, entityType: "task", entityId: id, record });
+          // Same rule as the task service: completing a recurring task creates the next occurrence.
+          const spawned = spawnNextOccurrence(tx, ownerId, before, record, now);
+          if (spawned) trackCreated({ entityType: "task", record: spawned });
+          results.push({ index, op: step.op, entityType: "task", entityId: id, record, ...(spawned ? { nextOccurrence: spawned } : {}) });
           break;
         }
         case "delete_task": {
