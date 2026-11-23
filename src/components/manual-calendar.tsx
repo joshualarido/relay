@@ -187,7 +187,7 @@ export function ManualCalendar({
 
   // View & date state
   const paramView = VIEW_PARAM_MAP[(params.get("view") ?? "").toLowerCase()];
-  const [view, setView] = useState<ViewName>(paramView ?? "Agenda");
+  const [view, setView] = useState<ViewName>(paramView ?? "Week");
   const [activeDate, setActiveDate] = useState(date);
   const [title, setTitle] = useState("");
   const [enabled, setEnabled] = useState<Record<Kind, boolean>>({ project: true, task: true, event: true });
@@ -1153,15 +1153,6 @@ export function ManualCalendar({
           >
             <ChevronRight size={18} />
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              ref.current?.getApi().today();
-              syncNavDate();
-            }}
-          >
-            Today
-          </Button>
         </div>
       </div>
 
@@ -1216,7 +1207,7 @@ export function ManualCalendar({
           eventStartEditable={false}
           eventDurationEditable={true}
           dayMaxEvents={view === "Month" ? 5 : false}
-          eventOrder="order,title"
+          eventOrder="order,start,title"
           eventDisplay="block"
           displayEventEnd={true}
           eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}

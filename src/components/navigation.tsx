@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { motion, MotionConfig } from "motion/react";
 import { Archive, House, FolderKanban, CalendarDays, Plus, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "./ui/button";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
 import { AccountMenu } from "./auth-controls";
 import { ScreenShortcuts } from "./screen-shortcuts";
+import { isShortcutBlocked } from "@/lib/screens";
 import { CaptureProvider, useCapture, type CaptureData } from "./capture-dialog";
 import { ShortcutSheetProvider } from "./shortcut-sheet";
 
@@ -44,9 +45,19 @@ export function Navigation({ name, initialCollapsed, projects, capture, children
     setCollapsed(next);
     document.cookie = `relay-sidebar=${next ? "collapsed" : "expanded"}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
   }
+  const onToggleKey = useEffectEvent(() => toggle());
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== "b" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || isShortcutBlocked(e)) return;
+      e.preventDefault();
+      onToggleKey();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const content = (scope: string) => <div className="nav-content">
     <div className="nav-title"><Link href="/" className="wordmark" aria-label="Relay home">relay<span aria-hidden="true">.</span></Link>
-      <Button variant="ghost" className="sidebar-toggle" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={toggle}>
+      <Button variant="ghost" className="sidebar-toggle" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} title="Toggle sidebar (Ctrl+B)" onClick={toggle}>
         {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
       </Button></div>
     <Button className="palette-trigger" variant="outline" aria-label="Search and commands" title="Search and commands (Ctrl+K)" onClick={(e) => {

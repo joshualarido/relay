@@ -4,7 +4,7 @@ import { useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 import { useRouter } from "next/navigation";
 import { Temporal } from "temporal-polyfill";
-import { X } from "lucide-react";
+import { CalendarPlus, X } from "lucide-react";
 import type { Event, Project, Task } from "@/lib/db/schema";
 import { instantToLocal, localToInstant } from "@/lib/dates";
 import { Button } from "./ui/button";
@@ -36,7 +36,7 @@ export function EventForm({ event, projects, tasks, timezone, initialOpen = fals
     }
     setOpen(value); setError(""); setFields({});
   }}>
-    {!initialOpen && <Dialog.Trigger asChild><Button variant={event ? "outline" : "default"}>{event ? "Edit event" : "New event"}</Button></Dialog.Trigger>}
+    {!initialOpen && <Dialog.Trigger asChild><Button variant={event ? "outline" : "default"}>{!event && <CalendarPlus size={17} aria-hidden="true" />}{event ? "Edit event" : "New event"}</Button></Dialog.Trigger>}
     <Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="form-dialog">
       <Dialog.Title className="text-xl font-semibold">{event ? "Edit event" : "New event"}</Dialog.Title>
       <Dialog.Description className="muted mt-2 mb-6">Choose the time and timezone explicitly. Saving confirms the displayed range.</Dialog.Description>

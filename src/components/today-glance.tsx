@@ -20,12 +20,12 @@ export function TodayGlance({ day, timezone, projectNames = {} }: { day: TodayTi
   const router = useRouter();
   const { remaining, total, next } = day.summary;
   const { capacity } = day;
-  const pct = capacity.usableMinutes > 0
-    ? Math.min(100, Math.round((capacity.plannedMinutes / capacity.usableMinutes) * 100))
-    : capacity.plannedMinutes > 0
-      ? 100
-      : 0;
   const overbooked = capacity.overbookedMinutes > 0;
+  // Done bar: completed work as a share of the same scale as the planned bar.
+  const scale = Math.max(capacity.usableMinutes, capacity.plannedMinutes, 1);
+  const plannedPct = Math.min(100, (capacity.plannedMinutes / scale) * 100);
+  const donePct = Math.min(100, (capacity.completedMinutes / scale) * 100);
+  const allDone = capacity.plannedMinutes > 0 && capacity.completedMinutes >= capacity.plannedMinutes;
   // Tasks have no clock time: "next" is simply the first open task in today's queue.
   const nextTask = day.tasks.find((t) => t.status !== "Done") ?? null;
 
@@ -80,7 +80,7 @@ export function TodayGlance({ day, timezone, projectNames = {} }: { day: TodayTi
 
   return (
     <section className="today-glance" aria-label="Today at a glance">
-      <div className={`glance-card glance-capacity${overbooked ? " is-overbooked" : ""}`}>
+      <div className={`glance-card glance-capacity${allDone ? " is-complete" : overbooked ? " is-overbooked" : ""}`}>
         <div className="glance-capacity-head">
           <p className="glance-label">
             Usable time
@@ -185,8 +185,15 @@ export function TodayGlance({ day, timezone, projectNames = {} }: { day: TodayTi
           aria-valuemax={Math.max(1, capacity.usableMinutes)}
           aria-valuenow={Math.min(capacity.plannedMinutes, capacity.usableMinutes)}
         >
-          <span style={{ width: `${pct}%` }} />
+          <span className="glance-bar-planned" style={{ width: `${plannedPct}%` }} />
+          <span className="glance-bar-done" style={{ width: `${donePct}%` }} />
         </div>
+        {capacity.plannedMinutes > 0 && (
+          <p className="glance-done-text">
+            <strong>{formatMinutes(capacity.completedMinutes)}</strong> of {formatMinutes(capacity.plannedMinutes)} done
+            {allDone && " · all work finished"}
+          </p>
+        )}
 
         <p className="glance-submeta">
           {total > 0 ? `${remaining} of ${total} left` : "No tasks queued"}

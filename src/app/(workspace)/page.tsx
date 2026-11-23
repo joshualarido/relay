@@ -4,6 +4,7 @@ import { getDatabase } from "@/lib/db";
 import { getCachedPreferences, getCachedProjects, getCachedTasks } from "@/lib/request-data";
 import { advanceMissedRecurringTasks } from "@/services/tasks";
 import { todayTimeline } from "@/lib/today";
+import { formatMinutes } from "@/lib/capacity";
 import { TodayGlance } from "@/components/today-glance";
 import { TodayTimeline } from "@/components/today-timeline";
 import { TodayQueue } from "@/components/today-queue";
@@ -49,7 +50,7 @@ export default async function TodayPage({ searchParams }: {
         {day.dayState === "empty" ? (
           <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
         ) : day.dayState === "clear" ? (
-          <DayClear day={day.today} />
+          <DayClear day={day.today} tasksDone={day.tasks.length} doneLabel={formatMinutes(day.capacity.completedMinutes)} />
         ) : day.tasks.length > 0 ? (
           <TodayQueue
             today={day.today}

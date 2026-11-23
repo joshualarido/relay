@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Project, Task } from "@/lib/db/schema";
 import { computeMomentum, type MomentumWindow } from "@/lib/momentum";
 import { projectHref } from "@/lib/links";
+import { MomentumFlame } from "./momentum-flame";
 
 const WINDOWS: { days: MomentumWindow; label: string }[] = [
   { days: 7, label: "7d" },
@@ -58,7 +59,7 @@ export function TodayProgress({
 
       <div className="momentum-hero">
         <div className="momentum-score-row">
-          <span className="momentum-number">{report.score}</span>
+          <span className="momentum-number-wrap"><MomentumFlame score={report.score} /><span className="momentum-number">{report.score}</span></span>
           <span className="momentum-denom">/ 100</span>
           <span className="momentum-status" data-status={report.status.toLowerCase().replace(" ", "-")}>
             {report.status}
