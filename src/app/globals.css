@@ -628,7 +628,7 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .glance-next-in { text-decoration: none; }
 .glance-next-in:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .glance-next { transition: none; } }
-.today-section + .today-section, .today-section + .today-empty, .today-section + .day-clear { margin-top: 36px; }
+.today-section + .today-section, .today-section + .today-empty, .today-section + .day-clear, .today-section + .today-swap:not(:empty) { margin-top: 36px; }
 .today-section > h2 { font-size: .9375rem; line-height: 1.3; font-weight: 600; margin-bottom: 8px; }
 .today-list { list-style: none; margin: 0; padding: 0; }
 .today-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; min-height: 52px; padding: 6px 0; border-bottom: 1px solid var(--border); }

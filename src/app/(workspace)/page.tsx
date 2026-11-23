@@ -12,6 +12,7 @@ import { TodayShortcuts } from "@/components/today-due-list";
 import { TodayProgress } from "@/components/today-progress";
 import { CatchUp } from "@/components/catch-up";
 import { DayClear } from "@/components/day-clear";
+import { TodaySwap } from "@/components/today-swap";
 import { TaskSelection } from "@/components/task-selection";
 import { EventSelection } from "@/components/event-selection";
 import { CaptureButton } from "@/components/capture-dialog";
@@ -47,6 +48,7 @@ export default async function TodayPage({ searchParams }: {
       <div className="today-primary">
         {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
         {day.schedule.length > 0 && <TodayTimeline items={day.schedule} timezone={timezone} dayStart={start.epochMilliseconds} dayEnd={tomorrow.epochMilliseconds} />}
+        <TodaySwap state={day.dayState}>
         {day.dayState === "empty" ? (
           <div className="today-empty"><p>Nothing planned today</p><CaptureButton /></div>
         ) : day.dayState === "clear" ? (
@@ -60,6 +62,7 @@ export default async function TodayPage({ searchParams }: {
             timezone={timezone}
           />
         ) : null}
+        </TodaySwap>
       </div>
       <aside className="today-secondary" aria-label="Progress">
         <TodayProgress tasks={allTasks} projects={projects} timezone={timezone} now={nowIso} />
