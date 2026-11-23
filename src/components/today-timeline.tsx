@@ -65,6 +65,8 @@ export function TodayTimeline({
       <ol className="today-list timeline">
         {items.map((item, index) => {
           const isDeadline = item.kind === "project-deadline";
+          // Live: an event whose end has passed is crossed off without a reload.
+          const past = item.done || (!isDeadline && !item.allDay && now !== null && Date.parse(item.end) <= now);
           const Icon = isDeadline ? Flag : Clock;
           const href = isDeadline && item.projectId ? `/projects/${item.projectId}` : `/?event=${item.id}`;
 
@@ -73,7 +75,7 @@ export function TodayTimeline({
               {index === nowAt && <NowLine label={clock.format(now!)} />}
               <li className="today-row-wrap">
                 <div
-                  className={`today-row timeline-row${item.done ? " is-past" : ""}${isDeadline ? " is-deadline" : ""}`}
+                  className={`today-row timeline-row${past ? " is-past" : ""}${isDeadline ? " is-deadline" : ""}`}
                 >
                   <span className="timeline-time">{time(item)}</span>
                   <Icon

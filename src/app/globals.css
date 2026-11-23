@@ -647,7 +647,8 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .timeline-time { font-size: .8125rem; color: var(--muted-foreground); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .timeline-icon { color: var(--muted-foreground); }
 .timeline-row > :last-child:not(.today-row-body) { justify-self: end; }
-.timeline-row.is-past .task-title { color: var(--muted-foreground); }
+.timeline-row.is-past .task-title { color: var(--muted-foreground); text-decoration: line-through; }
+.timeline-row.is-past .timeline-time { color: var(--muted-foreground); }
 .timeline-row.is-done .task-title { color: var(--muted-foreground); text-decoration: line-through; }
 .timeline-row .complete-mark { width: 24px; height: 24px; min-height: 24px; }
 .now-line { --time-col: 104px; position: relative; height: 28px; z-index: 1; }
