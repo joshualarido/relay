@@ -14,7 +14,6 @@ import FullCalendar, {
   type EventResizeDoneInfo,
 } from "@fullcalendar/react";
 import dayGrid from "@fullcalendar/react/daygrid";
-import timeGrid from "@fullcalendar/react/timegrid";
 import list from "@fullcalendar/react/list";
 import interaction from "@fullcalendar/react/interaction";
 import classic from "@fullcalendar/react/themes/classic";
@@ -25,6 +24,7 @@ import {
   computeDayCapacity,
   DEFAULT_TASK_TYPE_MINUTES,
   DEFAULT_WORKING_HOURS,
+  taskMinutes,
   formatMinutes,
   resolveDayWorkingWindow,
   type DayWorkingWindow,
@@ -40,7 +40,6 @@ import {
   buildEventResizeEnd,
   buildProjectDropAction,
   buildTaskDropAction,
-  isWorkingHour,
   type ScheduleDropTarget,
 } from "@/lib/calendar-schedule";
 import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, Repeat, SlidersHorizontal } from "lucide-react";
@@ -60,13 +59,14 @@ const taskTypeColors: Record<Task["taskType"], string> = {
 };
 const icons = { project: Flag, task: CircleCheck, event: Clock };
 
-const VIEWS = { Month: "dayGridMonth", Week: "timeGridWeek", Day: "timeGridDay", Agenda: "listMonth" } as const;
+// Time-agnostic views: no time grid. Agenda is a month list, Week is a one-week day grid.
+const VIEWS = { Agenda: "listMonth", Week: "dayGridWeek", Month: "dayGridMonth" } as const;
 type ViewName = keyof typeof VIEWS;
 const VIEW_PARAM_MAP: Record<string, ViewName> = {
-  month: "Month",
-  week: "Week",
-  day: "Day",
   agenda: "Agenda",
+  week: "Week",
+  day: "Week",
+  month: "Month",
 };
 
 type HighlightBox = {
@@ -186,7 +186,7 @@ export function ManualCalendar({
 
   // View & date state
   const paramView = VIEW_PARAM_MAP[(params.get("view") ?? "").toLowerCase()];
-  const [view, setView] = useState<ViewName>(paramView ?? "Week");
+  const [view, setView] = useState<ViewName>(paramView ?? "Agenda");
   const [activeDate, setActiveDate] = useState(date);
   const [title, setTitle] = useState("");
   const [enabled, setEnabled] = useState<Record<Kind, boolean>>({ project: true, task: true, event: true });
@@ -221,20 +221,6 @@ export function ManualCalendar({
     },
     [updateUrl],
   );
-
-  // Default to Agenda on narrow screens (<= 760px) when no explicit ?view= param is set
-  const initializedView = useRef(false);
-  useEffect(() => {
-    if (initializedView.current) return;
-    initializedView.current = true;
-    if (!paramView && window.matchMedia("(max-width: 760px)").matches) {
-      const frame = requestAnimationFrame(() => {
-        setView("Agenda");
-        ref.current?.getApi().changeView(VIEWS.Agenda);
-      });
-      return () => cancelAnimationFrame(frame);
-    }
-  }, [paramView]);
 
   // Track last pointer position for opening Schedule panel near cursor
   useEffect(() => {
@@ -353,6 +339,8 @@ export function ManualCalendar({
         taskType: undefined as Task["taskType"] | undefined,
         recurring: false,
         virtual: false,
+        order: 0,
+        minutes: 0,
       }));
 
     const realTaskRecords = tasks
@@ -371,6 +359,8 @@ export function ManualCalendar({
         taskType: t.taskType,
         recurring: Boolean(t.recurrenceRule),
         virtual: false,
+        order: t.dayOrder,
+        minutes: taskMinutes(t, taskTypeMinutes),
       }));
 
     const virtualTaskRecords = tasks.flatMap((t) => {
@@ -390,6 +380,8 @@ export function ManualCalendar({
         taskType: t.taskType,
         recurring: true,
         virtual: true,
+        order: 100_000,
+        minutes: taskMinutes(t, taskTypeMinutes),
       }));
     });
 
@@ -409,10 +401,12 @@ export function ManualCalendar({
         taskType: undefined as Task["taskType"] | undefined,
         recurring: false,
         virtual: false,
+        order: 0,
+        minutes: 0,
       }));
 
     return [...projectRecords, ...realTaskRecords, ...virtualTaskRecords, ...eventRecords];
-  }, [projects, tasks, events, activeDate]);
+  }, [projects, tasks, events, activeDate, taskTypeMinutes]);
 
   function href(kind: Kind, id: string) {
     if (kind === "project") return projectHref(id);
@@ -693,16 +687,9 @@ export function ManualCalendar({
         setScheduleAnnouncement("Placement cancelled.");
         return;
       }
-      let nextView = view;
-      // On narrow screens, switch Agenda -> Day when picking up so slots & all-day row are tappable
-      if (view === "Agenda") {
-        nextView = "Day";
-        changeView("Day");
-      }
-      const startSlot: KeyboardSlot =
-        item.kind === "project" || nextView === "Month"
-          ? { kind: "day", date: activeDate }
-          : { kind: "time", date: activeDate, minutes: 10 * 60 };
+      // Agenda has no day cells to drop on; switch to Week.
+      if (view === "Agenda") changeView("Week");
+      const startSlot: KeyboardSlot = { kind: "day", date: activeDate };
       setKeyboardSlot(startSlot);
       setScheduleAnnouncement(
         `Picked up "${item.title}". Use arrow keys or tap a slot to place, Enter to confirm, Escape to cancel.`,
@@ -891,29 +878,8 @@ export function ManualCalendar({
       if (e.key === "ArrowLeft") moveDate(-1);
       else if (e.key === "ArrowRight") moveDate(1);
       else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-        const dir = e.key === "ArrowDown" ? 1 : -1;
-        if (view === "Month") {
-          moveDate(dir * 7);
-        } else if (pickedItem.kind === "task") {
-          setKeyboardSlot((prev) => {
-            if (!prev) return null;
-            if (prev.kind === "day") {
-              if (dir > 0) {
-                setScheduleAnnouncement(`${pickedItem.title} target: ${prev.date} 09:00`);
-                return { kind: "time", date: prev.date, minutes: 9 * 60 };
-              }
-              return prev;
-            }
-            const nextMin = prev.minutes + dir * 30;
-            if (nextMin < 0) {
-              setScheduleAnnouncement(`${pickedItem.title} target: ${prev.date} all-day`);
-              return { kind: "day", date: prev.date };
-            }
-            const clamped = Math.min(23 * 60 + 30, nextMin);
-            setScheduleAnnouncement(`${pickedItem.title} target: ${prev.date} ${formatSlotTime(clamped).slice(0, 5)}`);
-            return { kind: "time", date: prev.date, minutes: clamped };
-          });
-        }
+        // Day grids: up/down moves one week.
+        moveDate(e.key === "ArrowDown" ? 7 : -7);
       }
     }
 
@@ -1004,17 +970,6 @@ export function ManualCalendar({
   const dayCellClass = useCallback(
     (info: { isToday: boolean }) => (info.isToday ? "calendar-day-cell calendar-today" : "calendar-day-cell"),
     [],
-  );
-  const dayLaneClass = useCallback(() => "calendar-time-col", []);
-  const slotLaneClass = useCallback(
-    (info: { time?: { milliseconds: number } }) => {
-      const ms = info.time?.milliseconds ?? 0;
-      const hour = Math.floor(ms / 3_600_000);
-      return scheduleOpen && !isWorkingHour(hour)
-        ? "calendar-slot-lane calendar-off-hours"
-        : "calendar-slot-lane";
-    },
-    [scheduleOpen],
   );
   const eventAllow = useCallback((span: { allDay: boolean }, moving: { allDay: boolean } | null) => span.allDay === moving?.allDay, []);
   const eventAfterClass = useCallback(
@@ -1143,7 +1098,7 @@ export function ManualCalendar({
       >
         <FullCalendar
           ref={ref}
-          plugins={[dayGrid, timeGrid, list, interaction, classic]}
+          plugins={[dayGrid, list, interaction, classic]}
           initialView={VIEWS[view]}
           initialDate={date}
           timeZone={timezone}
@@ -1156,17 +1111,21 @@ export function ManualCalendar({
             const iso = dateInTimezone(dayDate.toISOString(), timezone);
             const api = ref.current?.getApi();
             api?.gotoDate(iso);
-            api?.changeView(VIEWS.Day, iso);
-            setView("Day");
+            api?.changeView(VIEWS.Week, iso);
+            setView("Week");
             setActiveDate(iso);
             updateUrl((q) => {
-              q.set("view", "day");
+              q.set("view", "week");
               q.set("date", iso);
             });
           }}
           editable={true}
           eventDurationEditable={true}
-          dayMaxEvents={5}
+          dayMaxEvents={view === "Month" ? 5 : false}
+          eventOrder="order,title"
+          eventDisplay="block"
+          displayEventEnd={true}
+          eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
           popoverClass="calendar-more-popover"
           eventAllow={eventAllow}
           events={records
@@ -1190,6 +1149,9 @@ export function ManualCalendar({
                 done: r.done,
                 recurring: r.recurring,
                 virtual: r.virtual,
+                // Deadlines, then all-day events, then tasks in their day queue order.
+                minutes: r.minutes,
+                order: r.kind === "project" ? 0 : r.kind === "event" ? 1 : 10 + r.order,
               },
             }))}
           dayHeaderContent={(arg) => {
@@ -1251,10 +1213,21 @@ export function ManualCalendar({
                 <span className="calendar-record-meta" aria-hidden="true">
                   <Icon size={12} />
                   {recurring && <Repeat size={11} />}
-                  <time suppressHydrationWarning>{info.event.allDay ? "Day" : info.timeText}</time>
+                  {!info.event.allDay && <time suppressHydrationWarning>{info.timeText}</time>}
                 </span>
                 <span className="calendar-record-title" aria-hidden="true">{info.event.title}</span>
-                {taskType && <span className="calendar-record-tag" aria-hidden="true">{taskType}</span>}
+                {(() => {
+                  // Duration lives inside the card (no time grid): task estimate, or a timed event's length.
+                  const start = info.event.start?.getTime();
+                  const end = info.event.end?.getTime();
+                  const minutes = kind === "task"
+                    ? (info.event.extendedProps.minutes as number)
+                    : kind === "event" && !info.event.allDay && start && end
+                      ? Math.round((end - start) / 60_000)
+                      : 0;
+                  const text = [taskType, minutes ? formatMinutes(minutes) : ""].filter(Boolean).join(" · ");
+                  return text ? <span className="calendar-record-tag" aria-hidden="true">{text}</span> : null;
+                })()}
               </Link>
             );
           }}
@@ -1276,8 +1249,6 @@ export function ManualCalendar({
             </span>
           )}
           dayCellClass={dayCellClass}
-          dayLaneClass={dayLaneClass}
-          slotLaneClass={slotLaneClass}
           eventAfterClass={eventAfterClass}
         />
 

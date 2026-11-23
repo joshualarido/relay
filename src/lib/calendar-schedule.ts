@@ -182,10 +182,31 @@ export function listUnscheduledEvents(events: readonly Event[], query = ""): Eve
 
 /** Build the server mutation for dropping an unscheduled event onto a time slot or day/all-day row. */
 export function buildEventDropAction(
-  ev: Pick<Event, "id" | "revision">,
+  ev: Pick<Event, "id" | "revision"> & Partial<Pick<Event, "start" | "end" | "allDay">>,
   target: ScheduleDropTarget,
   timezone: string,
 ): ScheduleDropAction {
+  // A timed event dropped onto a day keeps its time of day and duration (there is no time grid).
+  if (target.kind === "day" && ev.start && ev.end && !ev.allDay) {
+    dateOnlySchema.parse(target.date);
+    const from = Temporal.Instant.from(new Date(ev.start).toISOString()).toZonedDateTimeISO(timezone);
+    const duration = Date.parse(ev.end) - Date.parse(ev.start);
+    const start = Temporal.PlainDate.from(target.date)
+      .toZonedDateTime({ timeZone: timezone, plainTime: from.toPlainTime() })
+      .toInstant();
+    return {
+      endpoint: `/api/events/${ev.id}`,
+      method: "PATCH",
+      entityKey: `event:${ev.id}`,
+      payload: {
+        start: start.toString(),
+        end: start.add({ milliseconds: duration }).toString(),
+        allDay: false,
+        timezone,
+        expectedRevision: ev.revision,
+      },
+    };
+  }
   if (target.kind === "time") {
     const start = Temporal.Instant.from(target.startInstant).toString();
     const end = addMinutesInstant(start, 60);

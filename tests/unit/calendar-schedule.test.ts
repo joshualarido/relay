@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Event, Project, Task } from "@/lib/db/schema";
 import {
+  buildEventDropAction,
   NO_PROJECT_KEY,
   addMinutesInstant,
   buildEventResizeEnd,
@@ -196,5 +197,16 @@ describe("calendar-schedule", () => {
     expect(isWorkingHour(9)).toBe(true);
     expect(isWorkingHour(17)).toBe(true);
     expect(isWorkingHour(18)).toBe(false);
+  });
+});
+
+describe("dropping a timed event onto a day", () => {
+  it("keeps its local time and duration instead of making it all-day", () => {
+    const action = buildEventDropAction(
+      { id: "e1", revision: 3, start: "2026-11-23T03:00:00.000Z", end: "2026-11-23T04:30:00.000Z", allDay: false },
+      { kind: "day", date: "2026-11-26" },
+      "Asia/Jakarta",
+    );
+    expect(action.payload).toMatchObject({ start: "2026-11-26T03:00:00Z", end: "2026-11-26T04:30:00Z", allDay: false });
   });
 });

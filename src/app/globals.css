@@ -203,6 +203,7 @@ progress::-moz-progress-bar { background: var(--primary); }
 .workspace-shell[data-collapsed=true] .desktop-sidebar .nav-title { padding: 0; justify-content: center; }
 .workspace-shell[data-collapsed=true] .desktop-sidebar .nav-link,
 .workspace-shell[data-collapsed=true] .desktop-sidebar .palette-trigger { justify-content: center; padding: 10px; }
+.workspace-shell[data-collapsed=true] .desktop-sidebar .nav-footer { justify-content: center; padding: 8px 0; }
 .mobile-header, .tab-bar { display: none; }
 .skip-link { position: fixed; left: 16px; top: -100px; padding: 10px; background: var(--primary); color: var(--primary-foreground); border-radius: 8px; z-index: var(--z-dialog); }
 .skip-link:focus { top: 12px; }
@@ -921,6 +922,11 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .calendar-frame[data-view="Agenda"] .calendar-record-meta { width: 90px; flex-shrink: 0; font-size: .75rem; }
 .calendar-frame[data-view="Agenda"] .calendar-record-title { flex: 1; min-width: 0; font-weight: 500; }
 .calendar-frame[data-view="Agenda"] .calendar-record-tag { display: block; font-size: .6875rem; color: var(--muted-foreground); }
+/* Week: one-week day grid, no time rows. Cards stack per day and carry their own duration. */
+.calendar-frame[data-view="Week"] .calendar-day-cell { min-height: 60vh; }
+.calendar-frame[data-view="Week"] .calendar-record { gap: 2px; padding: 5px 7px; }
+.calendar-frame[data-view="Week"] .calendar-record-title { font-weight: 500; overflow-wrap: anywhere; }
+.calendar-frame[data-view="Week"] .calendar-record-tag { display: block; font-size: .6875rem; color: var(--muted-foreground); }
 .agenda-day-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--foreground); }
 .agenda-today-pill { padding: 1px 8px; border-radius: 999px; background: var(--foreground); color: var(--background); font-size: .6875rem; font-weight: 600; }
 
@@ -928,11 +934,6 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 @media (min-width: 761px) { .calendar-frame { overflow: visible; } }
 .calendar-frame [role=table] > [role=rowgroup]:first-child {
   position: sticky; top: 0; z-index: 6; background: var(--background);
-}
-.calendar-frame[data-view="Week"] [role=table] > [role=rowgroup]:nth-child(2) > [role=row]:first-child,
-.calendar-frame[data-view="Day"] [role=table] > [role=rowgroup]:nth-child(2) > [role=row]:first-child {
-  position: sticky; top: 25px; z-index: 5; background: var(--background);
-  border-bottom: 1px solid var(--border);
 }
 .calendar-frame[data-view="Agenda"] .agenda-day-header {
   position: sticky; top: 0; z-index: 5; background: var(--card) !important;
@@ -957,11 +958,6 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .calendar-more-popover .calendar-record-meta { width: 64px; flex-shrink: 0; }
 .calendar-more-popover .calendar-record-title { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* The all-day/time divider must not paint over the sticky all-day row. */
-.calendar-frame[data-view="Week"] [role=table] > [role=rowgroup]:nth-child(2) > [role=row]:first-child + div,
-.calendar-frame[data-view="Day"] [role=table] > [role=rowgroup]:nth-child(2) > [role=row]:first-child + div { display: none; }
-.calendar-frame[data-view="Week"] [role=table] > [role=rowgroup]:nth-child(2) > [role=row]:first-child,
-.calendar-frame[data-view="Day"] [role=table] > [role=rowgroup]:nth-child(2) > [role=row]:first-child { z-index: 7; }
 
 /* Current-time line, matching the Today screen. */
 .cal-now-line { border: 0 !important; height: 2px !important; background: var(--primary) !important; z-index: 4; }
@@ -1250,3 +1246,4 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .calendar-record.is-virtual {
   border-style: dashed;
 }
+
