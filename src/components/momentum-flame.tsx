@@ -2,11 +2,11 @@
 
 import { motion, useReducedMotion } from "motion/react";
 
-const FLAME = "M20 58C8 58 2 49 4 38c1-6 4-9 5-15 3 5 4 9 7 10C15 24 18 12 24 2c1 10 6 15 10 22 1-4 1-7 0-10 5 6 7 14 6 22-1 13-9 22-20 22Z";
+const FLAME = "M20 58C7 58 2 46 7 34c3-7 3-14 7-22 2 9 8 11 8 3 0-6-2-10-2-13 11 9 18 23 16 37-1 12-8 19-16 19Z";
 const LAYERS = [
-  { id: "outer", scale: 1, colors: ["#818CF8", "#4338CA"], opacity: 0.85 },
-  { id: "mid", scale: 0.72, colors: ["#7DD3FC", "#3B82F6"], opacity: 0.9 },
-  { id: "core", scale: 0.42, colors: ["#F0F9FF", "#BAE6FD"], opacity: 1 },
+  { id: "outer", scale: 1, colors: ["#F97316", "#DC2626"], opacity: 0.9 },
+  { id: "mid", scale: 0.72, colors: ["#FDE047", "#F97316"], opacity: 0.95 },
+  { id: "core", scale: 0.42, colors: ["#FFFFFF", "#FDE68A"], opacity: 1 },
 ];
 
 /** Decorative fire over the momentum score: taller, faster and more violent as momentum rises.
@@ -14,13 +14,13 @@ const LAYERS = [
 export function MomentumFlame({ score }: { score: number }) {
   const reduce = useReducedMotion();
   const i = Math.max(0, Math.min(1, score / 100));
-  const height = 56 + 90 * i;
+  const height = 22 + 70 * i;
   const period = 1.5 - 1.05 * i; // seconds per flicker
   const sway = 2 + 12 * i; // degrees
   const stretch = 0.06 + 0.22 * i;
   const sparks = i > 0.35 ? Math.round(i * 12) : 0;
   return (
-    <div className="momentum-flame" aria-hidden="true" style={{ height, width: height * 0.75, filter: `drop-shadow(0 0 ${4 + 18 * i}px rgb(82 99 242 / ${0.25 + 0.5 * i}))` }}>
+    <div className="momentum-flame" aria-hidden="true" style={{ height, width: height * 0.75, filter: `drop-shadow(0 0 ${4 + 18 * i}px rgb(249 115 22 / ${0.25 + 0.5 * i}))` }}>
       <svg viewBox="0 0 40 60" width="100%" height="100%" overflow="visible">
         <defs>
           {LAYERS.map((l) => (
@@ -51,7 +51,7 @@ export function MomentumFlame({ score }: { score: number }) {
             cx={14 + ((k * 7) % 13)}
             cy={40}
             r={0.9 + (k % 3) * 0.4}
-            fill="#93C5FD"
+            fill="#FDBA74"
             initial={{ opacity: 0 }}
             animate={{ cy: [40, -10 - 20 * i], cx: [14 + ((k * 7) % 13), 10 + ((k * 11) % 21)], opacity: [0, 1, 0] }}
             transition={{ duration: period * 1.6, repeat: Infinity, delay: (k * period) / Math.max(1, sparks), ease: "easeOut" }}
