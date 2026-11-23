@@ -44,7 +44,11 @@ export function takeSheetOrigin(close = false) {
 const narrow = () => matchMedia("(max-width: 760px)").matches;
 const projectKey = (projectId: string | null) => projectId ?? NO_PROJECT;
 
-function useBoardState({ projects: serverProjects, tasks: serverTasks, events, timezone, now }: Props) {
+// The page loads archived tasks too (for linked views); the board only shows live ones, so a refresh never revives an archived task.
+const live = (tasks: Task[]) => tasks.filter((t) => !t.archivedAt);
+
+function useBoardState({ projects: serverProjects, tasks: allServerTasks, events, timezone, now }: Props) {
+  const serverTasks = useMemo(() => live(allServerTasks), [allServerTasks]);
   const router = useRouter();
   const params = useSearchParams();
   const workspace = useWorkspace();
