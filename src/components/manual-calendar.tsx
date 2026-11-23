@@ -1212,7 +1212,7 @@ export function ManualCalendar({
                   className={`calendar-capacity-pill${over ? " is-overbooked" : ""}${!win.enabled ? " is-off" : ""}`}
                   title={
                     win.enabled
-                      ? `${formatMinutes(cap.plannedMinutes)} planned / ${formatMinutes(cap.usableMinutes)} usable (${win.start}–${win.end})`
+                      ? `${formatMinutes(cap.plannedMinutes)} planned / ${formatMinutes(cap.usableMinutes)} usable (${win.hours}h day)`
                       : "Day off"
                   }
                 >

@@ -27,8 +27,9 @@
   background: var(--background);
 }
 
+/* Dark tokens: follow the OS unless the user picked a theme in Settings (data-theme). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --background: #141519;
     --foreground: #E9E9EC;
@@ -49,6 +50,27 @@
     --shadow-float: 0 16px 40px -12px rgb(0 0 0 / .6), 0 2px 8px rgb(0 0 0 / .3);
     --overlay: rgb(0 0 0 / .55);
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #141519;
+  --foreground: #E9E9EC;
+  --card: #1B1C21;
+  --secondary: #23252B;
+  --muted-foreground: #9DA0AA;
+  --border: #2B2D34;
+  --control-border: #686C77;
+  --primary: #5263F2;
+  --primary-foreground: #FFFFFF;
+  --destructive: #F2887B;
+  --task-deadline: #E0A84B;
+  --task-instant: #49C97E;
+  --task-medium: #E6A94C;
+  --task-deep: #A78BFA;
+  --event: #38BDF8;
+  --project-deadline: #4CC2B0;
+  --shadow-float: 0 16px 40px -12px rgb(0 0 0 / .6), 0 2px 8px rgb(0 0 0 / .3);
+  --overlay: rgb(0 0 0 / .55);
 }
 
 @theme inline {
@@ -1181,7 +1203,8 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
   border-bottom: 1px solid var(--border);
 }
 .working-hours-row:last-child { border-bottom: 0; }
-.working-hours-range input[type="time"] { width: 128px; }
+.hours-input { display: inline-flex; align-items: center; gap: 8px; }
+.hours-input input { width: 88px; }
 .working-hours-range {
   display: inline-flex;
   align-items: center;

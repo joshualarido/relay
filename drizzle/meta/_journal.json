@@ -113,6 +113,13 @@
       "when": 1795531100000,
       "tag": "0015_v3_task_duration",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1795617500000,
+      "tag": "0016_v3_working_hours_hours",
+      "breakpoints": true
     }
   ]
 }

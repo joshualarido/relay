@@ -1,5 +1,6 @@
 "use client";
 
+import { HoursInput } from "./hours-input";
 import { useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { TaskTypeMinutes, WeekdayKey, WeeklyWorkingHours } from "@/lib/capacity";
@@ -115,23 +116,11 @@ export function PreferencesForm({ initial }: { initial: UserPreferences }) {
                     <span>{label}</span>
                   </label>
                   {day.enabled ? (
-                    <div className="working-hours-range">
-                      <input
-                        type="time"
-                        aria-label={`${label} start`}
-                        value={day.start}
-                        onChange={(e) => updateDay(key, { start: e.target.value })}
-                        required
-                      />
-                      <span className="muted">–</span>
-                      <input
-                        type="time"
-                        aria-label={`${label} end`}
-                        value={day.end}
-                        onChange={(e) => updateDay(key, { end: e.target.value })}
-                        required
-                      />
-                    </div>
+                    <HoursInput
+                      label={`${label} working hours`}
+                      value={day.hours}
+                      onChange={(hours) => updateDay(key, { hours })}
+                    />
                   ) : (
                     <span className="muted text-sm">Day off</span>
                   )}

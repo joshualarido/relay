@@ -21,7 +21,7 @@ test("v3.3 linear scheduling, usable time, deadlines in Today, recurring capture
   // Ensure today has an active working window regardless of weekday (e.g. Sunday)
   const whRes = await request.put(`/api/working-hours/${today}`, {
     headers,
-    data: { enabled: true, start: "09:00", end: "17:00" },
+    data: { enabled: true, hours: 8 },
   });
   expect(whRes.ok()).toBe(true);
 
@@ -188,5 +188,15 @@ test("v3.3 linear scheduling, usable time, deadlines in Today, recurring capture
   await page.goto("/settings");
   await expect(page.getByText("Default working hours")).toBeVisible();
   await expect(page.getByText("Task type durations (minutes)")).toBeVisible();
+  await expect(page.getByLabel("Monday working hours")).toHaveValue("8");
   await page.screenshot({ path: `${outDir}/settings-seeded.png`, fullPage: true });
+
+  // 5. Theme switch: Dark applies instantly, persists across reloads, System clears it.
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.screenshot({ path: `${outDir}/settings-dark.png`, fullPage: true });
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/);
 });

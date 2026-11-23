@@ -1,5 +1,6 @@
 "use client";
 
+import { HoursInput } from "./hours-input";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,8 +30,7 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
 
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(capacity.window.enabled);
-  const [start, setStart] = useState(capacity.window.start);
-  const [end, setEnd] = useState(capacity.window.end);
+  const [hours, setHours] = useState(capacity.window.hours);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -48,7 +48,7 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
       const response = await fetch(`/api/working-hours/${day.today}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, start, end }),
+        body: JSON.stringify({ enabled, hours }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not update working hours.");
@@ -83,7 +83,7 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
           <p className="glance-label">
             Usable time
             {capacity.window.enabled
-              ? ` · ${capacity.window.start}–${capacity.window.end}`
+              ? ` · ${formatMinutes(Math.round(capacity.window.hours * 60))} day`
               : " · Day off"}
           </p>
           <Popover.Root
@@ -92,8 +92,7 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
               setOpen(nextOpen);
               if (nextOpen) {
                 setEnabled(capacity.window.enabled);
-                setStart(capacity.window.start);
-                setEnd(capacity.window.end);
+                setHours(capacity.window.hours);
                 setError("");
               }
             }}
@@ -123,28 +122,7 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
                     <span>Working day</span>
                   </label>
                   {enabled && (
-                    <div className="working-hours-times">
-                      <label className="field">
-                        <span>Start</span>
-                        <input
-                          type="time"
-                          value={start}
-                          onChange={(e) => setStart(e.target.value)}
-                          required
-                          disabled={saving}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>End</span>
-                        <input
-                          type="time"
-                          value={end}
-                          onChange={(e) => setEnd(e.target.value)}
-                          required
-                          disabled={saving}
-                        />
-                      </label>
-                    </div>
+                    <HoursInput label="Working hours today" value={hours} onChange={setHours} disabled={saving} />
                   )}
                   {error && (
                     <p role="alert" className="error-message text-sm">

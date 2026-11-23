@@ -6,6 +6,7 @@ import {
   DEFAULT_TASK_TYPE_MINUTES,
   DEFAULT_WORKING_HOURS,
   dayWorkingWindowSchema,
+  legacyWindowToHours,
   parseTaskTypeMinutes,
   parseWorkingHours,
   taskTypeMinutesSchema,
@@ -103,7 +104,7 @@ export function listWorkingHoursOverrides(
     .all();
   const map: Record<string, DayWorkingWindow> = {};
   for (const row of rows) {
-    map[row.date] = { enabled: row.enabled, start: row.start, end: row.end };
+    map[row.date] = { enabled: row.enabled, hours: row.hours ?? legacyWindowToHours(row.start, row.end) };
   }
   return map;
 }
@@ -122,15 +123,13 @@ export function setWorkingHoursOverride(
     ownerId,
     date: validDate,
     enabled: window.enabled,
-    start: window.start,
-    end: window.end,
+    hours: window.hours,
     updatedAt: now,
   }).onConflictDoUpdate({
     target: [dayWorkingHoursOverride.ownerId, dayWorkingHoursOverride.date],
     set: {
       enabled: window.enabled,
-      start: window.start,
-      end: window.end,
+      hours: window.hours,
       updatedAt: now,
     },
   }).run();

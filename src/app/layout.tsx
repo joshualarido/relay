@@ -30,6 +30,9 @@ export const viewport: Viewport = {
   ],
 };
 
+// Applies the saved theme before first paint so there is no light/dark flash.
+const themeScript = `try{var t=localStorage.getItem("relay-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" className="dark"><body><a className="skip-link" href="#main">Skip to content</a>{children}</body></html>;
+  return <html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body><a className="skip-link" href="#main">Skip to content</a>{children}</body></html>;
 }

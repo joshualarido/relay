@@ -103,8 +103,8 @@ export function QuickCapture({
 
   // Event fields under title
   const [manualEventDate, setManualEventDate] = useState<string | null>(null);
-  const [manualEventStart, setManualEventStart] = useState("09:00");
-  const [manualEventEnd, setManualEventEnd] = useState("10:00");
+  const [manualEventStart, setManualEventStart] = useState("");
+  const [manualEventEnd, setManualEventEnd] = useState("");
   const [eventAllDay, setEventAllDay] = useState(false);
 
   const [pending, setPending] = useState(false);
@@ -131,7 +131,7 @@ export function QuickCapture({
   const effectiveEventDate =
     manualEventDate !== null
       ? manualEventDate
-      : (parsed.timeRange?.date ?? parsed.dueDate ?? todayStr);
+      : (parsed.timeRange?.date ?? parsed.dueDate ?? "");
   const effectiveEventStart = parsed.timeRange?.startTime ?? manualEventStart;
   const effectiveEventEnd = parsed.timeRange?.endTime ?? manualEventEnd;
 
@@ -219,10 +219,19 @@ export function QuickCapture({
       }
     } else if (kind === "event") {
       if (!effectiveEventDate) {
-        setError("Choose a date for the event.");
-        return;
-      }
-      if (eventAllDay && !parsed.timeRange) {
+        // No date: the event waits unscheduled, to be placed from Schedule (S) on the Calendar.
+        bodyBase = {
+          title: cleanTitle,
+          description: "",
+          allDay: false,
+          timezone,
+          start: "",
+          end: "",
+          projectId: effectiveProjectId,
+          taskId: null,
+          location: "",
+        };
+      } else if (eventAllDay && !parsed.timeRange) {
         bodyBase = {
           title: cleanTitle,
           description: "",
@@ -235,6 +244,10 @@ export function QuickCapture({
           location: "",
         };
       } else {
+        if (!effectiveEventStart || !effectiveEventEnd) {
+          setError("Add start and end times, or tick All day.");
+          return;
+        }
         const { start, end } = buildEventRangeFromToken(
           effectiveEventDate,
           effectiveEventStart,
@@ -255,7 +268,7 @@ export function QuickCapture({
       }
     } else {
       // Task: time-agnostic execution date + task type + optional recurrence
-      const execDate = effectiveExecDate || (recurrenceRule ? todayStr : null);
+      const execDate = effectiveExecDate || null;
       bodyBase = {
         title: cleanTitle,
         projectId: effectiveProjectId,
@@ -320,6 +333,9 @@ export function QuickCapture({
       setManualProjectDeadlineDate(null);
       setProjectDeadlineTime("");
       setManualEventDate(null);
+      setManualEventStart("");
+      setManualEventEnd("");
+      setEventAllDay(false);
       identity.current = { payload: "", id: "" };
       setSaved(true);
       onSaved?.();
@@ -531,6 +547,9 @@ export function QuickCapture({
                     disabled={pending}
                     onChange={(e) => setManualEventDate(e.target.value)}
                   />
+                  {!effectiveEventDate && (
+                    <span className="muted text-sm">Leave empty to place it later with Schedule (S)</span>
+                  )}
                 </div>
               </div>
               <div className="detail-prop-row">
@@ -545,7 +564,7 @@ export function QuickCapture({
                         type="time"
                         aria-label="Start time"
                         value={effectiveEventStart}
-                        disabled={pending}
+                        disabled={pending || !effectiveEventDate}
                         onChange={(e) => setManualEventStart(e.target.value)}
                       />
                       <span className="muted" aria-hidden="true">–</span>
@@ -553,7 +572,7 @@ export function QuickCapture({
                         type="time"
                         aria-label="End time"
                         value={effectiveEventEnd}
-                        disabled={pending}
+                        disabled={pending || !effectiveEventDate}
                         onChange={(e) => setManualEventEnd(e.target.value)}
                       />
                     </>
@@ -562,7 +581,7 @@ export function QuickCapture({
                     <input
                       type="checkbox"
                       checked={eventAllDay}
-                      disabled={pending}
+                      disabled={pending || !effectiveEventDate}
                       onChange={(e) => setEventAllDay(e.target.checked)}
                     />
                     <span>All day</span>

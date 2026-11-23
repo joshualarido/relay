@@ -155,6 +155,25 @@ test("acceptance #2: Capture tokens (#project, @fri, @fri 14:00-15:00, !), remov
   expect(tasksFinal.find((t) => t.title === looseTitle)?.projectId).toBeNull();
 });
 
+test("Event capture leaves dates empty and creates an unscheduled event to place later", async ({ page, request }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop capture flow");
+  const title = `Unplaced event ${crypto.randomUUID().slice(0, 6)}`;
+  await page.goto("/");
+  await page.keyboard.press("n");
+  const dialog = page.getByRole("dialog", { name: "Capture" });
+  await dialog.getByRole("radio", { name: "Event" }).click();
+  await expect(dialog.getByLabel("Date", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Start time")).toBeDisabled();
+  await dialog.getByLabel("Event title").fill(title);
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  const events = (await (await request.get("/api/events")).json()) as { title: string; start: string; end: string }[];
+  const saved = events.find((e) => e.title === title);
+  expect(saved).toBeDefined();
+  expect(saved?.start).toBe("");
+  expect(saved?.end).toBe("");
+});
+
 test("command palette (Ctrl+K and /), ? cheat sheet, and E / X on focused task", async ({
   page,
   request,

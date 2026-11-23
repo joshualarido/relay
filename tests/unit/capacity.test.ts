@@ -4,6 +4,7 @@ import {
   DEFAULT_TASK_TYPE_MINUTES,
   DEFAULT_WORKING_HOURS,
   formatMinutes,
+  parseWorkingHours,
   resolveDayWorkingWindow,
   taskMinutes,
 } from "@/lib/capacity";
@@ -71,8 +72,8 @@ function makeTask(partial: Partial<Task>): Task {
 }
 
 describe("capacity math", () => {
-  it("subtracts overlapping timed events and ignores events outside working hours", () => {
-    // 2026-11-23 is a Monday -> default 09:00-17:00 = 480m
+  it("subtracts a day's merged timed events from its working hours; all-day events cost nothing", () => {
+    // 2026-11-23 is a Monday -> default 8h = 480m
     const window = resolveDayWorkingWindow("2026-11-23", DEFAULT_WORKING_HOURS);
     expect(window.enabled).toBe(true);
 
@@ -81,8 +82,8 @@ describe("capacity math", () => {
       makeEvent({ start: "2026-11-23T03:00:00.000Z", end: "2026-11-23T04:00:00.000Z" }),
       // 10:30-11:30 Jakarta (overlaps previous -> total 90m, not 120m!)
       makeEvent({ start: "2026-11-23T03:30:00.000Z", end: "2026-11-23T04:30:00.000Z" }),
-      // 19:00-21:00 Jakarta (outside 09:00-17:00 -> 0m subtracted)
-      makeEvent({ start: "2026-11-23T12:00:00.000Z", end: "2026-11-23T14:00:00.000Z" }),
+      // An event on another day is ignored
+      makeEvent({ start: "2026-11-24T03:00:00.000Z", end: "2026-11-24T05:00:00.000Z" }),
       // All-day event -> 0m subtracted
       makeEvent({ allDay: true, start: "2026-11-23", end: "2026-11-24" }),
     ];
@@ -114,8 +115,7 @@ describe("capacity math", () => {
   it("supports per-date overrides and custom taskType weights", () => {
     const window = resolveDayWorkingWindow("2026-11-22", DEFAULT_WORKING_HOURS, {
       enabled: true,
-      start: "10:00",
-      end: "12:00",
+      hours: 2,
     });
     expect(window.isOverride).toBe(true);
 
@@ -135,6 +135,14 @@ describe("capacity math", () => {
     expect(cap.plannedMinutes).toBe(150);
     expect(cap.overbookedMinutes).toBe(30);
     expect(formatMinutes(cap.plannedMinutes)).toBe("2h 30m");
+  });
+
+  it("upgrades legacy start/end working hours to hours", () => {
+    const legacy = JSON.stringify({
+      ...Object.fromEntries(Object.keys(DEFAULT_WORKING_HOURS).map((k) => [k, { enabled: true, start: "09:00", end: "15:30" }])),
+    });
+    expect(parseWorkingHours(legacy)["1"]).toEqual({ enabled: true, hours: 6.5 });
+    expect(parseWorkingHours(null)["1"]).toEqual({ enabled: true, hours: 8 });
   });
 
   it("uses a task's own duration over the type default, and falls back when cleared", () => {

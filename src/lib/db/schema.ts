@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { RecurrenceRule } from "../recurrence";
 
 export const user = sqliteTable("user", {
@@ -63,6 +63,8 @@ export const dayWorkingHoursOverride = sqliteTable("day_working_hours_override",
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   start: text("start").notNull().default("09:00"),
   end: text("end").notNull().default("17:00"),
+  // Working hours are a single amount of hours per day; start/end are dormant (kept for old rows).
+  hours: real("hours"),
   updatedAt: text("updated_at").notNull(),
 }, (t) => [uniqueIndex("day_wh_override_owner_date_idx").on(t.ownerId, t.date)]);
 
