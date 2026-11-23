@@ -8,7 +8,10 @@ import { Star, X } from "lucide-react";
 import type { Project, Task } from "@/lib/db/schema";
 import { instantToLocal, localToInstant } from "@/lib/dates";
 import { NO_PROJECT, projectGroups, taskColumns } from "@/lib/project-board";
+import { DEFAULT_TASK_TYPE_MINUTES } from "@/lib/capacity";
+import { DurationField } from "../duration-field";
 import { RecurrencePicker } from "../recurrence-picker";
+import { useWorkspace } from "../workspace-store";
 import { takeSheetOrigin, useBoard } from "./projects-view";
 import { InlineText } from "./inline-text";
 
@@ -21,12 +24,21 @@ function Segmented<T extends string>({ label, options, value, onChange }: { labe
 
 function TaskDetails({ task }: { task: Task }) {
   const board = useBoard();
+  const workspace = useWorkspace();
   const projects = board.projects.filter((p) => !p.archivedAt || p.id === task.projectId);
   return <>
     <Dialog.Title asChild><h2 className="sheet-title"><InlineText value={task.title} label="task title" required onSave={(title) => board.patchTask(task, { title }, "Task renamed.")} /></h2></Dialog.Title>
     <Dialog.Description className="sr-only">Task details. Changes save as you make them.</Dialog.Description>
     <Segmented label="Status" options={taskColumns} value={task.status} onChange={(status) => board.moveTask(task.id, { projectId: task.projectId, status }, `Moved to ${status}.`)} />
     <Segmented label="Type" options={["Instant", "Medium", "Deep"] as const} value={task.taskType} onChange={(taskType) => board.patchTask(task, { taskType }, `Type set to ${taskType}.`)} />
+    <div className="sheet-field"><label className="sheet-label" htmlFor="sheet-duration">Duration</label>
+      <DurationField
+        id="sheet-duration"
+        key={task.id}
+        value={task.durationMinutes ?? null}
+        defaultMinutes={(workspace?.taskTypeMinutes ?? DEFAULT_TASK_TYPE_MINUTES)[task.taskType]}
+        onCommit={(durationMinutes) => void board.patchTask(task, { durationMinutes }, durationMinutes ? "Duration set." : "Duration reset to the type default.")}
+      /></div>
     <div className="sheet-field"><label className="sheet-label" htmlFor="sheet-project">Project</label>
       <select id="sheet-project" value={task.projectId ?? NO_PROJECT} onChange={(e) => {
         const projectId = e.target.value === NO_PROJECT ? null : e.target.value;

@@ -22,7 +22,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Check, GripVertical, Repeat } from "lucide-react";
 import type { Task } from "@/lib/db/schema";
-import { formatMinutes, type TaskTypeMinutes } from "@/lib/capacity";
+import { formatMinutes, taskMinutes, type TaskTypeMinutes } from "@/lib/capacity";
 import { formatRecurrenceSummary } from "@/lib/recurrence";
 import { notifyMutation } from "./mutation-notice";
 import { SwipeableTaskRow } from "./swipeable-task-row";
@@ -171,7 +171,7 @@ export function TodayQueue({
         {openTasks.length > 0 && (
           <span className="today-meta">
             {formatMinutes(
-              openTasks.reduce((sum, t) => sum + (taskTypeMinutes[t.taskType] ?? taskTypeMinutes.Medium), 0),
+              openTasks.reduce((sum, t) => sum + taskMinutes(t, taskTypeMinutes), 0),
             )}{" "}
             left
           </span>
@@ -193,7 +193,7 @@ export function TodayQueue({
                   key={task.id}
                   task={task}
                   projectName={task.projectId ? projectNames[task.projectId] : undefined}
-                  minutes={taskTypeMinutes[task.taskType] ?? taskTypeMinutes.Medium}
+                  minutes={taskMinutes(task, taskTypeMinutes)}
                   timezone={timezone}
                 />
               ))}

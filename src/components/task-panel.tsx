@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, CalendarClock, CalendarDays, Check, CircleDot, Folder, Gauge, Repeat, SquareCheck, Star, X } from "lucide-react";
+import { Archive, CalendarClock, CalendarDays, Check, CircleDot, Folder, Gauge, Repeat, SquareCheck, Star, Timer, X } from "lucide-react";
 import type { Project, Task } from "@/lib/db/schema";
 import { taskColumns } from "@/lib/project-board";
 
@@ -15,6 +15,8 @@ const taskTypeOptions: Array<{ value: Task["taskType"]; label: string }> = [
 ];
 import { notifyMutation } from "./mutation-notice";
 import { InlineText } from "./projects/inline-text";
+import { DEFAULT_TASK_TYPE_MINUTES } from "@/lib/capacity";
+import { DurationField } from "./duration-field";
 import { RecurrencePicker } from "./recurrence-picker";
 import { useWorkspace } from "./workspace-store";
 
@@ -191,6 +193,28 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
                         </button>
                       ))}
                     </div>
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <label className="detail-prop-label" htmlFor="task-sheet-duration">
+                    <Timer size={14} aria-hidden="true" />
+                    Duration
+                  </label>
+                  <div className="detail-prop-value">
+                    <DurationField
+                      id="task-sheet-duration"
+                      key={current.id}
+                      value={current.durationMinutes ?? null}
+                      defaultMinutes={(workspace?.taskTypeMinutes ?? DEFAULT_TASK_TYPE_MINUTES)[current.taskType]}
+                      disabled={pending}
+                      onCommit={(durationMinutes) =>
+                        void patch(
+                          { durationMinutes },
+                          durationMinutes ? "Duration set." : "Duration reset to the type default.",
+                        )
+                      }
+                    />
                   </div>
                 </div>
 

@@ -16,6 +16,7 @@ import {
   createTask,
   listTasks,
   reorderDayTasks,
+  updateTask,
 } from "../../src/lib/tasks";
 import { todayTimeline } from "../../src/lib/today";
 
@@ -82,6 +83,26 @@ describe("v3.3 linear scheduling, capacity, recurrence & deadlines in Today", ()
     expect(afterUndo).toHaveLength(1);
     expect(afterUndo[0].id).toBe(created.id);
     expect(afterUndo[0].status).toBe("To do");
+  });
+
+  it("lets a task override its type duration, clears it back to the default, and carries it to the next recurrence", () => {
+    const created = createTask(w.db, w.alice.id, {
+      title: "Weekly report",
+      taskType: "Medium",
+      durationMinutes: 20,
+      executionDate: "2026-11-23",
+      recurrenceRule: { frequency: "daily", interval: 1 },
+      ...mut(),
+    });
+    expect(created.durationMinutes).toBe(20);
+    expect(() => updateTask(w.db, w.alice.id, created.id, created.revision, { durationMinutes: 0, ...mut() })).toThrow();
+
+    const completed = completeTask(w.db, w.alice.id, created.id, created.revision, { completed: true, ...mut() });
+    const next = listTasks(w.db, w.alice.id).find((t) => t.id !== completed.id)!;
+    expect(next.durationMinutes).toBe(20);
+
+    const cleared = updateTask(w.db, w.alice.id, next.id, next.revision, { durationMinutes: null, ...mut() });
+    expect(cleared.durationMinutes).toBeNull();
   });
 
   it("auto-advances missed recurring tasks without leaving them overdue", () => {

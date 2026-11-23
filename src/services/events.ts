@@ -293,7 +293,7 @@ export function resolveScheduleTaskEventPayload(
       end = Temporal.PlainDate.from(data.start).add({ days: 1 }).toString();
     } else {
       z.iso.datetime({ offset: true }).parse(data.start);
-      const minutes = data.durationMinutes ?? taskTypeDurationMinutes(linkedTask.taskType);
+      const minutes = data.durationMinutes ?? linkedTask.durationMinutes ?? taskTypeDurationMinutes(linkedTask.taskType);
       end = Temporal.Instant.from(new Date(data.start).toISOString()).add({ minutes }).toString();
     }
   }

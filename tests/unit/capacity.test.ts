@@ -5,6 +5,7 @@ import {
   DEFAULT_WORKING_HOURS,
   formatMinutes,
   resolveDayWorkingWindow,
+  taskMinutes,
 } from "@/lib/capacity";
 import type { Event, Task } from "@/lib/db/schema";
 
@@ -40,6 +41,7 @@ function makeTask(partial: Partial<Task>): Task {
     description: "",
     status: "To do",
     taskType: "Medium",
+    durationMinutes: null,
     priority: "Medium",
     important: null,
     urgent: null,
@@ -134,4 +136,26 @@ describe("capacity math", () => {
     expect(cap.overbookedMinutes).toBe(30);
     expect(formatMinutes(cap.plannedMinutes)).toBe("2h 30m");
   });
+
+  it("uses a task's own duration over the type default, and falls back when cleared", () => {
+    expect(taskMinutes({ taskType: "Medium", durationMinutes: 20 })).toBe(20);
+    expect(taskMinutes({ taskType: "Medium", durationMinutes: null })).toBe(DEFAULT_TASK_TYPE_MINUTES.Medium);
+
+    const window = resolveDayWorkingHoursFor("2026-11-22");
+    const cap = computeDayCapacity({
+      date: "2026-11-22",
+      timezone: "Asia/Jakarta",
+      window,
+      events: [],
+      tasks: [
+        makeTask({ executionDate: "2026-11-22", taskType: "Deep", durationMinutes: 30 }),
+        makeTask({ executionDate: "2026-11-22", taskType: "Medium" }),
+      ],
+    });
+    expect(cap.plannedMinutes).toBe(30 + DEFAULT_TASK_TYPE_MINUTES.Medium);
+  });
 });
+
+function resolveDayWorkingHoursFor(date: string) {
+  return resolveDayWorkingWindow(date, DEFAULT_WORKING_HOURS, undefined);
+}

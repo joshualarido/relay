@@ -166,7 +166,7 @@ export function computeDayCapacity(params: {
 
   for (const t of tasks) {
     if (t.deletedAt || t.archivedAt || t.executionDate !== date) continue;
-    const mins = weights[t.taskType] ?? weights.Medium;
+    const mins = taskMinutes(t, weights);
     plannedMinutes += mins;
     if (t.status === "Done") completedMinutes += mins;
     else remainingMinutes += mins;
@@ -185,6 +185,14 @@ export function computeDayCapacity(params: {
     remainingMinutes,
     overbookedMinutes,
   };
+}
+
+/** A task's planned minutes: its own override when set, otherwise the task-type default. */
+export function taskMinutes(
+  t: { taskType: keyof TaskTypeMinutes; durationMinutes?: number | null },
+  weights: TaskTypeMinutes = DEFAULT_TASK_TYPE_MINUTES,
+): number {
+  return t.durationMinutes ?? weights[t.taskType] ?? weights.Medium;
 }
 
 export function formatMinutes(minutes: number): string {

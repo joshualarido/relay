@@ -14,6 +14,7 @@ function makeTask(overrides: Partial<Task>): Task {
     description: "",
     status: "To do",
     taskType: "Medium",
+    durationMinutes: null,
     priority: "Medium",
     important: null,
     urgent: null,

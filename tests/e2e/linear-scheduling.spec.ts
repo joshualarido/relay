@@ -148,6 +148,20 @@ test("v3.3 linear scheduling, usable time, deadlines in Today, recurring capture
   await expect(page.getByText("Daily", { exact: true })).toBeVisible();
   await page.screenshot({ path: `${outDir}/today-seeded.png`, fullPage: true });
 
+  // 1b. A task's duration can be overridden after creation; the type default is only a first guess.
+  await page.getByRole("link", { name: "Build linear capacity engine" }).click();
+  const panel = page.getByRole("dialog");
+  const duration = panel.getByLabel("Duration");
+  await expect(duration).toHaveAttribute("placeholder", "90");
+  await duration.fill("60");
+  await duration.blur();
+  await expect(page.getByText("Duration set.").first()).toBeVisible();
+  await page.screenshot({ path: `${outDir}/task-duration.png` });
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator(".task-type-pill", { hasText: /^Deep · 1h$/ })).toBeVisible();
+  await expect(page.getByText("2h 30m left")).toHaveCount(0);
+
   // 2. Capture dialog: Task (with Repeat enabled) & Project (with Deadline time)
   await page.keyboard.press("n");
   const dialog = page.getByRole("dialog", { name: "Capture" });
