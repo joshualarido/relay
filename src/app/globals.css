@@ -584,7 +584,7 @@ progress::-moz-progress-bar { background: var(--primary); }
 .complete-mark { width: 24px; height: 24px; min-height: 24px; display: grid; place-items: center; color: var(--primary-foreground); border-radius: 6px; background: var(--primary); }
 
 /* Today: one timeline of the day + Progress column on desktop */
-.today-page { max-width: 1180px; }
+.today-page { max-width: none; }
 .today-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 36px 56px; align-items: start; }
 .today-primary, .today-secondary { min-width: 0; }
 .today-secondary .progress-section { padding-top: 0; border-top: 0; }
@@ -608,6 +608,11 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .glance-next-title { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .glance-next-in { display: flex; align-items: center; gap: 4px; margin-top: auto; font-size: .8125rem; font-weight: 500; color: var(--primary); }
 .glance-muted { color: var(--muted-foreground); font-weight: 500; }
+.glance-next-link { color: var(--foreground); text-decoration: none; font-size: 1.0625rem; }
+.glance-next-link:hover, .glance-next-link:focus-visible { color: var(--primary); }
+.glance-next .glance-submeta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.glance-next-in { text-decoration: none; }
+.glance-next-in:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .glance-next { transition: none; } }
 .today-section + .today-section, .today-section + .today-empty, .today-section + .day-clear { margin-top: 36px; }
 .today-section > h2 { font-size: .9375rem; line-height: 1.3; font-weight: 600; margin-bottom: 8px; }
@@ -924,14 +929,15 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
   flex-direction: row; align-items: center; gap: 14px; padding: 7px 12px; font-size: .8125rem;
 }
 .calendar-frame[data-view="Agenda"] .calendar-record-meta { flex-shrink: 0; font-size: .75rem; }
-.calendar-frame[data-view="Agenda"] .calendar-record-meta:has(time) { width: 90px; }
+.calendar-frame[data-view="Agenda"] .calendar-record-meta:has(time) { min-width: 104px; white-space: nowrap; }
 .calendar-frame[data-view="Agenda"] .calendar-record-title { flex: 1; min-width: 0; font-weight: 500; }
-.calendar-frame[data-view="Agenda"] .calendar-record-tag { display: block; font-size: .6875rem; color: var(--muted-foreground); }
+.calendar-frame[data-view="Agenda"] .calendar-record-tag { display: block; flex-shrink: 0; white-space: nowrap; font-size: .6875rem; color: var(--muted-foreground); }
 /* Week: one-week day grid, no time rows. Cards stack per day and carry their own duration. */
 .calendar-frame[data-view="Week"] .calendar-day-cell { min-height: 60vh; }
 .calendar-frame[data-view="Week"] .calendar-record { gap: 2px; padding: 5px 7px; }
 .calendar-frame[data-view="Week"] .calendar-record-title { font-weight: 500; overflow-wrap: anywhere; }
 .calendar-frame[data-view="Week"] .calendar-record-tag { display: block; font-size: .6875rem; color: var(--muted-foreground); }
+.calendar-frame[data-view="Week"] .calendar-record-tag.is-all-day { display: none; }
 .agenda-day-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--foreground); }
 .agenda-today-pill { padding: 1px 8px; border-radius: 999px; background: var(--foreground); color: var(--background); font-size: .6875rem; font-weight: 600; }
 
@@ -1280,4 +1286,34 @@ body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; us
 .calendar-drag-ghost-tag { font-size: .6875rem; color: var(--muted-foreground); }
 @media (prefers-reduced-motion: reduce) {
   .calendar-drag-ghost-wrap.is-landing { transition: none; }
+}
+
+
+/* === Small screens: compact calendar blocks, stacked Today cards === */
+@media (max-width: 760px) {
+  /* Week + Month: cards become colour blocks with just their icon; the title is in the aria-label and opens on tap. */
+  .calendar-frame:is([data-view="Week"], [data-view="Month"]) .calendar-record {
+    flex-direction: row; align-items: center; justify-content: center; gap: 2px;
+    min-height: 22px; padding: 3px 0 !important; border-left-width: 0; border-top: 3px solid var(--record-color); border-radius: 4px;
+  }
+  .calendar-frame:is([data-view="Week"], [data-view="Month"]) .calendar-record-title,
+  .calendar-frame:is([data-view="Week"], [data-view="Month"]) .calendar-record-tag,
+  .calendar-frame:is([data-view="Week"], [data-view="Month"]) .calendar-record-meta time { display: none; }
+  .calendar-frame:is([data-view="Week"], [data-view="Month"]) .calendar-record-meta { gap: 2px; }
+  .calendar-frame[data-view="Week"] .calendar-record { min-height: 30px; }
+  .calendar-frame[data-view="Week"] .calendar-day-cell { min-height: 40vh; }
+  .calendar-capacity-of { display: none; }
+  .calendar-capacity-pill { font-size: .625rem; padding-inline: 4px; }
+
+  /* Agenda: tighter rows, keep time on one line. */
+  .calendar-frame[data-view="Agenda"] .calendar-record { gap: 10px; padding: 7px 10px; }
+  .calendar-frame[data-view="Agenda"] .agenda-item.is-timed { padding-left: 24px !important; }
+  .calendar-frame[data-view="Agenda"] .calendar-record-meta:has(time) { min-width: 0; }
+
+  /* Today: glance cards stack; queue rows put the type pill under the title. */
+  .today-glance { grid-template-columns: minmax(0, 1fr); }
+  .glance-label { flex-wrap: wrap; }
+  .today-row.queue-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr); column-gap: 10px; row-gap: 4px; }
+  .today-row.queue-row .task-type-pill { grid-column: 3; justify-self: start; margin-left: 0; }
+  .today-row.queue-row .today-row-body { gap: 2px 8px; }
 }

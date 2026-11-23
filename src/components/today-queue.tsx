@@ -195,6 +195,7 @@ export function TodayQueue({
 
       {openTasks.length > 0 && (
         <DndContext
+          id="today-queue"
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={({ active }) => setActiveId(String(active.id))}

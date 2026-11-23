@@ -1274,9 +1274,14 @@ export function ManualCalendar({
                       : "Day off"
                   }
                 >
-                  {win.enabled
-                    ? `${formatMinutes(cap.plannedMinutes)}/${formatMinutes(cap.usableMinutes)}`
-                    : "Off"}
+                  {win.enabled ? (
+                    <>
+                      {formatMinutes(cap.plannedMinutes)}
+                      <span className="calendar-capacity-of">/{formatMinutes(cap.usableMinutes)}</span>
+                    </>
+                  ) : (
+                    "Off"
+                  )}
                 </span>
               </div>
             );
@@ -1321,8 +1326,10 @@ export function ManualCalendar({
                     : kind === "event" && !info.event.allDay && start && end
                       ? Math.round((end - start) / 60_000)
                       : 0;
-                  const text = [taskType, minutes ? formatMinutes(minutes) : ""].filter(Boolean).join(" · ");
-                  return text ? <span className="calendar-record-tag" aria-hidden="true">{text}</span> : null;
+                  const text = kind !== "task" && info.event.allDay
+                    ? "All day"
+                    : [taskType, minutes ? formatMinutes(minutes) : ""].filter(Boolean).join(" · ");
+                  return text ? <span className={`calendar-record-tag${text === "All day" ? " is-all-day" : ""}`} aria-hidden="true">{text}</span> : null;
                 })()}
               </Link>
             );

@@ -4,8 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Popover } from "radix-ui";
-import { ArrowRight, Clock, Flag, SlidersHorizontal } from "lucide-react";
-import { formatMinutes } from "@/lib/capacity";
+import { ArrowRight, CircleCheck, Clock, Flag, SlidersHorizontal } from "lucide-react";
+import { formatMinutes, taskMinutes } from "@/lib/capacity";
 import type { TodayTimeline } from "@/lib/today";
 import { Button } from "./ui/button";
 
@@ -15,8 +15,8 @@ const duration = (minutes: number) => {
   return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
 };
 
-/** At-a-glance strip on Today: usable time capacity budget, remaining count, and next timed event/deadline. */
-export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: string }) {
+/** At-a-glance strip on Today: usable time capacity budget, remaining count, and the next task in the queue. */
+export function TodayGlance({ day, timezone, projectNames = {} }: { day: TodayTimeline; timezone: string; projectNames?: Record<string, string> }) {
   const router = useRouter();
   const { remaining, total, next } = day.summary;
   const { capacity } = day;
@@ -26,6 +26,8 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
       ? 100
       : 0;
   const overbooked = capacity.overbookedMinutes > 0;
+  // Tasks have no clock time: "next" is simply the first open task in today's queue.
+  const nextTask = day.tasks.find((t) => t.status !== "Done") ?? null;
 
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(capacity.window.enabled);
@@ -192,7 +194,25 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
         </p>
       </div>
 
-      {next ? (
+      {nextTask ? (
+        <div className="glance-card glance-next">
+          <p className="glance-label">
+            <CircleCheck size={13} aria-hidden="true" /> Next up
+          </p>
+          <Link href={`/?task=${nextTask.id}`} scroll={false} className="glance-next-title glance-next-link">{nextTask.title}</Link>
+          <p className="glance-submeta">
+            <span className="task-type-pill" data-task-type={nextTask.taskType}>{nextTask.taskType} · {formatMinutes(taskMinutes(nextTask, day.taskTypeMinutes))}</span>
+            {nextTask.projectId && projectNames[nextTask.projectId] && <span> {projectNames[nextTask.projectId]}</span>}
+          </p>
+          {next && (
+            <Link href={next.href} scroll={false} className="glance-next-in">
+              {next.kind === "project-deadline" ? <Flag size={13} aria-hidden="true" /> : <Clock size={13} aria-hidden="true" />}
+              {next.kind === "project-deadline" ? "Deadline" : "Then"} {nextAt}: {next.title} · in {duration(next.minutes)}
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          )}
+        </div>
+      ) : next ? (
         <Link href={next.href} scroll={false} className="glance-card glance-next">
           <p className="glance-label">
             {next.kind === "project-deadline" ? (
@@ -213,7 +233,7 @@ export function TodayGlance({ day, timezone }: { day: TodayTimeline; timezone: s
           <p className="glance-label">
             <Clock size={13} aria-hidden="true" /> Next up
           </p>
-          <p className="glance-next-title glance-muted">Nothing else timed today</p>
+          <p className="glance-next-title glance-muted">{day.tasks.length ? "Queue cleared" : "Nothing queued today"}</p>
         </div>
       )}
     </section>

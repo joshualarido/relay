@@ -54,6 +54,12 @@ function CheckButton({ task, done, reduce }: { task: Task; done: boolean; reduce
   </button>;
 }
 
+/** "Today", "Tomorrow", "Yesterday", or a short date for a task's planned day. */
+function dayLabel(date: string, today: string) {
+  const diff = Temporal.PlainDate.from(today).until(Temporal.PlainDate.from(date)).days;
+  return diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday" : shortDate(date);
+}
+
 function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
   const board = useBoard();
   const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: `task:${task.id}`, data: { type: "task", task }, transition: SORT_TRANSITION });
@@ -91,10 +97,17 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
               {task.important && <span className="row-meta is-important"><Star size={12} aria-hidden="true" />Important</span>}
               {due && <span className={`row-meta deadline-task${due < board.today && task.status !== "Done" ? " is-overdue" : ""}`}>
                 <CalendarDays size={12} aria-hidden="true" /><span className="sr-only">Due </span>{due < board.today && task.status !== "Done" ? "Overdue · " : ""}<time dateTime={due}>{shortDate(due)}</time></span>}
-              <span className={`row-meta ${scheduled ? "is-scheduled" : "is-unscheduled"}`}>
-                {scheduled ? <CalendarClock size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />}
-                {scheduled ? "Scheduled" : "Unscheduled"}
-              </span>
+              {task.executionDate && task.status !== "Done" ? (
+                <span className={`row-meta is-scheduled${task.executionDate < board.today ? " is-overdue" : ""}`}>
+                  <CalendarClock size={12} aria-hidden="true" /><span className="sr-only">Planned for </span>
+                  <time dateTime={task.executionDate}>{dayLabel(task.executionDate, board.today)}</time>
+                </span>
+              ) : task.status !== "Done" && (
+                <span className={`row-meta ${scheduled ? "is-scheduled" : "is-unscheduled"}`}>
+                  {scheduled ? <CalendarClock size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />}
+                  {scheduled ? "Scheduled" : "Unscheduled"}
+                </span>
+              )}
             </span>
           </div>
           <span className="row-tools">

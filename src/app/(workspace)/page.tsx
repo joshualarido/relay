@@ -41,7 +41,7 @@ export default async function TodayPage({ searchParams }: {
       <div><p className="today-eyebrow">{dateLabel}</p><h1>Today</h1></div>
       {day.dayState !== "empty" && <CaptureButton />}
     </header>
-    <TodayGlance day={day} timezone={timezone} />
+    <TodayGlance day={day} timezone={timezone} projectNames={projectNames} />
     <div className="today-layout">
       <div className="today-primary">
         {day.overdue.length > 0 && <CatchUp tasks={day.overdue} today={day.today} tomorrow={tomorrow.toPlainDate().toString()} timezone={timezone} />}
