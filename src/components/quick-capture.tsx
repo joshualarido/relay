@@ -547,9 +547,6 @@ export function QuickCapture({
                     disabled={pending}
                     onChange={(e) => setManualEventDate(e.target.value)}
                   />
-                  {!effectiveEventDate && (
-                    <span className="muted text-sm">Leave empty to place it later with Schedule (S)</span>
-                  )}
                 </div>
               </div>
               <div className="detail-prop-row">
