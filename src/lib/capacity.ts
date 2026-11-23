@@ -3,11 +3,16 @@ import { z } from "zod";
 import type { Event, Task } from "./db/schema";
 import { jsWeekday } from "./recurrence";
 
-/** A day's working time is just an amount of hours; events that day are subtracted from it. */
+const hhmmRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 export const dayWorkingWindowSchema = z.object({
   enabled: z.boolean(),
-  hours: z.number().min(0.5, "Enter at least 0.5 hours.").max(24, "A day has at most 24 hours."),
-}).strict();
+  start: z.string().regex(hhmmRegex, "Use HH:MM format."),
+  end: z.string().regex(hhmmRegex, "Use HH:MM format."),
+}).strict().refine((w) => !w.enabled || w.end > w.start, {
+  message: "End time must be after start time.",
+  path: ["end"],
+});
 
 export type DayWorkingWindow = z.infer<typeof dayWorkingWindowSchema>;
 
@@ -41,30 +46,26 @@ export const DEFAULT_TASK_TYPE_MINUTES: TaskTypeMinutes = {
 };
 
 export const DEFAULT_WORKING_HOURS: WeeklyWorkingHours = {
-  "0": { enabled: false, hours: 8 },
-  "1": { enabled: true, hours: 8 },
-  "2": { enabled: true, hours: 8 },
-  "3": { enabled: true, hours: 8 },
-  "4": { enabled: true, hours: 8 },
-  "5": { enabled: true, hours: 8 },
-  "6": { enabled: false, hours: 8 },
+  "0": { enabled: false, start: "09:00", end: "17:00" },
+  "1": { enabled: true, start: "09:00", end: "17:00" },
+  "2": { enabled: true, start: "09:00", end: "17:00" },
+  "3": { enabled: true, start: "09:00", end: "17:00" },
+  "4": { enabled: true, start: "09:00", end: "17:00" },
+  "5": { enabled: true, start: "09:00", end: "17:00" },
+  "6": { enabled: false, start: "09:00", end: "17:00" },
 };
 
-function clockMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
+/** Briefly stored as just "hours"; read that back as a window starting at 09:00. */
+export function windowEndFromHours(start: string, hours: number): string {
+  const [h, m] = start.split(":").map(Number);
+  const total = Math.min(23 * 60 + 59, h * 60 + m + Math.round(hours * 60));
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-/** Older data stored a start/end window; convert it to hours (nearest half hour, 0.5-24). */
-export function legacyWindowToHours(start: string, end: string): number {
-  const hours = Math.round((clockMinutes(end) - clockMinutes(start)) / 30) / 2;
-  return Math.min(24, Math.max(0.5, Number.isFinite(hours) ? hours : 8));
-}
-
-function upgradeLegacyDay(day: unknown): unknown {
-  if (day && typeof day === "object" && !("hours" in day) && "start" in day && "end" in day) {
-    const d = day as { enabled?: boolean; start: string; end: string };
-    return { enabled: Boolean(d.enabled), hours: legacyWindowToHours(d.start, d.end) };
+function upgradeHoursOnlyDay(day: unknown): unknown {
+  if (day && typeof day === "object" && "hours" in day && !("start" in day)) {
+    const d = day as { enabled?: boolean; hours: number };
+    return { enabled: Boolean(d.enabled), start: "09:00", end: windowEndFromHours("09:00", d.hours) };
   }
   return day;
 }
@@ -74,7 +75,7 @@ export function parseWorkingHours(raw: string | null | undefined): WeeklyWorking
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return weeklyWorkingHoursSchema.parse(
-      Object.fromEntries(Object.entries(parsed).map(([key, day]) => [key, upgradeLegacyDay(day)])),
+      Object.fromEntries(Object.entries(parsed).map(([key, day]) => [key, upgradeHoursOnlyDay(day)])),
     );
   } catch {
     return DEFAULT_WORKING_HOURS;
@@ -117,10 +118,16 @@ export type DayCapacity = {
   overbookedMinutes: number;
 };
 
-/** The calendar day [00:00, next 00:00) in the user's timezone, as epoch ms. */
-function dayBoundsMs(date: string, timezone: string): [number, number] {
-  const start = Temporal.PlainDate.from(date).toZonedDateTime(timezone);
-  return [start.epochMilliseconds, start.add({ days: 1 }).epochMilliseconds];
+function windowBoundsMs(date: string, window: DayWorkingWindow, timezone: string): [number, number] | null {
+  if (!window.enabled) return null;
+  const startMs = Temporal.PlainDateTime.from(`${date}T${window.start}`)
+    .toZonedDateTime(timezone, { disambiguation: "compatible" })
+    .epochMilliseconds;
+  const endMs = Temporal.PlainDateTime.from(`${date}T${window.end}`)
+    .toZonedDateTime(timezone, { disambiguation: "compatible" })
+    .epochMilliseconds;
+  if (endMs <= startMs) return null;
+  return [startMs, endMs];
 }
 
 function mergeIntervals(intervals: Array<[number, number]>): Array<[number, number]> {
@@ -149,13 +156,14 @@ export function computeDayCapacity(params: {
 }): DayCapacity {
   const { date, timezone, window, events, tasks } = params;
   const weights = params.taskTypeMinutes ?? DEFAULT_TASK_TYPE_MINUTES;
+  const bounds = windowBoundsMs(date, window, timezone);
 
   let workingMinutes = 0;
   let eventMinutes = 0;
 
-  if (window.enabled) {
-    const [winStart, winEnd] = dayBoundsMs(date, timezone);
-    workingMinutes = Math.round(window.hours * 60);
+  if (bounds) {
+    const [winStart, winEnd] = bounds;
+    workingMinutes = Math.round((winEnd - winStart) / 60_000);
     const clipped: Array<[number, number]> = [];
     for (const ev of events) {
       if (ev.deletedAt || ev.archivedAt || ev.allDay || !ev.start || !ev.end) continue;

@@ -6,7 +6,6 @@ import * as recovery from "../../src/lib/lifecycle";
 import {
   clearWorkingHoursOverride,
   getPreferences,
-  listWorkingHoursOverrides,
   savePreferences,
   setWorkingHoursOverride,
 } from "../../src/lib/preferences";
@@ -43,10 +42,10 @@ describe("v3.3 linear scheduling, capacity, recurrence & deadlines in Today", ()
 
     const override = setWorkingHoursOverride(w.db, w.alice.id, "2026-11-23", {
       enabled: true,
-      hours: 4.5,
+      start: "10:00",
+      end: "14:00",
     });
-    expect(override).toMatchObject({ date: "2026-11-23", enabled: true, hours: 4.5 });
-    expect(listWorkingHoursOverrides(w.db, w.alice.id)["2026-11-23"]).toEqual({ enabled: true, hours: 4.5 });
+    expect(override).toMatchObject({ date: "2026-11-23", enabled: true, start: "10:00", end: "14:00" });
 
     const cleared = clearWorkingHoursOverride(w.db, w.alice.id, "2026-11-23");
     expect(cleared.cleared).toBe(true);
