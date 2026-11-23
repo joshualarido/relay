@@ -923,7 +923,8 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .calendar-frame[data-view="Agenda"] .calendar-record {
   flex-direction: row; align-items: center; gap: 14px; padding: 7px 12px; font-size: .8125rem;
 }
-.calendar-frame[data-view="Agenda"] .calendar-record-meta { width: 90px; flex-shrink: 0; font-size: .75rem; }
+.calendar-frame[data-view="Agenda"] .calendar-record-meta { flex-shrink: 0; font-size: .75rem; }
+.calendar-frame[data-view="Agenda"] .calendar-record-meta:has(time) { width: 90px; }
 .calendar-frame[data-view="Agenda"] .calendar-record-title { flex: 1; min-width: 0; font-weight: 500; }
 .calendar-frame[data-view="Agenda"] .calendar-record-tag { display: block; font-size: .6875rem; color: var(--muted-foreground); }
 /* Week: one-week day grid, no time rows. Cards stack per day and carry their own duration. */
