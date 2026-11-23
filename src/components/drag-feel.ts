@@ -10,11 +10,11 @@ export const SORT_TRANSITION = { duration: 260, easing: DRAG_EASE };
 export const DROP_ANIMATION: DropAnimation = {
   duration: 240,
   easing: DRAG_EASE,
-  sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.35" } } }),
+  sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "1" } } }),
 };
 
 /** Keep the silhouette's opacity easing alongside dnd-kit's inline transform transition. */
 export function withFade(transition: string | undefined): string {
-  const fade = `opacity 220ms ${DRAG_EASE}, box-shadow 220ms ${DRAG_EASE}`;
+  const fade = `background-color 220ms ${DRAG_EASE}, border-color 220ms ${DRAG_EASE}`;
   return transition ? `${transition}, ${fade}` : fade;
 }
