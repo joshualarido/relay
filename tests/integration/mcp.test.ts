@@ -491,6 +491,26 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
       aliceHandlers.delete_project({ id: existingProj.id });
     });
 
+    it("plans a day in one batch: execution dates, queue order, duration and recurrence", () => {
+      const a = aliceHandlers.create_task({ title: "Plan A", taskType: "Deep" });
+      const b = aliceHandlers.create_task({ title: "Plan B", taskType: "Instant" });
+      const res = aliceHandlers.batch_apply({
+        operations: [
+          { op: "update_task", id: a.id, executionDate: "2026-12-02", dayOrder: 1, durationMinutes: 60 },
+          { op: "move_task", id: b.id, executionDate: "2026-12-02", dayOrder: 0 },
+          { op: "create_task", title: "Plan C", executionDate: "2026-12-02", dayOrder: 2, recurrenceRule: { frequency: "daily", interval: 1 } },
+        ],
+      });
+      expect(res.appliedCount).toBe(3);
+      const tasks = aliceHandlers.list_tasks({}).filter((t) => t.executionDate === "2026-12-02").sort((x, y) => x.dayOrder - y.dayOrder);
+      expect(tasks.map((t) => t.title)).toEqual(["Plan B", "Plan A", "Plan C"]);
+      expect(tasks[1]!.durationMinutes).toBe(60);
+      expect(tasks[2]!.recurrenceRule).toMatchObject({ frequency: "daily" });
+      expect(tasks[2]!.recurrenceSeriesId).toBeTruthy();
+      aliceHandlers.undo_last_action({});
+      expect(aliceHandlers.list_tasks({}).some((t) => t.executionDate === "2026-12-02")).toBe(false);
+    });
+
     it("rolls back all earlier steps if a later step in batch_apply fails", () => {
       const beforeTasks = aliceHandlers.list_tasks({}).length;
       expect(() =>

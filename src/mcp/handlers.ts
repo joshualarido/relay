@@ -58,7 +58,7 @@ export const listProjectsInputSchema = z.object({
 export const listTasksInputSchema = z.object({
   projectId: z.string().min(1).nullable().optional().describe("Filter by projectId, or pass null / 'none' for loose tasks without a project."),
   status: z.enum(taskStatuses).optional().describe("Filter by status: 'To do' or 'Done'."),
-  taskType: z.enum(taskTypes).optional().describe("Filter by task type: 'Instant' (15m), 'Medium' (30m), or 'Deep' (60m)."),
+  taskType: z.enum(taskTypes).optional().describe("Filter by task type: 'Instant', 'Medium', or 'Deep' (default 15m / 45m / 90m, adjustable in Settings)."),
   important: z.union([z.boolean(), z.literal("unset")]).optional().describe("Filter by important flag (true, false, or 'unset')."),
   dueBefore: dateOnlySchema.optional().describe("Filter tasks due on or before YYYY-MM-DD."),
   dueAfter: dateOnlySchema.optional().describe("Filter tasks due on or after YYYY-MM-DD."),
@@ -254,7 +254,7 @@ export const scheduleTaskInputSchema = z.object({
   taskId: z.string().min(1).describe("Task ID to schedule on the calendar."),
   start: z.string().min(1).max(100).describe("Start ISO datetime with offset (timed) or YYYY-MM-DD (if allDay=true)."),
   end: z.string().min(1).max(100).optional().describe("Optional end time; defaults to start + durationMinutes (or next day if allDay)."),
-  durationMinutes: z.number().int().min(15).max(720).optional().describe("Duration in minutes when `end` is omitted (defaults to task type: Instant=15, Medium=30, Deep=60)."),
+  durationMinutes: z.number().int().min(15).max(720).optional().describe("Duration in minutes when `end` is omitted (defaults to the task duration override, else its type default)."),
   allDay: z.boolean().optional().describe("Create an all-day linked event (default false)."),
   timezone: timezoneSchema.optional().describe("IANA timezone (defaults to user preference)."),
   title: eventFields.title.optional().describe("Optional custom event title (defaults to task title)."),

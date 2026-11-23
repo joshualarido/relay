@@ -62,6 +62,9 @@ const batchCreateTaskOp = z.object({
   taskType: taskFields.taskType.default("Medium"),
   durationMinutes: taskFields.durationMinutes.default(null),
   important: taskFields.important.default(null),
+  executionDate: taskFields.executionDate.default(null),
+  dayOrder: taskFields.dayOrder.default(0),
+  recurrenceRule: taskFields.recurrenceRule.default(null),
   dueDate: taskFields.dueDate.default(null),
   dueAt: taskFields.dueAt.default(null),
   startAt: taskFields.startAt.default(null),
@@ -82,6 +85,9 @@ const batchUpdateTaskOp = z.object({
   taskType: taskFields.taskType.optional(),
   durationMinutes: taskFields.durationMinutes.optional(),
   important: taskFields.important.optional(),
+  executionDate: taskFields.executionDate.optional(),
+  dayOrder: taskFields.dayOrder.optional(),
+  recurrenceRule: taskFields.recurrenceRule.optional(),
   dueDate: taskFields.dueDate.optional(),
   dueAt: taskFields.dueAt.optional(),
   startAt: taskFields.startAt.optional(),
@@ -103,6 +109,8 @@ const batchMoveTaskOp = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1).nullable().optional(),
   status: z.enum(taskStatuses).optional(),
+  executionDate: taskFields.executionDate.optional(),
+  dayOrder: taskFields.dayOrder.optional(),
   position: z.number().int().min(0).max(1_000_000).optional(),
   expectedRevision: z.number().int().positive().optional(),
 }).strict();
@@ -299,6 +307,7 @@ export function batchApply(db: AppDatabase, ownerId: string, input: unknown): Ba
           if (data.projectId) getProject(tx, ownerId, data.projectId);
           const record = tx.insert(task).values({
             ...data,
+            recurrenceSeriesId: data.recurrenceRule ? crypto.randomUUID() : null,
             dueAt: data.dueAt ? new Date(data.dueAt).toISOString() : null,
             id: crypto.randomUUID(),
             ownerId,
@@ -327,11 +336,15 @@ export function batchApply(db: AppDatabase, ownerId: string, input: unknown): Ba
               ...(step.projectId !== undefined ? { projectId: step.projectId } : {}),
               ...(step.status !== undefined ? { status: step.status } : {}),
               ...(step.position !== undefined ? { position: step.position } : {}),
+              ...(step.executionDate !== undefined ? { executionDate: step.executionDate } : {}),
+              ...(step.dayOrder !== undefined ? { dayOrder: step.dayOrder } : {}),
             };
           } else {
             const { op: _op, id: _id, expectedRevision: _rev, ...rest } = step;
             void _op; void _id; void _rev;
             patch = rest;
+            // Same rule as the task service: a recurring task belongs to a series.
+            if (rest.recurrenceRule && !before.recurrenceSeriesId) patch = { ...patch, recurrenceSeriesId: before.id };
           }
           const merged = { ...before, ...patch };
           validateTaskDeadline(merged);
