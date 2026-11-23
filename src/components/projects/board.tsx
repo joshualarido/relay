@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SORT_TRANSITION, withFade } from "../drag-feel";
 import { CSS } from "@dnd-kit/utilities";
 import { Temporal } from "temporal-polyfill";
 import { Archive, ArrowDown, ArrowUp, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, CircleDot, Clock, FolderInput, GripVertical, PanelRight, RotateCcw, Star } from "lucide-react";
@@ -55,7 +56,7 @@ function CheckButton({ task, done, reduce }: { task: Task; done: boolean; reduce
 
 function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
   const board = useBoard();
-  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: `task:${task.id}`, data: { type: "task", task } });
+  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: `task:${task.id}`, data: { type: "task", task }, transition: SORT_TRANSITION });
   const { onKeyDown, ...pointer } = listeners ?? {};
   const done = task.status === "Done" || board.completing === task.id;
   const due = taskDeadline(task);
@@ -81,7 +82,7 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
         onTomorrow={pushToTomorrow}
       >
         <article ref={setNodeRef} {...pointer} className="task-card" data-task-card={task.id} data-done={done} data-dragging={isDragging}
-          style={{ transform: CSS.Translate.toString(transform), transition }}>
+          style={{ transform: CSS.Translate.toString(transform), transition: withFade(transition) }}>
           <CheckButton task={task} done={done} reduce={reduce} />
           <div className="task-card-body">
             <button type="button" className="task-card-title" data-task-link={task.id} title="Edit task (E)" onClick={(e) => board.openTask(task.id, e.currentTarget.closest("article"))}>{task.title}</button>

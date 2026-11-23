@@ -10,7 +10,6 @@ import { Popover } from "radix-ui";
 import { AnimatePresence } from "motion/react";
 import FullCalendar, {
   type CalendarRef,
-  type EventDropInfo,
   type EventResizeDoneInfo,
 } from "@fullcalendar/react";
 import dayGrid from "@fullcalendar/react/daygrid";
@@ -40,6 +39,7 @@ import {
   buildEventResizeEnd,
   buildProjectDropAction,
   buildTaskDropAction,
+  moveInstantToDate,
   type ScheduleDropTarget,
 } from "@/lib/calendar-schedule";
 import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, Repeat, SlidersHorizontal } from "lucide-react";
@@ -48,6 +48,7 @@ import { notifyMutation } from "./mutation-notice";
 import { SchedulePanel, type ScheduleItem } from "./schedule-panel";
 import { useWorkspace } from "./workspace-store";
 import { DragMomentum } from "./drag-momentum";
+import { useCalendarCardDrag, type CardDrop } from "./calendar-card-drag";
 
 type Kind = "project" | "task" | "event";
 const labels: Record<Kind, string> = { project: "Project deadline", task: "Task deadline", event: "Event" };
@@ -334,6 +335,8 @@ export function ManualCalendar({
         start: p.deadlineAt ?? p.deadline!,
         end: p.deadlineAt ? addMinutesInstant(p.deadlineAt, 30) : undefined,
         allDay: !p.deadlineAt,
+        date: p.deadline ?? dateInTimezone(p.deadlineAt!, timezone),
+        open: false,
         revision: p.revision,
         done: p.status === "Done",
         taskType: undefined as Task["taskType"] | undefined,
@@ -354,6 +357,8 @@ export function ManualCalendar({
         start: t.executionDate!,
         end: undefined,
         allDay: true,
+        date: t.executionDate!,
+        open: t.status !== "Done",
         revision: t.revision,
         done: t.status === "Done",
         taskType: t.taskType,
@@ -375,6 +380,8 @@ export function ManualCalendar({
         start: d,
         end: undefined,
         allDay: true,
+        date: d,
+        open: false,
         revision: t.revision,
         done: false,
         taskType: t.taskType,
@@ -396,6 +403,8 @@ export function ManualCalendar({
         start: e.start,
         end: e.end,
         allDay: e.allDay,
+        date: e.allDay ? e.start : dateInTimezone(e.start, timezone),
+        open: false,
         revision: e.revision,
         done: false,
         taskType: undefined as Task["taskType"] | undefined,
@@ -406,7 +415,7 @@ export function ManualCalendar({
       }));
 
     return [...projectRecords, ...realTaskRecords, ...virtualTaskRecords, ...eventRecords];
-  }, [projects, tasks, events, activeDate, taskTypeMinutes]);
+  }, [projects, tasks, events, activeDate, taskTypeMinutes, timezone]);
 
   function href(kind: Kind, id: string) {
     if (kind === "project") return projectHref(id);
@@ -418,79 +427,118 @@ export function ManualCalendar({
     return `/calendar?${query}`;
   }
 
-  // Direct drag-move (optimistic, serialized per record, Undo toast, revert on failure)
-  async function handleEventDrop(info: EventDropInfo) {
-    const [kind, id] = info.event.id.split(":") as [Kind, string];
-    if (!kind || !id) {
-      info.revert();
-      return;
-    }
-    const key = `${kind}:${id}`;
-    setError("");
-    setBusyCount((c) => c + 1);
-    try {
-      await enqueueRecord(key, async () => {
-        const cur = latestRef.current;
-        const record =
-          kind === "event"
-            ? cur.events.find((e) => e.id === id)
-            : kind === "project"
-              ? cur.projects.find((p) => p.id === id)
-              : cur.tasks.find((t) => t.id === id);
-        if (!record) {
-          info.revert();
+  // Calendar card drops (optimistic, serialized per record, Undo toast, rolled back on failure).
+  const moveCard = useCallback(
+    async (drop: CardDrop) => {
+      const { kind, id, toDate } = drop;
+      setError("");
+      const before = latestRef.current;
+      const put = <T extends { id: string }>(list: T[], next: T) => list.map((r) => (r.id === next.id ? next : r));
+      const commit = (next: Partial<typeof before>) => {
+        latestRef.current = { ...latestRef.current, ...next };
+        if (next.tasks) setTasks(next.tasks);
+        if (next.events) setEvents(next.events);
+        if (next.projects) setProjects(next.projects);
+      };
+      setBusyCount((c) => c + 1);
+      try {
+        if (kind === "task") {
+          const task = before.tasks.find((t) => t.id === id);
+          if (!task) return;
+          const order = new Map((drop.orderedTaskIds ?? []).map((tid, i) => [tid, i]));
+          commit({
+            tasks: before.tasks.map((t) =>
+              t.id === id || order.has(t.id)
+                ? { ...t, executionDate: t.id === id ? toDate : t.executionDate, dayOrder: order.get(t.id) ?? t.dayOrder }
+                : t,
+            ),
+          });
+          await enqueueRecord(`task-day:${toDate}`, async () => {
+            let response: Response | null = null;
+            if (task.executionDate !== toDate) {
+              response = await fetch(`/api/tasks/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ executionDate: toDate, expectedRevision: task.revision, mutationId: crypto.randomUUID() }),
+              });
+              const moved = await response.json();
+              if (!response.ok) throw new Error(moved.error || "Could not move task.");
+              commit({ tasks: put(latestRef.current.tasks, { ...(moved as Task), dayOrder: order.get(id) ?? (moved as Task).dayOrder }) });
+            }
+            if (drop.orderedTaskIds && drop.orderedTaskIds.length > 1) {
+              const revisions = new Map(latestRef.current.tasks.map((t) => [t.id, t.revision]));
+              response = await fetch("/api/tasks/day-order", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  executionDate: toDate,
+                  orderedIds: drop.orderedTaskIds,
+                  expectedRevisions: drop.orderedTaskIds.map((tid) => ({ id: tid, revision: revisions.get(tid) ?? 1 })),
+                  mutationId: crypto.randomUUID(),
+                }),
+              });
+              const saved = await response.json();
+              if (!response.ok) throw new Error(saved.error || "Could not reorder tasks.");
+              const byId = new Map((saved as Task[]).map((t) => [t.id, t]));
+              commit({ tasks: latestRef.current.tasks.map((t) => byId.get(t.id) ?? t) });
+            }
+            if (response) {
+              notifyMutation(response, () => router.refresh(), {
+                message: task.executionDate !== toDate ? "Task moved." : "Task order updated.",
+              });
+            }
+            router.refresh();
+          });
           return;
         }
-        const isAllDay =
-          kind === "event" ? (record as Event).allDay : kind === "task" ? true : info.event.allDay;
-        const start = isAllDay ? info.event.startStr.slice(0, 10) : info.event.start!.toISOString();
-        let input: Record<string, unknown>;
-        if (kind === "event") input = { reschedule: true, start };
-        else if (kind === "project") {
-          input = isAllDay
-            ? { deadline: start, deadlineAt: null, deadlineTimezone: null }
-            : { deadline: null, deadlineAt: start, deadlineTimezone: timezone };
-        } else {
-          // Tasks are time-agnostic: moving a task on the calendar sets its executionDate.
-          input = { executionDate: start };
-        }
-        const endpoint = `/api/${kind === "project" ? "projects" : kind === "event" ? "events" : "tasks"}/${id}`;
-        const response = await fetch(endpoint, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...input, expectedRevision: record.revision, mutationId: crypto.randomUUID() }),
+
+        await enqueueRecord(`${kind}:${id}`, async () => {
+          let endpoint: string;
+          let input: Record<string, unknown>;
+          let record: Event | Project | undefined;
+          if (kind === "event") {
+            const ev = latestRef.current.events.find((e) => e.id === id);
+            if (!ev) return;
+            record = ev;
+            const shift = Temporal.PlainDate.from(drop.fromDate).until(Temporal.PlainDate.from(toDate)).days;
+            const start = ev.allDay ? toDate : moveInstantToDate(ev.start, toDate, timezone);
+            const end = ev.allDay
+              ? Temporal.PlainDate.from(ev.end).add({ days: shift }).toString()
+              : new Date(Date.parse(start) + (Date.parse(ev.end) - Date.parse(ev.start))).toISOString();
+            commit({ events: put(latestRef.current.events, { ...ev, start, end }) });
+            endpoint = `/api/events/${id}`;
+            input = { reschedule: true, start };
+          } else {
+            const p = latestRef.current.projects.find((x) => x.id === id);
+            if (!p) return;
+            record = p;
+            input = p.deadlineAt
+              ? { deadline: null, deadlineAt: moveInstantToDate(p.deadlineAt, toDate, timezone), deadlineTimezone: timezone }
+              : { deadline: toDate, deadlineAt: null, deadlineTimezone: null };
+            commit({ projects: put(latestRef.current.projects, { ...p, ...input } as Project) });
+            endpoint = `/api/projects/${id}`;
+          }
+          const response = await fetch(endpoint, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...input, expectedRevision: record.revision, mutationId: crypto.randomUUID() }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Could not save schedule.");
+          if (kind === "event") commit({ events: put(latestRef.current.events, result as Event) });
+          else commit({ projects: put(latestRef.current.projects, result as Project) });
+          notifyMutation(response, () => router.refresh(), { message: `${labels[kind]} moved.` });
+          router.refresh();
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Could not save schedule.");
-        if (kind === "event") {
-          setEvents((prev) => {
-            const next = prev.map((e) => (e.id === id ? (result as Event) : e));
-            latestRef.current = { ...latestRef.current, events: next };
-            return next;
-          });
-        } else if (kind === "project") {
-          setProjects((prev) => {
-            const next = prev.map((p) => (p.id === id ? (result as Project) : p));
-            latestRef.current = { ...latestRef.current, projects: next };
-            return next;
-          });
-        } else {
-          setTasks((prev) => {
-            const next = prev.map((t) => (t.id === id ? (result as Task) : t));
-            latestRef.current = { ...latestRef.current, tasks: next };
-            return next;
-          });
-        }
-        notifyMutation(response, () => router.refresh(), { message: `${labels[kind]} moved.` });
-        router.refresh();
-      });
-    } catch (failure) {
-      info.revert();
-      setError(failure instanceof Error ? failure.message : "Could not save. The original dates have been restored.");
-    } finally {
-      setBusyCount((c) => Math.max(0, c - 1));
-    }
-  }
+      } catch (failure) {
+        commit(before);
+        setError(failure instanceof Error ? failure.message : "Could not save. The original dates have been restored.");
+      } finally {
+        setBusyCount((c) => Math.max(0, c - 1));
+      }
+    },
+    [enqueueRecord, router, setEvents, setProjects, setTasks, timezone],
+  );
 
   // Event-only edge resize
   async function handleEventResize(info: EventResizeDoneInfo) {
@@ -961,6 +1009,45 @@ export function ManualCalendar({
     }
   }
 
+  const cardDrag = useCalendarCardDrag({
+    frameRef,
+    view,
+    disabled: Boolean(scheduleOpen && pickedItem),
+    onDrop: (drop) => void moveCard(drop),
+  });
+
+  // Keyboard: Alt+Up/Down reorders a focused task within its day; Alt+Left/Right moves any card a day.
+  function onCardKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.calendar-record[data-drag="true"]');
+    if (!card) return;
+    const [kind, id] = (card.dataset.calendarRecord ?? "").split(":") as [Kind, string];
+    const date = card.dataset.date ?? "";
+    if (!kind || !id || !date) return;
+    const dayIds = (d: string) =>
+      [...latestRef.current.tasks]
+        .filter((t) => t.executionDate === d && t.status !== "Done")
+        .sort((a, b) => a.dayOrder - b.dayOrder || a.createdAt.localeCompare(b.createdAt))
+        .map((t) => t.id);
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && kind === "task" && card.dataset.open === "true") {
+      e.preventDefault();
+      const ids = dayIds(date);
+      const from = ids.indexOf(id);
+      const to = from + (e.key === "ArrowDown" ? 1 : -1);
+      if (from < 0 || to < 0 || to >= ids.length) return;
+      ids.splice(from, 1);
+      ids.splice(to, 0, id);
+      void moveCard({ kind, id, fromDate: date, toDate: date, orderedTaskIds: ids });
+      setScheduleAnnouncement(`Moved to position ${to + 1} of ${ids.length}.`);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const toDate = Temporal.PlainDate.from(date).add({ days: e.key === "ArrowRight" ? 1 : -1 }).toString();
+      const ordered = kind === "task" && card.dataset.open === "true" ? [...dayIds(toDate), id] : null;
+      void moveCard({ kind, id, fromDate: date, toDate, orderedTaskIds: ordered });
+      setScheduleAnnouncement(`Moved to ${toDate}.`);
+    }
+  }
+
   const hiddenFilterCount = (["event", "task", "project"] as const).filter((k) => !enabled[k]).length;
   const panelTasks = useMemo(
     () => tasks.filter((t) => !dismissedTaskIds.has(t.id)),
@@ -1093,8 +1180,14 @@ export function ManualCalendar({
         role="region"
         aria-label="Calendar grid; scroll horizontally on narrow screens"
         tabIndex={0}
-        onPointerDown={(e) => { frameDownRef.current = { x: e.clientX, y: e.clientY }; }}
+        onPointerDown={(e) => {
+          frameDownRef.current = { x: e.clientX, y: e.clientY };
+        }}
+        onPointerDownCapture={cardDrag.onPointerDown}
+        onMouseDownCapture={cardDrag.onMouseDownCapture}
+        onClickCapture={cardDrag.onClickCapture}
         onClick={handleFrameClick}
+        onKeyDown={onCardKeyDown}
       >
         <FullCalendar
           ref={ref}
@@ -1120,6 +1213,7 @@ export function ManualCalendar({
             });
           }}
           editable={true}
+          eventStartEditable={false}
           eventDurationEditable={true}
           dayMaxEvents={view === "Month" ? 5 : false}
           eventOrder="order,title"
@@ -1151,6 +1245,8 @@ export function ManualCalendar({
                 virtual: r.virtual,
                 // Deadlines, then all-day events, then tasks in their day queue order.
                 minutes: r.minutes,
+                date: r.date,
+                open: r.open,
                 order: r.kind === "project" ? 0 : r.kind === "event" ? 1 : 10 + r.order,
               },
             }))}
@@ -1185,9 +1281,6 @@ export function ManualCalendar({
               </div>
             );
           }}
-          eventDrop={(info) => {
-            void handleEventDrop(info);
-          }}
           eventResize={(info) => {
             void handleEventResize(info);
           }}
@@ -1206,6 +1299,9 @@ export function ManualCalendar({
                 draggable={false}
                 className={`calendar-record${virtual ? " is-virtual" : ""}`}
                 data-calendar-record={`${kind}:${id}`}
+                data-date={info.event.extendedProps.date as string}
+                data-open={info.event.extendedProps.open ? "true" : "false"}
+                data-drag={virtual ? "false" : "true"}
                 data-task-link={kind === "task" ? id : undefined}
                 style={{ "--record-color": recordColor, opacity: info.event.extendedProps.done ? 0.6 : virtual ? 0.72 : 1 } as React.CSSProperties}
                 aria-label={`${labels[kind]}${taskType ? ` (${taskType})` : ""}: ${info.event.title}`}
@@ -1290,6 +1386,8 @@ export function ManualCalendar({
           />
         )}
       </AnimatePresence>
+
+      {cardDrag.ghostNode}
 
       {dragGhost && (
         <div

@@ -21,6 +21,7 @@ import { TaskBoard } from "./board";
 import { DetailSheet } from "./detail-sheet";
 import { useWorkspace } from "../workspace-store";
 import { DragMomentum } from "../drag-momentum";
+import { DROP_ANIMATION } from "../drag-feel";
 
 type TaskTarget = { projectId: string | null; status: Task["status"]; index?: number };
 type DragData =
@@ -338,7 +339,7 @@ export function ProjectsView(props: Props) {
         <ProjectList creating={creating} setCreating={setCreating} dragging={active?.type ?? null} />
         <TaskBoard dragging={active?.type ?? null} reduce={Boolean(reduce)} />
       </div>
-      <DragOverlay dropAnimation={null}>
+      <DragOverlay dropAnimation={reduce ? null : DROP_ANIMATION}>
         {active?.type === "task" ? <DragMomentum><div className="task-card is-overlay"><span className="task-card-title">{active.task.title}</span></div></DragMomentum>
           : active?.type === "project" ? <DragMomentum><div className="project-row is-overlay"><span className="project-row-name">{active.project.name}</span></div></DragMomentum> : null}
       </DragOverlay>

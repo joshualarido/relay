@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -12,6 +13,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import { useReducedMotion } from "motion/react";
 import {
   SortableContext,
   arrayMove,
@@ -28,6 +30,8 @@ import { notifyMutation } from "./mutation-notice";
 import { SwipeableTaskRow } from "./swipeable-task-row";
 import { TaskComplete } from "./task-complete";
 import { pushTaskTomorrow, toggleTaskDone } from "./today-due-list";
+import { DragMomentum } from "./drag-momentum";
+import { DROP_ANIMATION, SORT_TRANSITION, withFade } from "./drag-feel";
 
 function SortableQueueRow({
   task,
@@ -43,10 +47,11 @@ function SortableQueueRow({
   const router = useRouter();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
+    transition: SORT_TRANSITION,
   });
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: CSS.Translate.toString(transform),
+    transition: withFade(transition),
   };
   const recurrenceLabel = formatRecurrenceSummary(task.recurrenceRule);
 
@@ -120,6 +125,9 @@ export function TodayQueue({
   const [openTasks, setOpenTasks] = useState(() => tasks.filter((t) => t.status !== "Done"));
   const [syncedTasks, setSyncedTasks] = useState(tasks);
   const [error, setError] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const reduce = useReducedMotion();
+  const activeTask = activeId ? openTasks.find((t) => t.id === activeId) : undefined;
 
   if (syncedTasks !== tasks) {
     setSyncedTasks(tasks);
@@ -132,6 +140,7 @@ export function TodayQueue({
   );
 
   async function onDragEnd(event: DragEndEvent) {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = openTasks.findIndex((t) => t.id === active.id);
@@ -185,7 +194,13 @@ export function TodayQueue({
       )}
 
       {openTasks.length > 0 && (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={({ active }) => setActiveId(String(active.id))}
+          onDragCancel={() => setActiveId(null)}
+          onDragEnd={onDragEnd}
+        >
           <SortableContext items={openTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
             <ol className="today-list today-queue">
               {openTasks.map((task) => (
@@ -199,6 +214,21 @@ export function TodayQueue({
               ))}
             </ol>
           </SortableContext>
+          <DragOverlay dropAnimation={reduce ? null : DROP_ANIMATION}>
+            {activeTask ? (
+              <DragMomentum>
+                <div className="today-row queue-row is-overlay">
+                  <GripVertical size={14} aria-hidden="true" className="queue-overlay-grip" />
+                  <div className="today-row-body">
+                    <span className="task-title">{activeTask.title}</span>
+                  </div>
+                  <span className="task-type-pill" data-task-type={activeTask.taskType}>
+                    {activeTask.taskType} · {formatMinutes(taskMinutes(activeTask, taskTypeMinutes))}
+                  </span>
+                </div>
+              </DragMomentum>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       )}
 

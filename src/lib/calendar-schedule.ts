@@ -180,6 +180,16 @@ export function listUnscheduledEvents(events: readonly Event[], query = ""): Eve
   });
 }
 
+/** Move an instant to another calendar date, keeping its local time of day in `timezone`. */
+export function moveInstantToDate(instant: string, date: string, timezone: string): string {
+  dateOnlySchema.parse(date);
+  const from = Temporal.Instant.from(new Date(instant).toISOString()).toZonedDateTimeISO(timezone);
+  return Temporal.PlainDate.from(date)
+    .toZonedDateTime({ timeZone: timezone, plainTime: from.toPlainTime() })
+    .toInstant()
+    .toString();
+}
+
 /** Build the server mutation for dropping an unscheduled event onto a time slot or day/all-day row. */
 export function buildEventDropAction(
   ev: Pick<Event, "id" | "revision"> & Partial<Pick<Event, "start" | "end" | "allDay">>,
@@ -188,12 +198,8 @@ export function buildEventDropAction(
 ): ScheduleDropAction {
   // A timed event dropped onto a day keeps its time of day and duration (there is no time grid).
   if (target.kind === "day" && ev.start && ev.end && !ev.allDay) {
-    dateOnlySchema.parse(target.date);
-    const from = Temporal.Instant.from(new Date(ev.start).toISOString()).toZonedDateTimeISO(timezone);
     const duration = Date.parse(ev.end) - Date.parse(ev.start);
-    const start = Temporal.PlainDate.from(target.date)
-      .toZonedDateTime({ timeZone: timezone, plainTime: from.toPlainTime() })
-      .toInstant();
+    const start = Temporal.Instant.from(moveInstantToDate(ev.start, target.date, timezone));
     return {
       endpoint: `/api/events/${ev.id}`,
       method: "PATCH",
