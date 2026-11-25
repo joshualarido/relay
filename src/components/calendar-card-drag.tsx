@@ -34,6 +34,7 @@ type Ghost = {
   y: number;
   landing: boolean;
   unscheduling: boolean;
+  touchPicked: boolean;
 };
 
 type GhostStore = {
@@ -86,7 +87,9 @@ function GhostLayer({
         </div>
       )}
       <div
-        className={`calendar-drag-ghost-wrap${ghost.landing ? " is-landing" : ""}${ghost.unscheduling ? " is-unscheduling" : ""}`}
+        className={`calendar-drag-ghost-wrap${ghost.landing ? " is-landing" : ""}${ghost.unscheduling ? " is-unscheduling" : ""}${ghost.touchPicked ? " is-touch-picked" : ""}`}
+        data-drag-ghost="true"
+        data-touch-picked={ghost.touchPicked ? "true" : undefined}
         style={{ left: `${ghost.x}px`, top: `${ghost.y}px`, width: `${ghost.width}px` }}
         aria-hidden="true"
       >
@@ -104,6 +107,9 @@ function GhostLayer({
 type Base = { el: HTMLElement; top: number; left: number; width: number; height: number };
 
 const SHIFT = `transform 260ms ${DRAG_EASE}`;
+const TOUCH_HOLD_MS = 300;
+const TOUCH_MOVE_TOLERANCE = 8;
+const TOUCH_LIFT_OFFSET = 16;
 
 /** Read the card's identity and its date from the data-* attributes on `.calendar-record`. */
 function cardInfo(el: HTMLElement) {
@@ -148,7 +154,10 @@ export function useCalendarCardDrag({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (disabled || e.button !== 0 || e.pointerType === "touch") return;
+      if (disabled || e.button !== 0) return;
+      suppressClick.current = false;
+      const isTouch = e.pointerType === "touch";
+      const pointerId = e.pointerId;
       const card = (e.target as HTMLElement).closest<HTMLElement>('.calendar-record[data-drag="true"]');
       const frame = frameRef.current;
       if (!card || !frame) return;
@@ -159,12 +168,24 @@ export function useCalendarCardDrag({
 
       const startX = e.clientX;
       const startY = e.clientY;
+      let lastX = startX;
+      let lastY = startY;
       let started = false;
       let bases: Base[] = [];
       let src: Base | null = null;
       let target: { date: string; index: number; slot: { top: number; left: number } } | null = null;
       let overUnschedule = false;
+      let holdTimer: number | null = null;
       const grab = { x: 0, y: 0 };
+      const liftY = isTouch ? TOUCH_LIFT_OFFSET : 0;
+
+      const clearHoldTimer = () => {
+        if (holdTimer !== null) {
+          window.clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        card.classList.remove("is-touch-holding");
+      };
 
       const isOverUnscheduleZone = (x: number, y: number) => {
         if (!onUnschedule) return false;
@@ -281,41 +302,61 @@ export function useCalendarCardDrag({
         setShift(card, target.slot.left - src.left, target.slot.top - src.top);
       };
 
+      const startDrag = (clientX: number, clientY: number) => {
+        if (started) return;
+        started = true;
+        clearHoldTimer();
+        measure();
+        if (!src) return;
+        const r = card.getBoundingClientRect();
+        grab.x = startX - r.left;
+        grab.y = startY - r.top;
+        card.classList.add("is-drag-source");
+        touched.add(card);
+        document.body.classList.add("is-card-dragging");
+        if (isTouch) {
+          document.body.classList.add("is-touch-card-dragging");
+          try {
+            navigator.vibrate?.(10);
+          } catch {
+            // Haptics are optional and unavailable in some browsers.
+          }
+        }
+        setGhost({
+          title: card.querySelector(".calendar-record-title")?.textContent ?? "",
+          tag: card.querySelector(".calendar-record-tag")?.textContent ?? "",
+          color: card.style.getPropertyValue("--record-color"),
+          width: Math.min(320, r.width),
+          x: clientX - grab.x,
+          y: clientY - grab.y - liftY,
+          landing: false,
+          unscheduling: false,
+          touchPicked: isTouch,
+        });
+      };
+
       const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        lastX = ev.clientX;
+        lastY = ev.clientY;
         if (!started) {
-          if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
-          started = true;
-          measure();
+          const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+          if (isTouch) {
+            if (dist >= TOUCH_MOVE_TOLERANCE) finish(false);
+            return;
+          }
+          if (dist < 6) return;
+          startDrag(ev.clientX, ev.clientY);
           if (!src) return;
-          const r = card.getBoundingClientRect();
-          grab.x = startX - r.left;
-          grab.y = startY - r.top;
-          card.classList.add("is-drag-source");
-          touched.add(card);
-          document.body.classList.add("is-card-dragging");
-          setGhost({
-            title: card.querySelector(".calendar-record-title")?.textContent ?? "",
-            tag: card.querySelector(".calendar-record-tag")?.textContent ?? "",
-            color: card.style.getPropertyValue("--record-color"),
-            width: Math.min(320, r.width),
-            x: ev.clientX - grab.x,
-            y: ev.clientY - grab.y,
-            landing: false,
-            unscheduling: false,
-          });
         }
         const nextUnschedule = isOverUnscheduleZone(ev.clientX, ev.clientY);
-        setGhost((g) => (g ? { ...g, x: ev.clientX - grab.x, y: ev.clientY - grab.y, unscheduling: nextUnschedule } : g));
+        setGhost((g) => (g ? { ...g, x: ev.clientX - grab.x, y: ev.clientY - grab.y - liftY, unscheduling: nextUnschedule } : g));
         if (nextUnschedule) {
           if (!overUnschedule) {
             overUnschedule = true;
             target = null;
             for (const el of touched) {
-              if (el === card) {
-                setShift(card, 0, 0);
-              } else {
-                setShift(el, 0, 0);
-              }
+              setShift(el, 0, 0);
             }
           }
           return;
@@ -328,16 +369,40 @@ export function useCalendarCardDrag({
         }
       };
 
+      const onTouchMove = (ev: TouchEvent) => {
+        if (!started) {
+          if (ev.touches.length > 1) {
+            finish(false);
+            return;
+          }
+          const t = ev.touches[0];
+          if (t && Math.hypot(t.clientX - startX, t.clientY - startY) >= TOUCH_MOVE_TOLERANCE) {
+            finish(false);
+          }
+          return;
+        }
+        if (ev.cancelable) ev.preventDefault();
+      };
+
+      const onContextMenu = (ev: MouseEvent) => {
+        ev.preventDefault();
+      };
+
       const finish = (commit: boolean) => {
+        clearHoldTimer();
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onCancel);
         window.removeEventListener("keydown", onKey, true);
+        if (isTouch) {
+          window.removeEventListener("touchmove", onTouchMove);
+          window.removeEventListener("contextmenu", onContextMenu, true);
+        }
         cleanup.current = null;
         if (!started || !src) return;
         suppressClick.current = true;
-        window.setTimeout(() => (suppressClick.current = false), 0);
-        document.body.classList.remove("is-card-dragging");
+        window.setTimeout(() => (suppressClick.current = false), isTouch ? 350 : 0);
+        document.body.classList.remove("is-card-dragging", "is-touch-card-dragging");
 
         if (commit && overUnschedule && onUnschedule) {
           resetShifts();
@@ -393,8 +458,14 @@ export function useCalendarCardDrag({
           reduce ? 0 : 240,
         );
       };
-      const onUp = () => finish(true);
-      const onCancel = () => finish(false);
+      const onUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        finish(true);
+      };
+      const onCancel = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        finish(false);
+      };
       const onKey = (ev: KeyboardEvent) => {
         if (ev.key !== "Escape" || !started) return;
         ev.preventDefault();
@@ -406,15 +477,32 @@ export function useCalendarCardDrag({
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onCancel);
       window.addEventListener("keydown", onKey, true);
+      if (isTouch) {
+        card.classList.add("is-touch-holding");
+        window.addEventListener("touchmove", onTouchMove, { passive: false });
+        window.addEventListener("contextmenu", onContextMenu, true);
+        holdTimer = window.setTimeout(() => {
+          holdTimer = null;
+          startDrag(lastX, lastY);
+        }, TOUCH_HOLD_MS);
+      }
       cleanup.current = () => finish(false);
     },
     [disabled, frameRef, onDrop, onUnschedule, reduce, setGhost, view],
   );
 
-  /** FullCalendar starts its drag on mousedown; stop that for cards we drag ourselves. */
+  /** FullCalendar starts its drag on mousedown/touchstart; stop those for cards we drag ourselves (never preventing default so scroll and taps still work). */
   const onMouseDownCapture = useCallback(
     (e: React.MouseEvent) => {
       if (disabled || e.button !== 0) return;
+      if ((e.target as HTMLElement).closest('.calendar-record[data-drag="true"]')) e.stopPropagation();
+    },
+    [disabled],
+  );
+
+  const onTouchStartCapture = useCallback(
+    (e: React.TouchEvent) => {
+      if (disabled) return;
       if ((e.target as HTMLElement).closest('.calendar-record[data-drag="true"]')) e.stopPropagation();
     },
     [disabled],
@@ -429,5 +517,5 @@ export function useCalendarCardDrag({
 
   const ghostNode = <GhostLayer store={store} zoneRef={zoneRef} showUnscheduleZone={Boolean(onUnschedule)} />;
 
-  return { onPointerDown, onMouseDownCapture, onClickCapture, ghostNode };
+  return { onPointerDown, onMouseDownCapture, onTouchStartCapture, onClickCapture, ghostNode };
 }

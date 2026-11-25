@@ -1290,13 +1290,21 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 /* Calendar card drag: trailing ghost, eased landing, and a silhouette in the card's slot. */
-.calendar-record[data-drag="true"] { cursor: grab; }
+.calendar-record[data-drag="true"] { cursor: grab; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.calendar-record.is-touch-holding { transform: scale(.98); transition: transform 180ms ease-out; }
 body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; user-select: none; }
+body.is-touch-card-dragging, body.is-touch-card-dragging .calendar-frame { touch-action: none; }
 .calendar-record.is-drag-source {
   opacity: .35 !important; outline: 1px dashed var(--control-border); outline-offset: -1px;
   box-shadow: none; position: relative; z-index: 3;
 }
 .calendar-drag-ghost-wrap { position: fixed; pointer-events: none; z-index: var(--z-toast); }
+.calendar-drag-ghost-wrap.is-touch-picked .calendar-drag-ghost {
+  box-shadow: var(--shadow-float);
+  animation: touch-pickup 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1.04);
+}
+@keyframes touch-pickup { from { transform: scale(.97); } to { transform: scale(1.04); } }
 .calendar-drag-ghost-wrap.is-landing {
   transition: left 240ms cubic-bezier(0.22, 1, 0.36, 1), top 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease-out;
 }
