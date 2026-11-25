@@ -2,7 +2,7 @@
 
 import { Fragment, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Clock, Flag } from "lucide-react";
+import { Clock, Flag, Repeat } from "lucide-react";
 import type { TodayItem } from "@/lib/today";
 import { NowLine } from "./now-line";
 
@@ -68,7 +68,10 @@ export function TodayTimeline({
           // Live: an event whose end has passed is crossed off without a reload.
           const past = item.done || (!isDeadline && !item.allDay && now !== null && Date.parse(item.end) <= now);
           const Icon = isDeadline ? Flag : Clock;
-          const href = isDeadline && item.projectId ? `/projects/${item.projectId}` : `/?event=${item.id}`;
+          const eventId = item.eventId ?? item.id;
+          const href = isDeadline && item.projectId
+            ? `/projects/${item.projectId}`
+            : `/?event=${eventId}${item.occurrenceDate ? `&occurrence=${item.occurrenceDate}` : ""}`;
 
           return (
             <Fragment key={item.id}>
@@ -88,6 +91,12 @@ export function TodayTimeline({
                     <Link className="task-title" href={href} scroll={false}>
                       {item.title}
                     </Link>
+                    {item.recurring && (
+                      <span className="recurrence-pill">
+                        <Repeat size={11} aria-hidden="true" />
+                        Repeats
+                      </span>
+                    )}
                     {!isDeadline && item.projectName && (
                       <span className="today-meta">{item.projectName}</span>
                     )}

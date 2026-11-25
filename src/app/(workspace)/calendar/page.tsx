@@ -7,7 +7,7 @@ import { EventForm } from "@/components/event-form";
 import { EventSelection } from "@/components/event-selection";
 import { TaskSelection } from "@/components/task-selection";
 
-export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ date?: string; event?: string; task?: string; focus?: string; schedule?: string; view?: string }> }) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ date?: string; event?: string; occurrence?: string; task?: string; focus?: string; schedule?: string; view?: string }> }) {
   const ownerId = await requireUserId(), db = getDatabase(), query = await searchParams;
   const preferences = getCachedPreferences(ownerId);
   const overrides = getCachedWorkingHoursOverrides(ownerId);
@@ -26,7 +26,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       workingHoursOverrides={overrides}
       date={date}
     />
-    {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={getCachedTasks(ownerId, true)} timezone={preferences.timezone} />
+    {query.event ? <EventSelection key={`${query.event}:${query.occurrence ?? ""}`} db={db} ownerId={ownerId} id={query.event} occurrenceDate={query.occurrence} projects={allProjects} tasks={getCachedTasks(ownerId, true)} timezone={preferences.timezone} />
       : query.schedule === "1" ? null
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} projects={allProjects} focus={Boolean(query.focus)} />}
   </div>;

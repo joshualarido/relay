@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, CalendarDays, Clock, ExternalLink, Folder, MapPin, X } from "lucide-react";
+import { Archive, CalendarDays, Clock, ExternalLink, Folder, MapPin, Repeat, Trash2, X } from "lucide-react";
 import { Temporal } from "temporal-polyfill";
 import type { Event, Project, Task } from "@/lib/db/schema";
-import { instantToLocal, localToInstant } from "@/lib/dates";
+import type { DeletionPreview } from "@/lib/lifecycle";
+import { dateOnlySchema, instantToLocal, localToInstant } from "@/lib/dates";
+import { eventAnchorDate, formatRecurrenceSummary, occurrenceRangeForDate } from "@/lib/recurrence";
 import { notifyMutation } from "./mutation-notice";
 import { InlineText } from "./projects/inline-text";
+import { RecurrencePicker } from "./recurrence-picker";
+import { useConfirmation, useRecurrenceScopeDialog } from "./confirm-dialog";
 import { useWorkspace } from "./workspace-store";
 
 function formatDuration(start: string, end: string, allDay: boolean): string | null {
@@ -36,10 +40,12 @@ function relativeTime(iso: string): string {
 
 export function EventPanel({
   event,
+  occurrenceDate,
   projects,
   timezone,
 }: {
   event: Event | null;
+  occurrenceDate?: string;
   projects: Project[];
   tasks: Task[];
   timezone: string;
@@ -52,33 +58,81 @@ export function EventPanel({
   const [open, setOpen] = useState(true);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [prompting, setPrompting] = useState(false);
+  const { askScope, scopeDialog } = useRecurrenceScopeDialog();
+  const { confirm, confirmation } = useConfirmation();
 
   const current = localEvent;
   const isHttpLink = Boolean(current?.location && /^https?:\/\//i.test(current.location.trim()));
+  const rawOccurrence = occurrenceDate ?? search.get("occurrence") ?? undefined;
+  const effectiveOccurrenceDate =
+    current?.recurrenceRule && current.start
+      ? rawOccurrence && dateOnlySchema.safeParse(rawOccurrence).success
+        ? rawOccurrence
+        : eventAnchorDate(current, timezone)
+      : undefined;
 
   function close() {
     setOpen(false);
     window.setTimeout(() => {
       const query = new URLSearchParams(search);
       query.delete("event");
+      query.delete("occurrence");
       router.replace(`${path}${query.size ? `?${query}` : ""}`, { scroll: false });
     }, 155);
   }
 
-  async function patch(fields: Record<string, unknown>, message: string) {
+  async function patch(fields: Record<string, unknown>, message: string, options?: { seriesOnly?: boolean }) {
     if (!current) return false;
+    let scope: "single" | "series" | undefined;
+    if (current.recurrenceRule && effectiveOccurrenceDate && !options?.seriesOnly) {
+      setPrompting(true);
+      const choice = await askScope({
+        title: "Edit recurring event",
+        description: "Apply this change to just this occurrence or the whole series?",
+        singleLabel: "This occurrence",
+        seriesLabel: "Whole series",
+      });
+      setPrompting(false);
+      if (!choice) return false;
+      scope = choice;
+    }
+
     setPending(true);
     setError("");
     try {
+      const body: Record<string, unknown> = {
+        expectedRevision: current.revision,
+        ...fields,
+        mutationId: crypto.randomUUID(),
+      };
+      if (scope) {
+        body.scope = scope;
+        if (effectiveOccurrenceDate) body.occurrenceDate = effectiveOccurrenceDate;
+      }
       const res = await fetch(`/api/events/${current.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expectedRevision: current.revision, ...fields, mutationId: crypto.randomUUID() }),
+        body: JSON.stringify(body),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Could not save event.");
-      setLocalEvent(result as Event);
-      workspace?.setEvents((all) => all.map((e) => (e.id === current.id ? (result as Event) : e)));
+
+      if (scope === "single") {
+        const { event: detached, series } = result as { event: Event; series: Event };
+        setLocalEvent(detached);
+        workspace?.setEvents((all) => [
+          ...all.map((e) => (e.id === series.id ? series : e)),
+          detached,
+        ]);
+        const query = new URLSearchParams(search);
+        query.set("event", detached.id);
+        query.delete("occurrence");
+        window.history.replaceState(null, "", `${path}${query.size ? `?${query}` : ""}`);
+      } else {
+        setLocalEvent(result as Event);
+        workspace?.setEvents((all) => all.map((e) => (e.id === current.id ? (result as Event) : e)));
+      }
       notifyMutation(res, () => router.refresh(), { message });
       router.refresh();
       return true;
@@ -107,21 +161,116 @@ export function EventPanel({
     } catch {}
   }
 
+  async function remove() {
+    if (!current) return;
+    setError("");
+    if (current.recurrenceRule && effectiveOccurrenceDate) {
+      setPrompting(true);
+      const choice = await askScope({
+        title: "Delete recurring event",
+        description: "Delete only this occurrence or the whole series?",
+        singleLabel: "This occurrence",
+        seriesLabel: "Whole series",
+        destructive: true,
+      });
+      setPrompting(false);
+      if (!choice) return;
+      setPending(true);
+      try {
+        if (choice === "single") {
+          const res = await fetch(`/api/events/${current.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              expectedRevision: current.revision,
+              scope: "single",
+              deleteOccurrence: true,
+              occurrenceDate: effectiveOccurrenceDate,
+              mutationId: crypto.randomUUID(),
+            }),
+          });
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error || "Could not delete occurrence.");
+          workspace?.setEvents((all) => all.map((e) => (e.id === current.id ? (result as Event) : e)));
+          close();
+          notifyMutation(res, () => router.refresh(), { message: "Occurrence deleted." });
+          router.refresh();
+          return;
+        }
+        const previewRes = await fetch(`/api/events/${current.id}/deletion`);
+        const preview = (await previewRes.json()) as DeletionPreview & { error?: string };
+        if (!previewRes.ok) throw new Error(preview.error || "Could not prepare deletion.");
+        const res = await fetch(`/api/events/${current.id}/deletion`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...preview, mutationId: crypto.randomUUID() }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "Could not delete event series.");
+        const deletedIds = new Set(preview.records.map((r) => r.id));
+        workspace?.setEvents((all) => all.filter((e) => !deletedIds.has(e.id)));
+        close();
+        notifyMutation(res, () => router.refresh(), { message: "Event series deleted." });
+        router.refresh();
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : "Could not delete event.");
+      } finally {
+        setPending(false);
+      }
+      return;
+    }
+
+    setPrompting(true);
+    const ok = await confirm({
+      title: "Delete event?",
+      action: "Delete",
+      description: `"${current.title}" is deleted. You can undo this.`,
+    });
+    setPrompting(false);
+    if (!ok) return;
+    setPending(true);
+    try {
+      const previewRes = await fetch(`/api/events/${current.id}/deletion`);
+      const preview = (await previewRes.json()) as DeletionPreview & { error?: string };
+      if (!previewRes.ok) throw new Error(preview.error || "Could not prepare deletion.");
+      const res = await fetch(`/api/events/${current.id}/deletion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...preview, mutationId: crypto.randomUUID() }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Could not delete event.");
+      workspace?.setEvents((all) => all.filter((e) => e.id !== current.id));
+      close();
+      notifyMutation(res, () => router.refresh(), { message: "Event deleted." });
+      router.refresh();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not delete event.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   const activeProjects = projects.filter((p) => !p.archivedAt || p.id === current?.projectId);
-  const duration = current ? formatDuration(current.start, current.end, current.allDay) : null;
-  const startValue = current?.start
-    ? current.allDay
-      ? current.start
-      : instantToLocal(current.start, current.timezone || timezone).slice(0, 16)
+  const displayRange =
+    current && current.start && current.end && effectiveOccurrenceDate
+      ? occurrenceRangeForDate(current, effectiveOccurrenceDate, timezone)
+      : { start: current?.start ?? "", end: current?.end ?? "" };
+  const duration = current ? formatDuration(displayRange.start, displayRange.end, current.allDay) : null;
+  const startValue = displayRange.start
+    ? current?.allDay
+      ? displayRange.start
+      : instantToLocal(displayRange.start, current?.timezone || timezone).slice(0, 16)
     : "";
-  const endValue = current?.end
-    ? current.allDay
-      ? current.end
-      : instantToLocal(current.end, current.timezone || timezone).slice(0, 16)
+  const endValue = displayRange.end
+    ? current?.allDay
+      ? displayRange.end
+      : instantToLocal(displayRange.end, current?.timezone || timezone).slice(0, 16)
     : "";
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !pending) close(); }}>
+    <>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !pending && !prompting) close(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="sheet-overlay" />
         <Dialog.Content className="detail-sheet" aria-describedby={undefined}>
@@ -139,6 +288,12 @@ export function EventPanel({
                     <Clock size={12} aria-hidden="true" />
                     Event
                   </span>
+                  {current.recurrenceRule && (
+                    <span className="recurrence-pill">
+                      <Repeat size={11} aria-hidden="true" />
+                      {formatRecurrenceSummary(current.recurrenceRule)}
+                    </span>
+                  )}
                   {duration && <span className="detail-duration">{duration}</span>}
                   {isHttpLink && (
                     <a
@@ -184,14 +339,14 @@ export function EventPanel({
                               const nextAllDay = e.target.checked;
                               if (nextAllDay) {
                                 const d = current.allDay
-                                  ? current.start
-                                  : instantToLocal(current.start, timezone).slice(0, 10);
+                                  ? displayRange.start
+                                  : instantToLocal(displayRange.start, current.timezone || timezone).slice(0, 10);
                                 void patch(
                                   { start: d, end: Temporal.PlainDate.from(d).add({ days: 1 }).toString(), allDay: true },
                                   "Set to all day.",
                                 );
                               } else {
-                                const d = current.start.slice(0, 10);
+                                const d = displayRange.start.slice(0, 10);
                                 void patch(
                                   {
                                     start: localToInstant(`${d}T09:00`, timezone),
@@ -210,7 +365,7 @@ export function EventPanel({
                           <input
                             aria-label="Event start"
                             type={current.allDay ? "date" : "datetime-local"}
-                            key={`s-${current.id}-${current.start}-${current.allDay}`}
+                            key={`s-${current.id}-${displayRange.start}-${current.allDay}`}
                             defaultValue={startValue}
                             disabled={pending}
                             onBlur={(e) => {
@@ -223,7 +378,7 @@ export function EventPanel({
                           <input
                             aria-label="Event end"
                             type={current.allDay ? "date" : "datetime-local"}
-                            key={`e-${current.id}-${current.end}-${current.allDay}`}
+                            key={`e-${current.id}-${displayRange.end}-${current.allDay}`}
                             defaultValue={endValue}
                             disabled={pending}
                             onBlur={(e) => {
@@ -236,6 +391,27 @@ export function EventPanel({
                         </div>
                       </>
                     )}
+                  </div>
+                </div>
+
+                <div className="detail-prop-row">
+                  <span className="detail-prop-label">
+                    <Repeat size={14} aria-hidden="true" />
+                    Repeat
+                  </span>
+                  <div className="detail-prop-value">
+                    <RecurrencePicker
+                      value={current.recurrenceRule ?? null}
+                      disabled={pending}
+                      compact
+                      onChange={(recurrenceRule) =>
+                        void patch(
+                          { recurrenceRule },
+                          recurrenceRule ? "Recurrence updated." : "Recurrence removed.",
+                          { seriesOnly: true },
+                        )
+                      }
+                    />
                   </div>
                 </div>
 
@@ -299,9 +475,13 @@ export function EventPanel({
               )}
 
               <div className="sheet-actions detail-footer">
-                <button type="button" className="text-quiet inline-flex items-center gap-1.5" onClick={() => void archive()}>
+                <button type="button" className="text-quiet inline-flex items-center gap-1.5" disabled={pending} onClick={() => void archive()}>
                   <Archive size={14} aria-hidden="true" />
                   Archive
+                </button>
+                <button type="button" className="text-danger inline-flex items-center gap-1.5" disabled={pending} onClick={() => void remove()}>
+                  <Trash2 size={14} aria-hidden="true" />
+                  Delete
                 </button>
                 <span className="muted text-sm ml-auto">{relativeTime(current.updatedAt)}</span>
               </div>
@@ -310,5 +490,8 @@ export function EventPanel({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+    {scopeDialog}
+    {confirmation}
+    </>
   );
 }

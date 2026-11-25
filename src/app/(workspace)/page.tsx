@@ -18,7 +18,7 @@ import { EventSelection } from "@/components/event-selection";
 import { CaptureButton } from "@/components/capture-dialog";
 
 export default async function TodayPage({ searchParams }: {
-  searchParams: Promise<{ task?: string; focus?: string; event?: string }>;
+  searchParams: Promise<{ task?: string; focus?: string; event?: string; occurrence?: string }>;
 }) {
   const ownerId = await requireUserId(), db = getDatabase(), query = await searchParams;
   const prefs = getCachedPreferences(ownerId);
@@ -68,7 +68,7 @@ export default async function TodayPage({ searchParams }: {
         <TodayProgress tasks={allTasks} projects={projects} timezone={timezone} now={nowIso} />
       </aside>
     </div>
-    {query.event ? <EventSelection key={query.event} db={db} ownerId={ownerId} id={query.event} projects={allProjects} tasks={allTasks} timezone={timezone} />
+    {query.event ? <EventSelection key={`${query.event}:${query.occurrence ?? ""}`} db={db} ownerId={ownerId} id={query.event} occurrenceDate={query.occurrence} projects={allProjects} tasks={allTasks} timezone={timezone} />
       : <TaskSelection key={query.focus ?? query.task} db={db} ownerId={ownerId} id={query.focus ?? query.task} focus={Boolean(query.focus)} projects={allProjects} />}
   </div>;
 }

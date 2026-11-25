@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation";
 import { Temporal } from "temporal-polyfill";
 import { CalendarPlus, X } from "lucide-react";
 import type { Event, Project, Task } from "@/lib/db/schema";
+import type { RecurrenceRule } from "@/lib/recurrence";
 import { instantToLocal, localToInstant } from "@/lib/dates";
 import { Button } from "./ui/button";
 import { notifyMutation } from "./mutation-notice";
 import { useConfirmation } from "./confirm-dialog";
+import { RecurrencePicker } from "./recurrence-picker";
+import { useWorkspace } from "./workspace-store";
 
 export function EventForm({ event, projects, tasks, timezone, initialOpen = false, initialTitle = "", initialDate = "", onClose }: { event?: Event; projects: Project[]; tasks: Task[]; timezone: string; initialOpen?: boolean; initialTitle?: string; initialDate?: string; onClose?: () => void }) {
   const [open, setOpenState] = useState(initialOpen);
@@ -18,12 +21,14 @@ export function EventForm({ event, projects, tasks, timezone, initialOpen = fals
   const [zone, setZone] = useState(event?.timezone ?? timezone);
   const [start, setStart] = useState(event ? event.allDay ? event.start : instantToLocal(event.start, event.timezone) : initialDate);
   const [end, setEnd] = useState(event ? event.allDay ? event.end : instantToLocal(event.end, event.timezone) : initialDate ? Temporal.PlainDate.from(initialDate).add({ days: 1 }).toString() : "");
+  const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(event?.recurrenceRule ?? null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [fields, setFields] = useState<Record<string, string[]>>({});
   const identity = useRef({ payload: "", id: "" });
   const prefix = useId();
   const router = useRouter();
+  const workspace = useWorkspace();
   const { confirm, confirmation } = useConfirmation();
   function field(name: string) { return { id: `${prefix}-${name}`, name, "aria-invalid": Boolean(fields[name]), "aria-describedby": fields[name] ? `${prefix}-${name}-error` : undefined }; }
   function errors(name: string) { return fields[name] && <p className="error-message" id={`${prefix}-${name}-error`}>{fields[name].join(" ")}</p>; }
@@ -33,6 +38,7 @@ export function EventForm({ event, projects, tasks, timezone, initialOpen = fals
         setAllDay(event?.allDay ?? Boolean(initialDate)); setZone(event?.timezone ?? timezone);
         setStart(event ? event.allDay ? event.start : instantToLocal(event.start, event.timezone) : initialDate);
         setEnd(event ? event.allDay ? event.end : instantToLocal(event.end, event.timezone) : initialDate ? Temporal.PlainDate.from(initialDate).add({ days: 1 }).toString() : "");
+        setRecurrenceRule(event?.recurrenceRule ?? null);
     }
     setOpen(value); setError(""); setFields({});
   }}>
@@ -58,6 +64,7 @@ export function EventForm({ event, projects, tasks, timezone, initialOpen = fals
             start: allDay ? start : instant("start", start), end: allDay ? end : instant("end", end),
             projectId: parent.startsWith("project:") ? parent.slice(8) : null,
             taskId: parent.startsWith("task:") ? parent.slice(5) : null, location: form.get("location"),
+            recurrenceRule,
             ...(event ? { expectedRevision: event.revision } : {}),
           };
           setPending(true);
@@ -72,6 +79,11 @@ export function EventForm({ event, projects, tasks, timezone, initialOpen = fals
           });
           const result = await response.json();
           if (!response.ok) { setFields(result.fields || {}); throw new Error(result.error); }
+          if (event) {
+            workspace?.setEvents((all) => all.map((ev) => (ev.id === event.id ? (result as Event) : ev)));
+          } else {
+            workspace?.setEvents((all) => (all.some((ev) => ev.id === (result as Event).id) ? all : [...all, result as Event]));
+          }
           setOpen(false); identity.current = { payload: "", id: "" }; notifyMutation(response, () => router.refresh()); router.refresh();
         } catch (failure) {
           setError(failure instanceof RangeError ? "This local time is invalid or ambiguous in the selected timezone. Choose another time, or use a different timezone such as UTC." : failure instanceof Error ? failure.message : "Could not save. Your input is preserved.");
@@ -95,6 +107,7 @@ export function EventForm({ event, projects, tasks, timezone, initialOpen = fals
           }}>Suggest 60-minute end</Button>
           <p className="muted text-sm">The suggestion is visible before saving; it never creates an event by itself.</p>
         </div>}
+        <div className="field"><span className="sheet-label">Repeat</span><RecurrencePicker value={recurrenceRule} onChange={setRecurrenceRule} disabled={pending} />{errors("recurrenceRule")}</div>
         <div className="field"><label htmlFor={`${prefix}-parent`}>Link to</label><select {...field("parent")} defaultValue={event?.taskId ? `task:${event.taskId}` : event?.projectId ? `project:${event.projectId}` : ""}>
           <option value="">Independent event</option>
           <optgroup label="Projects">{projects.map((p) => <option value={`project:${p.id}`} key={p.id}>{p.name}</option>)}</optgroup>

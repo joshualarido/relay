@@ -120,6 +120,13 @@
       "when": 1795617500000,
       "tag": "0016_v3_working_hours_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795703900000,
+      "tag": "0017_v3_recurring_events",
+      "breakpoints": true
     }
   ]
 }

@@ -3,8 +3,14 @@ import { z } from "zod";
 import { Temporal } from "temporal-polyfill";
 import type { AppDatabase } from "../lib/db";
 import { event, type Event } from "../lib/db/schema";
-import { dateOnlySchema } from "../lib/dates";
+import { dateInTimezone, dateOnlySchema } from "../lib/dates";
 import { getPreferences, timezoneSchema } from "../lib/preferences";
+import {
+  eventAnchorDate,
+  occurrenceRangeForDate,
+  recurrenceRuleSchema,
+  shiftEventSeriesRange,
+} from "../lib/recurrence";
 import { getProject, listProjects } from "./projects";
 import { getTask, listTasks, taskTypeDurationMinutes } from "./tasks";
 import { mutationIdSchema, recordOperation, replayMutation, requestHash } from "../lib/activity";
@@ -23,6 +29,10 @@ export const eventFields = {
     (v) => !/^[a-z][a-z\d+.-]*:/i.test(v) || /^https?:\/\//i.test(v),
     "Use a location or an HTTP(S) meeting URL.",
   ),
+  recurrenceRule: recurrenceRuleSchema.nullable(),
+  recurrenceSeriesId: z.string().min(1).nullable(),
+  recurrenceExceptions: z.array(dateOnlySchema).max(1000).nullable(),
+  recurrenceOccurrenceDate: dateOnlySchema.nullable(),
 };
 
 export const createEventSchema = z.object({
@@ -32,12 +42,16 @@ export const createEventSchema = z.object({
   projectId: eventFields.projectId.default(null),
   taskId: eventFields.taskId.default(null),
   location: eventFields.location.default(""),
+  recurrenceRule: eventFields.recurrenceRule.default(null),
+  recurrenceSeriesId: eventFields.recurrenceSeriesId.default(null),
+  recurrenceExceptions: eventFields.recurrenceExceptions.default(null),
+  recurrenceOccurrenceDate: eventFields.recurrenceOccurrenceDate.default(null),
   mutationId: mutationIdSchema,
 }).strict();
 
 export const updateEventSchema = z.object(eventFields)
   .partial()
-  .extend({ mutationId: mutationIdSchema })
+  .extend({ occurrenceDate: dateOnlySchema.optional(), mutationId: mutationIdSchema })
   .strict();
 
 export const archiveEventSchema = z.object({
@@ -47,6 +61,31 @@ export const archiveEventSchema = z.object({
 
 export const moveEventSchema = z.object({
   start: eventFields.start,
+  occurrenceDate: dateOnlySchema.optional(),
+  mutationId: mutationIdSchema,
+}).strict();
+
+export const editEventOccurrenceSchema = z.object({
+  title: eventFields.title,
+  description: eventFields.description,
+  start: eventFields.start,
+  end: eventFields.end,
+  allDay: eventFields.allDay,
+  timezone: eventFields.timezone,
+  projectId: eventFields.projectId,
+  taskId: eventFields.taskId,
+  location: eventFields.location,
+})
+  .partial()
+  .extend({
+    occurrenceDate: dateOnlySchema,
+    reschedule: z.boolean().optional(),
+    mutationId: mutationIdSchema,
+  })
+  .strict();
+
+export const deleteEventOccurrenceSchema = z.object({
+  occurrenceDate: dateOnlySchema,
   mutationId: mutationIdSchema,
 }).strict();
 
@@ -196,8 +235,11 @@ export function createEvent(db: AppDatabase, ownerId: string, input: unknown): E
     if (previous) return previous.result as Event;
     const projectId = validateEventLinks(tx, ownerId, data);
     const now = new Date().toISOString();
+    const recurrenceSeriesId = data.recurrenceRule
+      ? (data.recurrenceSeriesId ?? crypto.randomUUID())
+      : data.recurrenceSeriesId;
     const result = tx.insert(event).values({
-      ...data, projectId,
+      ...data, projectId, recurrenceSeriesId,
       start: !data.start ? "" : data.allDay ? data.start : new Date(data.start).toISOString(),
       end: !data.end ? "" : data.allDay ? data.end : new Date(data.end).toISOString(),
       id: crypto.randomUUID(), ownerId, createdAt: now, updatedAt: now,
@@ -210,10 +252,14 @@ export function createEvent(db: AppDatabase, ownerId: string, input: unknown): E
   }, { behavior: "immediate" });
 }
 
+function addExceptionDate(existing: string[] | null | undefined, date: string): string[] {
+  return [...new Set([...(existing ?? []), date])].sort();
+}
+
 function saveEvent(db: AppDatabase, ownerId: string, id: string, expectedRevision: number, input: unknown, reschedule: boolean): Event {
-  const { mutationId, ...data } = (reschedule ? moveEventSchema : updateEventSchema).parse(input);
+  const { mutationId, occurrenceDate, ...data } = (reschedule ? moveEventSchema : updateEventSchema).parse(input);
   z.number().int().positive().parse(expectedRevision);
-  const hash = requestHash(reschedule ? "event-reschedule" : "event-edit", id, { expectedRevision, ...data });
+  const hash = requestHash(reschedule ? "event-reschedule" : "event-edit", id, { expectedRevision, occurrenceDate, ...data });
   return db.transaction((tx) => {
     const previous = replayMutation(tx, ownerId, mutationId, hash);
     if (previous) return previous.result as Event;
@@ -221,7 +267,28 @@ function saveEvent(db: AppDatabase, ownerId: string, id: string, expectedRevisio
     if (before.revision !== expectedRevision) throw new AppError(409, "Event changed. Reload and try again.");
     const merged = { ...before, ...data };
     if (reschedule) {
-      if (before.allDay) {
+      if (occurrenceDate && before.recurrenceRule) {
+        const tz = before.timezone || "UTC";
+        const anchor = eventAnchorDate(before, tz);
+        if (before.allDay) {
+          dateOnlySchema.parse(merged.start);
+          const shiftDays = Temporal.PlainDate.from(occurrenceDate).until(Temporal.PlainDate.from(merged.start)).days;
+          const spanDays = Temporal.PlainDate.from(before.start).until(Temporal.PlainDate.from(before.end)).days;
+          merged.start = Temporal.PlainDate.from(before.start).add({ days: shiftDays }).toString();
+          merged.end = Temporal.PlainDate.from(merged.start).add({ days: spanDays }).toString();
+        } else {
+          z.iso.datetime({ offset: true }).parse(merged.start);
+          const targetDate = dateInTimezone(merged.start, tz);
+          const shiftDays = Temporal.PlainDate.from(occurrenceDate).until(Temporal.PlainDate.from(targetDate)).days;
+          const nextZdt = Temporal.Instant.from(new Date(merged.start).toISOString()).toZonedDateTimeISO(tz);
+          merged.start = Temporal.PlainDate.from(anchor)
+            .add({ days: shiftDays })
+            .toZonedDateTime({ timeZone: tz, plainTime: nextZdt.toPlainTime() })
+            .toInstant()
+            .toString();
+          merged.end = new Date(Date.parse(merged.start) + Date.parse(before.end) - Date.parse(before.start)).toISOString();
+        }
+      } else if (before.allDay) {
         dateOnlySchema.parse(merged.start);
         const days = Temporal.PlainDate.from(before.start).until(Temporal.PlainDate.from(before.end)).days;
         merged.end = Temporal.PlainDate.from(merged.start).add({ days }).toString();
@@ -229,11 +296,39 @@ function saveEvent(db: AppDatabase, ownerId: string, id: string, expectedRevisio
         z.iso.datetime({ offset: true }).parse(merged.start);
         merged.end = new Date(Date.parse(merged.start) + Date.parse(before.end) - Date.parse(before.start)).toISOString();
       }
+    } else if (
+      occurrenceDate &&
+      before.recurrenceRule &&
+      before.start &&
+      before.end &&
+      ("start" in data || "end" in data || "allDay" in data)
+    ) {
+      const tz = merged.timezone || before.timezone || "UTC";
+      const orig = occurrenceRangeForDate(before, occurrenceDate, tz);
+      const nextStart = "start" in data ? merged.start : orig.start;
+      const nextEnd = "end" in data ? merged.end : orig.end;
+      if (nextStart && nextEnd) {
+        const shifted = shiftEventSeriesRange(before, occurrenceDate, {
+          start: nextStart,
+          end: nextEnd,
+          allDay: merged.allDay,
+          timezone: tz,
+        });
+        merged.start = shifted.start;
+        merged.end = shifted.end;
+      }
     }
     eventDatesSchema.parse(merged);
     const projectId = validateEventLinks(tx, ownerId, merged);
+    const recurrenceSeriesId = merged.recurrenceRule
+      ? (merged.recurrenceSeriesId ?? before.id)
+      : merged.recurrenceSeriesId;
+    const recurrenceExceptions =
+      "recurrenceRule" in data && !data.recurrenceRule && !("recurrenceExceptions" in data)
+        ? null
+        : merged.recurrenceExceptions;
     const result = tx.update(event).set({
-      ...merged, projectId,
+      ...merged, projectId, recurrenceSeriesId, recurrenceExceptions,
       start: !merged.start ? "" : merged.allDay ? merged.start : new Date(merged.start).toISOString(),
       end: !merged.end ? "" : merged.allDay ? merged.end : new Date(merged.end).toISOString(),
       revision: before.revision + 1, updatedAt: new Date().toISOString(),
@@ -241,6 +336,130 @@ function saveEvent(db: AppDatabase, ownerId: string, id: string, expectedRevisio
     recordOperation(tx, {
       ownerId, mutationId, requestHash: hash, action: reschedule ? "reschedule" : "edit", entityType: "event", entityId: id,
       beforeState: [{ entityType: "event", record: before }], afterState: [{ entityType: "event", record: result }], result,
+    });
+    return result;
+  }, { behavior: "immediate" });
+}
+
+export function editEventOccurrence(
+  db: AppDatabase,
+  ownerId: string,
+  id: string,
+  expectedRevision: number,
+  input: unknown,
+): { event: Event; series: Event } {
+  const { mutationId, occurrenceDate, reschedule, ...data } = editEventOccurrenceSchema.parse(input);
+  z.number().int().positive().parse(expectedRevision);
+  const hash = requestHash("event-edit-occurrence", id, { expectedRevision, occurrenceDate, reschedule, ...data });
+  return db.transaction((tx) => {
+    const previous = replayMutation(tx, ownerId, mutationId, hash);
+    if (previous) return previous.result as { event: Event; series: Event };
+    const before = getEvent(tx, ownerId, id);
+    if (before.revision !== expectedRevision) throw new AppError(409, "Event changed. Reload and try again.");
+    if (!before.recurrenceRule || !before.start || !before.end) {
+      throw new AppError(400, "This event does not have a recurrence series.");
+    }
+    const tz = data.timezone ?? before.timezone;
+    const orig = occurrenceRangeForDate(before, occurrenceDate, tz);
+    const merged = {
+      title: data.title ?? before.title,
+      description: data.description ?? before.description,
+      allDay: data.allDay ?? before.allDay,
+      timezone: tz,
+      projectId: data.projectId !== undefined ? data.projectId : before.projectId,
+      taskId: data.taskId !== undefined ? data.taskId : before.taskId,
+      location: data.location ?? before.location,
+      start: data.start !== undefined ? data.start : orig.start,
+      end: data.end !== undefined ? data.end : orig.end,
+    };
+    if (reschedule && data.start !== undefined && data.end === undefined) {
+      if (merged.allDay) {
+        dateOnlySchema.parse(merged.start);
+        const days = Temporal.PlainDate.from(orig.start).until(Temporal.PlainDate.from(orig.end)).days;
+        merged.end = Temporal.PlainDate.from(merged.start).add({ days }).toString();
+      } else {
+        z.iso.datetime({ offset: true }).parse(merged.start);
+        merged.end = new Date(Date.parse(merged.start) + Date.parse(orig.end) - Date.parse(orig.start)).toISOString();
+      }
+    }
+    eventDatesSchema.parse(merged);
+    const projectId = validateEventLinks(tx, ownerId, merged);
+    const now = new Date().toISOString();
+    const seriesId = before.recurrenceSeriesId ?? before.id;
+    const updatedSeries = tx.update(event).set({
+      recurrenceSeriesId: seriesId,
+      recurrenceExceptions: addExceptionDate(before.recurrenceExceptions, occurrenceDate),
+      revision: before.revision + 1,
+      updatedAt: now,
+    }).where(and(eq(event.id, id), eq(event.ownerId, ownerId))).returning().get()!;
+    const createdOverride = tx.insert(event).values({
+      ...merged,
+      projectId,
+      start: !merged.start ? "" : merged.allDay ? merged.start : new Date(merged.start).toISOString(),
+      end: !merged.end ? "" : merged.allDay ? merged.end : new Date(merged.end).toISOString(),
+      recurrenceRule: null,
+      recurrenceSeriesId: seriesId,
+      recurrenceExceptions: null,
+      recurrenceOccurrenceDate: occurrenceDate,
+      id: crypto.randomUUID(),
+      ownerId,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().get();
+    const result = { event: createdOverride, series: updatedSeries };
+    recordOperation(tx, {
+      ownerId,
+      mutationId,
+      requestHash: hash,
+      action: "edit-occurrence",
+      entityType: "event",
+      entityId: id,
+      beforeState: [{ entityType: "event", record: before }],
+      afterState: [
+        { entityType: "event", record: updatedSeries },
+        { entityType: "event", record: createdOverride },
+      ],
+      result,
+    });
+    return result;
+  }, { behavior: "immediate" });
+}
+
+export function deleteEventOccurrence(
+  db: AppDatabase,
+  ownerId: string,
+  id: string,
+  expectedRevision: number,
+  input: unknown,
+): Event {
+  const { mutationId, occurrenceDate } = deleteEventOccurrenceSchema.parse(input);
+  z.number().int().positive().parse(expectedRevision);
+  const hash = requestHash("event-delete-occurrence", id, { expectedRevision, occurrenceDate });
+  return db.transaction((tx) => {
+    const previous = replayMutation(tx, ownerId, mutationId, hash);
+    if (previous) return previous.result as Event;
+    const before = getEvent(tx, ownerId, id);
+    if (before.revision !== expectedRevision) throw new AppError(409, "Event changed. Reload and try again.");
+    if (!before.recurrenceRule) {
+      throw new AppError(400, "This event does not have a recurrence series.");
+    }
+    const now = new Date().toISOString();
+    const result = tx.update(event).set({
+      recurrenceSeriesId: before.recurrenceSeriesId ?? before.id,
+      recurrenceExceptions: addExceptionDate(before.recurrenceExceptions, occurrenceDate),
+      revision: before.revision + 1,
+      updatedAt: now,
+    }).where(and(eq(event.id, id), eq(event.ownerId, ownerId))).returning().get()!;
+    recordOperation(tx, {
+      ownerId,
+      mutationId,
+      requestHash: hash,
+      action: "delete-occurrence",
+      entityType: "event",
+      entityId: id,
+      beforeState: [{ entityType: "event", record: before }],
+      afterState: [{ entityType: "event", record: result }],
+      result,
     });
     return result;
   }, { behavior: "immediate" });

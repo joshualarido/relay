@@ -1,6 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
-import { dateOnlySchema } from "./dates";
+import { dateInTimezone, dateOnlySchema } from "./dates";
 
 export const recurrenceFrequencies = ["daily", "weekdays", "weekly", "monthly", "custom"] as const;
 export type RecurrenceFrequency = (typeof recurrenceFrequencies)[number];
@@ -150,4 +150,141 @@ export function formatRecurrenceSummary(rule: RecurrenceRule | null | undefined)
       return `Every ${rule.interval} ${unit}`;
     }
   }
+}
+
+export type RecurringEventLike = {
+  start: string;
+  end: string;
+  allDay: boolean;
+  timezone: string;
+  recurrenceRule?: RecurrenceRule | null;
+  recurrenceExceptions?: string[] | null;
+};
+
+export type EventOccurrence<E extends RecurringEventLike> = {
+  event: E;
+  occurrenceDate: string;
+  start: string;
+  end: string;
+  recurring: boolean;
+  virtual: boolean;
+};
+
+/** Anchor calendar date (YYYY-MM-DD) for an event in its own timezone. */
+export function eventAnchorDate(ev: Pick<RecurringEventLike, "start" | "allDay" | "timezone">, fallbackTimezone = "UTC"): string {
+  if (!ev.start) return "";
+  return ev.allDay ? ev.start : dateInTimezone(ev.start, ev.timezone || fallbackTimezone);
+}
+
+/** Compute the start/end range for an event occurrence falling on `occurrenceDate`, preserving local wall-clock time across DST. */
+export function occurrenceRangeForDate(
+  ev: Pick<RecurringEventLike, "start" | "end" | "allDay" | "timezone">,
+  occurrenceDate: string,
+  fallbackTimezone = "UTC",
+): { start: string; end: string } {
+  dateOnlySchema.parse(occurrenceDate);
+  const tz = ev.timezone || fallbackTimezone;
+  const anchor = eventAnchorDate(ev, tz);
+  if (occurrenceDate === anchor) return { start: ev.start, end: ev.end };
+  if (ev.allDay) {
+    const spanDays = Math.max(1, Temporal.PlainDate.from(ev.start).until(Temporal.PlainDate.from(ev.end)).days);
+    return {
+      start: occurrenceDate,
+      end: Temporal.PlainDate.from(occurrenceDate).add({ days: spanDays }).toString(),
+    };
+  }
+  const durationMs = Math.max(60_000, Date.parse(ev.end) - Date.parse(ev.start));
+  const from = Temporal.Instant.from(new Date(ev.start).toISOString()).toZonedDateTimeISO(tz);
+  const start = new Date(
+    Temporal.PlainDate.from(occurrenceDate)
+      .toZonedDateTime({ timeZone: tz, plainTime: from.toPlainTime() })
+      .epochMilliseconds,
+  ).toISOString();
+  const end = new Date(Date.parse(start) + durationMs).toISOString();
+  return { start, end };
+}
+
+/**
+ * Expand an event into its visible occurrences within `[rangeStart, rangeEnd]` (inclusive).
+ * Non-recurring events return their single occurrence; recurring events return their anchor
+ * occurrence (if in range and not excluded) plus projected dates via `projectRecurringDates`.
+ */
+export function expandEventOccurrences<E extends RecurringEventLike>(
+  ev: E,
+  rangeStart: string,
+  rangeEnd: string,
+  fallbackTimezone = "UTC",
+  maxCount = 60,
+): EventOccurrence<E>[] {
+  if (!ev.start || !ev.end) return [];
+  const tz = ev.timezone || fallbackTimezone;
+  const anchor = eventAnchorDate(ev, tz);
+  if (!ev.recurrenceRule) {
+    return [{
+      event: ev,
+      occurrenceDate: anchor,
+      start: ev.start,
+      end: ev.end,
+      recurring: false,
+      virtual: false,
+    }];
+  }
+  const exceptions = new Set(ev.recurrenceExceptions ?? []);
+  const dates: string[] = [];
+  const anchorInRange = ev.allDay
+    ? anchor <= rangeEnd && ev.end > rangeStart
+    : anchor >= rangeStart && anchor <= rangeEnd;
+  if (anchorInRange && !exceptions.has(anchor)) {
+    dates.push(anchor);
+  }
+  for (const d of projectRecurringDates(ev.recurrenceRule, anchor, rangeStart, rangeEnd, maxCount)) {
+    if (!exceptions.has(d)) dates.push(d);
+  }
+  return dates.map((d) => {
+    const { start, end } = occurrenceRangeForDate(ev, d, tz);
+    return {
+      event: ev,
+      occurrenceDate: d,
+      start,
+      end,
+      recurring: true,
+      virtual: d !== anchor,
+    };
+  });
+}
+
+/**
+ * When editing a recurring series' time/date from a later occurrence, shift the series anchor
+ * by the delta between that occurrence's original range and its new range.
+ */
+export function shiftEventSeriesRange(
+  series: Pick<RecurringEventLike, "start" | "end" | "allDay" | "timezone">,
+  occurrenceDate: string,
+  next: { start: string; end: string; allDay: boolean; timezone: string },
+): { start: string; end: string } {
+  const tz = next.timezone || series.timezone || "UTC";
+  const anchor = eventAnchorDate(series, tz);
+  if (!occurrenceDate || occurrenceDate === anchor || series.allDay !== next.allDay) {
+    return { start: next.start, end: next.end };
+  }
+  const orig = occurrenceRangeForDate(series, occurrenceDate, tz);
+  if (next.allDay) {
+    const shiftDays = Temporal.PlainDate.from(orig.start).until(Temporal.PlainDate.from(next.start)).days;
+    const spanDays = Math.max(1, Temporal.PlainDate.from(next.start).until(Temporal.PlainDate.from(next.end)).days);
+    const start = Temporal.PlainDate.from(series.start).add({ days: shiftDays }).toString();
+    const end = Temporal.PlainDate.from(start).add({ days: spanDays }).toString();
+    return { start, end };
+  }
+  const origZdt = Temporal.Instant.from(new Date(orig.start).toISOString()).toZonedDateTimeISO(tz);
+  const nextZdt = Temporal.Instant.from(new Date(next.start).toISOString()).toZonedDateTimeISO(tz);
+  const shiftDays = origZdt.toPlainDate().until(nextZdt.toPlainDate()).days;
+  const durationMs = Math.max(60_000, Date.parse(next.end) - Date.parse(next.start));
+  const start = new Date(
+    Temporal.PlainDate.from(anchor)
+      .add({ days: shiftDays })
+      .toZonedDateTime({ timeZone: tz, plainTime: nextZdt.toPlainTime() })
+      .epochMilliseconds,
+  ).toISOString();
+  const end = new Date(Date.parse(start) + durationMs).toISOString();
+  return { start, end };
 }

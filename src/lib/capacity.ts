@@ -1,7 +1,7 @@
 import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
 import type { Event, Task } from "./db/schema";
-import { jsWeekday } from "./recurrence";
+import { expandEventOccurrences, jsWeekday } from "./recurrence";
 
 const hhmmRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -167,11 +167,13 @@ export function computeDayCapacity(params: {
     const clipped: Array<[number, number]> = [];
     for (const ev of events) {
       if (ev.deletedAt || ev.archivedAt || ev.allDay || !ev.start || !ev.end) continue;
-      const evStart = Date.parse(ev.start);
-      const evEnd = Date.parse(ev.end);
-      if (Number.isNaN(evStart) || Number.isNaN(evEnd)) continue;
-      if (evEnd <= winStart || evStart >= winEnd) continue;
-      clipped.push([Math.max(evStart, winStart), Math.min(evEnd, winEnd)]);
+      for (const occ of expandEventOccurrences(ev, date, date, timezone, 2)) {
+        const evStart = Date.parse(occ.start);
+        const evEnd = Date.parse(occ.end);
+        if (Number.isNaN(evStart) || Number.isNaN(evEnd)) continue;
+        if (evEnd <= winStart || evStart >= winEnd) continue;
+        clipped.push([Math.max(evStart, winStart), Math.min(evEnd, winEnd)]);
+      }
     }
     const merged = mergeIntervals(clipped);
     eventMinutes = merged.reduce((sum, [s, e]) => sum + Math.round((e - s) / 60_000), 0);

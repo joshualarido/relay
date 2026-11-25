@@ -29,6 +29,19 @@ export function previewDeletion(
   if (entityType === "event") {
     const e = db.select().from(event).where(and(eq(event.id, id), eq(event.ownerId, ownerId), isNull(event.deletedAt))).get();
     if (!e) throw new AppError(404, "Event not found.");
+    if (e.recurrenceRule && e.recurrenceSeriesId) {
+      const overrides = db.select().from(event).where(
+        and(eq(event.ownerId, ownerId), eq(event.recurrenceSeriesId, e.recurrenceSeriesId), isNull(event.deletedAt)),
+      ).all().filter((o) => o.id !== e.id).sort((a, b) => a.id.localeCompare(b.id));
+      return {
+        entityType,
+        id,
+        records: [
+          { entityType, id, revision: e.revision, label: e.title },
+          ...overrides.map((o) => ({ entityType: "event" as const, id: o.id, revision: o.revision, label: o.title })),
+        ],
+      };
+    }
     return { entityType, id, records: [{ entityType, id, revision: e.revision, label: e.title }] };
   }
   let records: DeletionPreview["records"];

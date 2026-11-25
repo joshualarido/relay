@@ -2,7 +2,9 @@ import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import * as events from "../../src/lib/events";
 import { createProject, archiveProject } from "../../src/lib/projects";
 import { createTask } from "../../src/lib/tasks";
-import { previewDeletion, confirmDeletion } from "../../src/lib/lifecycle";
+import { previewDeletion, confirmDeletion, undoOperation } from "../../src/lib/lifecycle";
+import { activity } from "../../src/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { testWorkspace } from "../support/auth";
 
 describe("manual events and calendar", () => {
@@ -70,5 +72,54 @@ describe("manual events and calendar", () => {
     try { expect(() => create({ title: "Roll back event" })).toThrow(/injected/); }
     finally { w.db.$client.exec("DROP TRIGGER fail_event_audit"); }
     expect(events.listEvents(w.db, w.alice.id).some((e) => e.title === "Roll back event")).toBe(false);
+  });
+
+  it("supports recurring events with single-occurrence edit/delete, series delete, and atomic undo", () => {
+    const series = create({
+      title: "Daily standup",
+      allDay: false,
+      start: "2027-02-10T09:00:00Z",
+      end: "2027-02-10T09:30:00Z",
+      timezone: "UTC",
+      recurrenceRule: { frequency: "daily", interval: 1, endDate: "2027-02-15" },
+    });
+    expect(series.recurrenceRule).toEqual({ frequency: "daily", interval: 1, endDate: "2027-02-15" });
+    expect(series.recurrenceSeriesId).toBeTruthy();
+
+    // Edit just the 2027-02-12 occurrence -> detaches an override and excludes 2027-02-12 from the master
+    const editedSingle = events.editEventOccurrence(w.db, w.alice.id, series.id, series.revision, {
+      occurrenceDate: "2027-02-12",
+      title: "Standup (retro)",
+      mutationId: crypto.randomUUID(),
+    });
+    expect(editedSingle.series.recurrenceExceptions).toEqual(["2027-02-12"]);
+    expect(editedSingle.event).toMatchObject({
+      title: "Standup (retro)",
+      start: "2027-02-12T09:00:00.000Z",
+      end: "2027-02-12T09:30:00.000Z",
+      recurrenceRule: null,
+      recurrenceSeriesId: series.recurrenceSeriesId,
+      recurrenceOccurrenceDate: "2027-02-12",
+    });
+
+    // Delete just the 2027-02-13 occurrence -> adds exception without deleting the series
+    const deletedSingle = events.deleteEventOccurrence(w.db, w.alice.id, series.id, editedSingle.series.revision, {
+      occurrenceDate: "2027-02-13",
+      mutationId: crypto.randomUUID(),
+    });
+    expect(deletedSingle.recurrenceExceptions).toEqual(["2027-02-12", "2027-02-13"]);
+
+    // Undo single-occurrence delete restores 2027-02-13
+    const ops = w.db.select().from(activity).where(eq(activity.entityId, series.id)).all();
+    const delOccOp = ops.find((a) => a.action === "delete-occurrence")!;
+    undoOperation(w.db, w.alice.id, delOccOp.id, { mutationId: crypto.randomUUID() });
+    expect(events.getEvent(w.db, w.alice.id, series.id).recurrenceExceptions).toEqual(["2027-02-12"]);
+
+    // Deleting the whole series includes both the master and detached overrides
+    const preview = previewDeletion(w.db, w.alice.id, "event", series.id);
+    expect(preview.records.map((r) => r.id)).toEqual(expect.arrayContaining([series.id, editedSingle.event.id]));
+    confirmDeletion(w.db, w.alice.id, { ...preview, mutationId: crypto.randomUUID() });
+    expect(() => events.getEvent(w.db, w.alice.id, series.id)).toThrow(/not found/i);
+    expect(() => events.getEvent(w.db, w.alice.id, editedSingle.event.id)).toThrow(/not found/i);
   });
 });

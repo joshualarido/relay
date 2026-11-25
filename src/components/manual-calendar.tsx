@@ -31,7 +31,7 @@ import {
   type WeeklyWorkingHours,
 } from "@/lib/capacity";
 import { dateInTimezone } from "@/lib/dates";
-import { projectRecurringDates } from "@/lib/recurrence";
+import { expandEventOccurrences, projectRecurringDates } from "@/lib/recurrence";
 import { isShortcutBlocked } from "@/lib/screens";
 import {
   addMinutesInstant,
@@ -44,6 +44,7 @@ import {
 } from "@/lib/calendar-schedule";
 import { CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Flag, Repeat, SlidersHorizontal } from "lucide-react";
 import { Button } from "./ui/button";
+import { useRecurrenceScopeDialog } from "./confirm-dialog";
 import { notifyMutation } from "./mutation-notice";
 import { SchedulePanel, type ScheduleItem } from "./schedule-panel";
 import { useWorkspace } from "./workspace-store";
@@ -170,10 +171,17 @@ export function ManualCalendar({
       synced.serverEvents !== serverEvents)
   ) {
     setSynced({ serverProjects, serverTasks, serverEvents });
-    setProjects(serverProjects);
-    setTasks(serverTasks);
-    setEvents(serverEvents);
+    setProjectsState(serverProjects);
+    setTasksState(serverTasks);
+    setEventsState(serverEvents);
   }
+
+  useEffect(() => {
+    if (busyCount !== 0) return;
+    workspace?.setProjects(serverProjects);
+    workspace?.setTasks(serverTasks);
+    workspace?.setEvents(serverEvents);
+  }, [busyCount, serverProjects, serverTasks, serverEvents, workspace]);
 
   const enqueueRecord = useCallback(<R,>(key: string, job: () => Promise<R>): Promise<R> => {
     const prev = recordQueues.current.get(key) ?? Promise.resolve();
@@ -189,9 +197,11 @@ export function ManualCalendar({
   const paramView = VIEW_PARAM_MAP[(params.get("view") ?? "").toLowerCase()];
   const [view, setView] = useState<ViewName>(paramView ?? "Week");
   const [activeDate, setActiveDate] = useState(date);
+  const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
   const [title, setTitle] = useState("");
   const [enabled, setEnabled] = useState<Record<Kind, boolean>>({ project: true, task: true, event: true });
   const [error, setError] = useState("");
+  const { askScope, scopeDialog } = useRecurrenceScopeDialog();
 
   // Schedule mode state
   const urlSchedule = params.get("schedule") === "1";
@@ -321,8 +331,8 @@ export function ManualCalendar({
   }, []);
 
   const records = useMemo(() => {
-    const rangeStart = Temporal.PlainDate.from(activeDate).subtract({ days: 7 }).toString();
-    const rangeEnd = Temporal.PlainDate.from(activeDate).add({ days: 45 }).toString();
+    const rangeStart = visibleRange?.start ?? Temporal.PlainDate.from(activeDate).subtract({ days: 40 }).toString();
+    const rangeEnd = visibleRange?.end ?? Temporal.PlainDate.from(activeDate).add({ days: 45 }).toString();
 
     const projectRecords = projects
       .filter((p) => Boolean(p.deadline || p.deadlineAt))
@@ -336,12 +346,14 @@ export function ManualCalendar({
         end: p.deadlineAt ? addMinutesInstant(p.deadlineAt, 30) : undefined,
         allDay: !p.deadlineAt,
         date: p.deadline ?? dateInTimezone(p.deadlineAt!, timezone),
+        occurrenceDate: null as string | null,
         open: false,
         revision: p.revision,
         done: p.status === "Done",
         taskType: undefined as Task["taskType"] | undefined,
         recurring: false,
         virtual: false,
+        virtualOccurrence: false,
         order: 0,
         minutes: 0,
       }));
@@ -358,12 +370,14 @@ export function ManualCalendar({
         end: undefined,
         allDay: true,
         date: t.executionDate!,
+        occurrenceDate: null as string | null,
         open: t.status !== "Done",
         revision: t.revision,
         done: t.status === "Done",
         taskType: t.taskType,
         recurring: Boolean(t.recurrenceRule),
         virtual: false,
+        virtualOccurrence: false,
         order: t.dayOrder,
         minutes: taskMinutes(t, taskTypeMinutes),
       }));
@@ -381,12 +395,14 @@ export function ManualCalendar({
         end: undefined,
         allDay: true,
         date: d,
+        occurrenceDate: null as string | null,
         open: false,
         revision: t.revision,
         done: false,
         taskType: t.taskType,
         recurring: true,
         virtual: true,
+        virtualOccurrence: true,
         order: 100_000,
         minutes: taskMinutes(t, taskTypeMinutes),
       }));
@@ -394,36 +410,42 @@ export function ManualCalendar({
 
     const eventRecords = events
       .filter((e) => !e.taskId && Boolean(e.start && e.end))
-      .map((e) => ({
-        kind: "event" as const,
-        display: "event" as Kind,
-        linkId: e.id,
-        id: e.id,
-        title: e.title,
-        start: e.start,
-        end: e.end,
-        allDay: e.allDay,
-        date: e.allDay ? e.start : dateInTimezone(e.start, timezone),
-        open: false,
-        revision: e.revision,
-        done: false,
-        taskType: undefined as Task["taskType"] | undefined,
-        recurring: false,
-        virtual: false,
-        order: 0,
-        minutes: 0,
-      }));
+      .flatMap((e) =>
+        expandEventOccurrences(e, rangeStart, rangeEnd, timezone, 60).map((occ) => ({
+          kind: "event" as const,
+          display: "event" as Kind,
+          linkId: e.id,
+          id: occ.virtual ? `${e.id}::occ::${occ.occurrenceDate}` : e.id,
+          title: e.title,
+          start: occ.start,
+          end: occ.end,
+          allDay: e.allDay,
+          date: occ.occurrenceDate,
+          occurrenceDate: occ.recurring ? occ.occurrenceDate : null,
+          open: false,
+          revision: e.revision,
+          done: false,
+          taskType: undefined as Task["taskType"] | undefined,
+          recurring: occ.recurring,
+          virtual: false,
+          virtualOccurrence: occ.virtual,
+          order: 0,
+          minutes: 0,
+        })),
+      );
 
     return [...projectRecords, ...realTaskRecords, ...virtualTaskRecords, ...eventRecords];
-  }, [projects, tasks, events, activeDate, taskTypeMinutes, timezone]);
+  }, [projects, tasks, events, activeDate, visibleRange, taskTypeMinutes, timezone]);
 
-  function href(kind: Kind, id: string) {
+  function href(kind: Kind, id: string, occurrenceDate?: string | null) {
     if (kind === "project") return projectHref(id);
     const query = new URLSearchParams(params);
     query.delete("task");
     query.delete("event");
+    query.delete("occurrence");
     query.delete("schedule");
     query.set(kind === "event" ? "event" : "task", id);
+    if (kind === "event" && occurrenceDate) query.set("occurrence", occurrenceDate);
     return `/calendar?${query}`;
   }
 
@@ -492,6 +514,21 @@ export function ManualCalendar({
           return;
         }
 
+        let recurringEventScope: "single" | "series" | undefined;
+        if (kind === "event") {
+          const ev = latestRef.current.events.find((e) => e.id === id);
+          if (ev?.recurrenceRule) {
+            const choice = await askScope({
+              title: "Move recurring event",
+              description: "Move only this occurrence or the whole series?",
+              singleLabel: "This occurrence",
+              seriesLabel: "Whole series",
+            });
+            if (!choice) return;
+            recurringEventScope = choice;
+          }
+        }
+
         await enqueueRecord(`${kind}:${id}`, async () => {
           let endpoint: string;
           let input: Record<string, unknown>;
@@ -501,13 +538,21 @@ export function ManualCalendar({
             if (!ev) return;
             record = ev;
             const shift = Temporal.PlainDate.from(drop.fromDate).until(Temporal.PlainDate.from(toDate)).days;
-            const start = ev.allDay ? toDate : moveInstantToDate(ev.start, toDate, timezone);
+            const start = ev.allDay ? toDate : moveInstantToDate(ev.start, toDate, ev.timezone || timezone);
             const end = ev.allDay
               ? Temporal.PlainDate.from(ev.end).add({ days: shift }).toString()
               : new Date(Date.parse(start) + (Date.parse(ev.end) - Date.parse(ev.start))).toISOString();
-            commit({ events: put(latestRef.current.events, { ...ev, start, end }) });
+            if (!recurringEventScope) {
+              commit({ events: put(latestRef.current.events, { ...ev, start, end }) });
+            }
             endpoint = `/api/events/${id}`;
-            input = { reschedule: true, start };
+            input = {
+              reschedule: true,
+              start,
+              ...(recurringEventScope
+                ? { scope: recurringEventScope, occurrenceDate: drop.occurrenceDate ?? drop.fromDate }
+                : {}),
+            };
           } else {
             const p = latestRef.current.projects.find((x) => x.id === id);
             if (!p) return;
@@ -525,8 +570,19 @@ export function ManualCalendar({
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "Could not save schedule.");
-          if (kind === "event") commit({ events: put(latestRef.current.events, result as Event) });
-          else commit({ projects: put(latestRef.current.projects, result as Project) });
+          if (kind === "event") {
+            if (recurringEventScope === "single") {
+              const { event: detached, series } = result as { event: Event; series: Event };
+              commit({
+                events: [
+                  ...put(latestRef.current.events, series),
+                  detached,
+                ],
+              });
+            } else {
+              commit({ events: put(latestRef.current.events, result as Event) });
+            }
+          } else commit({ projects: put(latestRef.current.projects, result as Project) });
           notifyMutation(response, () => router.refresh(), { message: `${labels[kind]} moved.` });
           router.refresh();
         });
@@ -537,7 +593,7 @@ export function ManualCalendar({
         setBusyCount((c) => Math.max(0, c - 1));
       }
     },
-    [enqueueRecord, router, setEvents, setProjects, setTasks, timezone],
+    [askScope, enqueueRecord, router, setEvents, setProjects, setTasks, timezone],
   );
 
   // Toss a calendar card onto the unschedule drop zone: clear its date via the existing clear-schedule path.
@@ -545,6 +601,21 @@ export function ManualCalendar({
     async (card: CardUnschedule) => {
       const { kind, id } = card;
       setError("");
+      let recurringEventScope: "single" | "series" | undefined;
+      if (kind === "event") {
+        const ev = latestRef.current.events.find((e) => e.id === id);
+        if (ev?.recurrenceRule) {
+          const choice = await askScope({
+            title: "Remove recurring event",
+            description: "Remove only this occurrence or unschedule the whole series?",
+            singleLabel: "This occurrence",
+            seriesLabel: "Whole series",
+            destructive: true,
+          });
+          if (!choice) return;
+          recurringEventScope = choice;
+        }
+      }
       const before = latestRef.current;
       const put = <T extends { id: string }>(list: T[], next: T) => list.map((r) => (r.id === next.id ? next : r));
       const commit = (next: Partial<typeof before>) => {
@@ -578,10 +649,19 @@ export function ManualCalendar({
             const ev = latestRef.current.events.find((e) => e.id === id);
             if (!ev) return;
             revision = ev.revision;
-            input = { start: "", end: "" };
             endpoint = `/api/events/${id}`;
-            message = "Event unscheduled.";
-            commit({ events: put(latestRef.current.events, { ...ev, start: "", end: "" }) });
+            if (recurringEventScope === "single") {
+              input = {
+                scope: "single",
+                deleteOccurrence: true,
+                occurrenceDate: card.occurrenceDate ?? card.fromDate,
+              };
+              message = "Occurrence removed.";
+            } else {
+              input = { start: "", end: "" };
+              message = recurringEventScope === "series" ? "Event series unscheduled." : "Event unscheduled.";
+              commit({ events: put(latestRef.current.events, { ...ev, start: "", end: "" }) });
+            }
           } else {
             const p = latestRef.current.projects.find((x) => x.id === id);
             if (!p) return;
@@ -612,7 +692,7 @@ export function ManualCalendar({
         setBusyCount((c) => Math.max(0, c - 1));
       }
     },
-    [enqueueRecord, router, setEvents, setProjects, setTasks],
+    [askScope, enqueueRecord, router, setEvents, setProjects, setTasks],
   );
 
   // Event-only edge resize
@@ -1257,6 +1337,7 @@ export function ManualCalendar({
         }}
         onPointerDownCapture={cardDrag.onPointerDown}
         onMouseDownCapture={cardDrag.onMouseDownCapture}
+        onTouchStartCapture={cardDrag.onTouchStartCapture}
         onClickCapture={cardDrag.onClickCapture}
         onClick={handleFrameClick}
         onKeyDown={onCardKeyDown}
@@ -1269,7 +1350,12 @@ export function ManualCalendar({
           timeZone={timezone}
           firstDay={weekStart}
           headerToolbar={false}
-          datesSet={(info) => setTitle(info.view.title)}
+          datesSet={(info) => {
+            setTitle(info.view.title);
+            const nextStart = dateInTimezone(info.start.toISOString(), timezone);
+            const nextEnd = dateInTimezone(info.end.toISOString(), timezone);
+            setVisibleRange((prev) => (prev?.start === nextStart && prev?.end === nextEnd ? prev : { start: nextStart, end: nextEnd }));
+          }}
           height="auto"
           navLinks={true}
           navLinkDayClick={(dayDate) => {
@@ -1303,7 +1389,7 @@ export function ManualCalendar({
               end: r.end,
               allDay: r.allDay,
               editable: !r.virtual,
-              durationEditable: r.kind === "event",
+              durationEditable: r.kind === "event" && !r.virtualOccurrence,
               color: "transparent",
               contrastColor: "var(--foreground)",
               extendedProps: {
@@ -1315,6 +1401,7 @@ export function ManualCalendar({
                 done: r.done,
                 recurring: r.recurring,
                 virtual: r.virtual,
+                occurrenceDate: r.occurrenceDate,
                 // Deadlines, then all-day events, then tasks in their day queue order.
                 minutes: r.minutes,
                 date: r.date,
@@ -1367,16 +1454,19 @@ export function ManualCalendar({
             const taskType = info.event.extendedProps.taskType as Task["taskType"] | undefined;
             const recurring = Boolean(info.event.extendedProps.recurring);
             const virtual = Boolean(info.event.extendedProps.virtual);
+            const occurrenceDate = (info.event.extendedProps.occurrenceDate as string | null) ?? null;
             const recordColor = taskType ? taskTypeColors[taskType] : colors[kind];
             const Icon = icons[kind];
             return (
               <Link
-                href={href(kind, id)}
+                href={href(kind, id, occurrenceDate)}
                 scroll={false}
                 draggable={false}
                 className={`calendar-record${virtual ? " is-virtual" : ""}`}
                 data-calendar-record={`${kind}:${id}`}
                 data-date={info.event.extendedProps.date as string}
+                data-occurrence-date={occurrenceDate ?? undefined}
+                data-recurring={recurring ? "true" : undefined}
                 data-open={info.event.extendedProps.open ? "true" : "false"}
                 data-drag={virtual ? "false" : "true"}
                 data-task-link={kind === "task" ? id : undefined}
@@ -1467,6 +1557,7 @@ export function ManualCalendar({
       </AnimatePresence>
 
       {cardDrag.ghostNode}
+      {scopeDialog}
 
       {dragGhost && (
         <div

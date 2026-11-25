@@ -52,5 +52,17 @@ export function normalizeSnapshot(s: Snapshot): Snapshot {
       },
     };
   }
+  if (s.entityType === "event") {
+    return {
+      ...s,
+      record: {
+        ...s.record,
+        recurrenceRule: s.record.recurrenceRule ?? null,
+        recurrenceSeriesId: s.record.recurrenceSeriesId ?? null,
+        recurrenceExceptions: s.record.recurrenceExceptions ?? null,
+        recurrenceOccurrenceDate: s.record.recurrenceOccurrenceDate ?? null,
+      },
+    };
+  }
   return s;
 }

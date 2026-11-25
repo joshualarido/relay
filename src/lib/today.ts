@@ -13,10 +13,14 @@ import { dateInTimezone } from "./dates";
 import { listEvents } from "./events";
 import { getPreferences, listWorkingHoursOverrides } from "./preferences";
 import { listProjects } from "./projects";
+import { expandEventOccurrences } from "./recurrence";
 import { listTasks } from "./tasks";
 
 export type TodayItem = {
   id: string;
+  eventId?: string;
+  occurrenceDate?: string;
+  recurring?: boolean;
   kind: "event" | "task-block" | "project-deadline";
   title: string;
   start: string;
@@ -115,26 +119,30 @@ export function todayTimeline(
     taskTypeMinutes: prefs.taskTypeMinutes,
   });
 
-  // 1. Events occurring today (excluding legacy task-linked time blocks)
+  // 1. Events occurring today (excluding legacy task-linked time blocks, expanding recurring series)
   const eventItems: TodayItem[] = allEvents
-    .filter(
-      (e) =>
-        !e.taskId &&
-        Boolean(e.start && e.end) &&
-        (e.allDay
-          ? e.start <= today && e.end > today
-          : Date.parse(e.start) < dayEnd && Date.parse(e.end) > dayStart),
+    .filter((e) => !e.taskId && Boolean(e.start && e.end))
+    .flatMap((e) => expandEventOccurrences(e, today, today, timezone, 2))
+    .filter((occ) =>
+      occ.event.allDay
+        ? occ.start <= today && occ.end > today
+        : Date.parse(occ.start) < dayEnd && Date.parse(occ.end) > dayStart,
     )
-    .map((e) => ({
-      id: e.id,
-      kind: "event" as const,
-      title: e.title,
-      start: e.start,
-      end: e.end,
-      allDay: e.allDay,
-      done: !e.allDay && Date.parse(e.end) <= nowMs,
-      ...(e.projectId && projectNames.has(e.projectId) && { projectName: projectNames.get(e.projectId) }),
-    }));
+    .map((occ) => {
+      const e = occ.event;
+      return {
+        id: occ.virtual ? `${e.id}::${occ.occurrenceDate}` : e.id,
+        eventId: e.id,
+        ...(occ.recurring ? { occurrenceDate: occ.occurrenceDate, recurring: true } : {}),
+        kind: "event" as const,
+        title: e.title,
+        start: occ.start,
+        end: occ.end,
+        allDay: e.allDay,
+        done: !e.allDay && Date.parse(occ.end) <= nowMs,
+        ...(e.projectId && projectNames.has(e.projectId) && { projectName: projectNames.get(e.projectId) }),
+      };
+    });
 
   // 2. Project deadlines falling on today (both date-only and timed)
   const deadlineItems: TodayItem[] = allProjects
@@ -193,7 +201,7 @@ export function todayTimeline(
         href:
           upcomingTimed.kind === "project-deadline" && upcomingTimed.projectId
             ? `/projects/${upcomingTimed.projectId}`
-            : `/?event=${upcomingTimed.id}`,
+            : `/?event=${upcomingTimed.eventId ?? upcomingTimed.id}${upcomingTimed.occurrenceDate ? `&occurrence=${upcomingTimed.occurrenceDate}` : ""}`,
       }
     : null;
 
