@@ -520,7 +520,7 @@ describe("Relay Phase 5 — shared services and MCP layer", () => {
 
       // Working hours for one day: override, then reset.
       expect(aliceHandlers.set_working_hours({ date: day, start: "10:00", end: "14:00" })).toMatchObject({ enabled: true, start: "10:00", end: "14:00" });
-      let plan = aliceHandlers.get_day_plans({ startDate: day, endDate: day, timezone: "Asia/Jakarta", now }).days[0]!;
+      const plan = aliceHandlers.get_day_plans({ startDate: day, endDate: day, timezone: "Asia/Jakarta", now }).days[0]!;
       expect(plan.window).toMatchObject({ start: "10:00", end: "14:00", isOverride: true });
       expect(plan.usableMinutes).toBe(240);
       expect(plan.queue.map((t) => t.title)).toEqual(["Q first", "Q second", "Q daily"]);
