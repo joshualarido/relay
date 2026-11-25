@@ -230,7 +230,9 @@ progress::-moz-progress-bar { background: var(--primary); }
 
 .dialog-overlay { position: fixed; inset: 0; background: var(--overlay); z-index: var(--z-overlay); animation: fade-in 150ms ease-out; }
 .dialog-overlay[data-state=closed] { animation: fade-out 130ms ease-in forwards; }
+.confirm-overlay { z-index: calc(var(--z-dialog) + 5); }
 .form-dialog { position: fixed; inset: 16px; margin: auto; width: min(560px, calc(100vw - 32px)); height: fit-content; max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; box-shadow: var(--shadow-float); z-index: var(--z-dialog); animation: pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.confirm-dialog { z-index: calc(var(--z-dialog) + 6); }
 .form-dialog[data-state=closed] { animation: pop-out 130ms ease-in forwards; }
 .form-dialog > h2:first-child, .form-dialog h2 { font-size: 1.0625rem; }
 .capture-dialog > h2 { margin-bottom: 16px; }

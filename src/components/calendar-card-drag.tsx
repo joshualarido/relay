@@ -322,12 +322,16 @@ export function useCalendarCardDrag({
             // Haptics are optional and unavailable in some browsers.
           }
         }
+        const ghostWidth = Math.min(window.innerWidth - 32, Math.max(isTouch ? 160 : 0, Math.min(320, r.width)));
+        const ghostX = isTouch
+          ? Math.max(16, Math.min(window.innerWidth - ghostWidth - 16, clientX - ghostWidth / 2))
+          : clientX - grab.x;
         setGhost({
           title: card.querySelector(".calendar-record-title")?.textContent ?? "",
           tag: card.querySelector(".calendar-record-tag")?.textContent ?? "",
           color: card.style.getPropertyValue("--record-color"),
-          width: Math.min(320, r.width),
-          x: clientX - grab.x,
+          width: ghostWidth,
+          x: ghostX,
           y: clientY - grab.y - liftY,
           landing: false,
           unscheduling: false,
@@ -350,7 +354,13 @@ export function useCalendarCardDrag({
           if (!src) return;
         }
         const nextUnschedule = isOverUnscheduleZone(ev.clientX, ev.clientY);
-        setGhost((g) => (g ? { ...g, x: ev.clientX - grab.x, y: ev.clientY - grab.y - liftY, unscheduling: nextUnschedule } : g));
+        setGhost((g) => {
+          if (!g) return g;
+          const x = isTouch
+            ? Math.max(16, Math.min(window.innerWidth - g.width - 16, ev.clientX - g.width / 2))
+            : ev.clientX - grab.x;
+          return { ...g, x, y: ev.clientY - grab.y - liftY, unscheduling: nextUnschedule };
+        });
         if (nextUnschedule) {
           if (!overUnschedule) {
             overUnschedule = true;

@@ -31,7 +31,7 @@ export function useRecurrenceScopeDialog() {
     return new Promise<RecurrenceScopeChoice>((done) => { resolve.current = done; });
   }
   const scopeDialog = <AlertDialog.Root open={Boolean(content)} onOpenChange={(open) => { if (!open) finish(null); }}>
-    <AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay" /><AlertDialog.Content className="form-dialog"
+    <AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay confirm-overlay" /><AlertDialog.Content className="form-dialog confirm-dialog"
       onCloseAutoFocus={(e) => { e.preventDefault(); trigger.current?.focus(); }}>
       <AlertDialog.Title className="text-xl font-semibold">{content?.title}</AlertDialog.Title>
       <AlertDialog.Description className="muted mt-3">{content?.description}</AlertDialog.Description>
@@ -64,7 +64,7 @@ export function useConfirmation() {
     return new Promise<boolean>((done) => { resolve.current = done; });
   }
   const confirmation = <AlertDialog.Root open={Boolean(content)} onOpenChange={(open) => { if (!open) finish(false); }}>
-    <AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay" /><AlertDialog.Content className="form-dialog"
+    <AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay confirm-overlay" /><AlertDialog.Content className="form-dialog confirm-dialog"
       onCloseAutoFocus={(e) => { e.preventDefault(); trigger.current?.focus(); }}>
       <AlertDialog.Title className="text-xl font-semibold">{content?.title}</AlertDialog.Title>
       <AlertDialog.Description className="muted mt-3">{content?.description}</AlertDialog.Description>
