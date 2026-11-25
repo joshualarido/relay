@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { testWorkspace } from "../support/auth";
 import { activity } from "../../src/lib/db/schema";
 import { createProject, listProjects, reorderProjects } from "../../src/lib/projects";
-import { createTask, listTasks, reorderTasks } from "../../src/lib/tasks";
+import { archiveTask, createTask, getTask, listTasks, reorderTasks, skipTaskOccurrence } from "../../src/lib/tasks";
 import { undoOperation } from "../../src/lib/lifecycle";
 import { planProjectMove, planTaskMove, summarize, tasksByProject } from "../../src/lib/project-board";
 
@@ -73,5 +73,35 @@ describe("projects split view: plans against the reorder services", () => {
     reorderTasks(w.db, w.alice.id, { id: a.id, projectId: p.id, status: "Done", orderedIds: fresh.orderedIds, expectedRevisions: fresh.expectedRevisions, ...m() });
     expect(() => reorderTasks(w.db, w.alice.id, { id: a.id, projectId: p.id, status: "Done", orderedIds: stale.orderedIds, expectedRevisions: stale.expectedRevisions, ...m() }))
       .toThrow(/changed/);
+  });
+
+  it("reopens a Done task into a column that contains archived tasks without 409 conflict", () => {
+    const archived = createTask(w.db, w.alice.id, { title: "Archived loose", projectId: null, status: "To do", ...m() });
+    archiveTask(w.db, w.alice.id, archived.id, archived.revision, { archived: true, ...m() });
+    createTask(w.db, w.alice.id, { title: "Live loose", projectId: null, status: "To do", ...m() });
+    const done = createTask(w.db, w.alice.id, { title: "Done loose", projectId: null, status: "Done", ...m() });
+
+    const plan = planTaskMove(listTasks(w.db, w.alice.id), done.id, { projectId: null, status: "To do" })!;
+    const reopened = reorderTasks(w.db, w.alice.id, {
+      id: done.id, projectId: null, status: "To do", orderedIds: plan.orderedIds, expectedRevisions: plan.expectedRevisions, ...m(),
+    });
+    expect(reopened.find((t) => t.id === done.id)?.status).toBe("To do");
+  });
+
+  it("skips a single occurrence of a recurring task by advancing executionDate, archiving past endDate", () => {
+    const rec = createTask(w.db, w.alice.id, {
+      title: "Daily review",
+      executionDate: "2027-02-10",
+      recurrenceRule: { frequency: "daily", interval: 1, endDate: "2027-02-12" },
+      ...m(),
+    });
+    const skipped = skipTaskOccurrence(w.db, w.alice.id, rec.id, rec.revision, m());
+    expect(skipped.executionDate).toBe("2027-02-11");
+    expect(skipped.archivedAt).toBeNull();
+    const skipped2 = skipTaskOccurrence(w.db, w.alice.id, rec.id, skipped.revision, m());
+    expect(skipped2.executionDate).toBe("2027-02-12");
+    const finished = skipTaskOccurrence(w.db, w.alice.id, rec.id, skipped2.revision, m());
+    expect(finished.archivedAt).not.toBeNull();
+    expect(getTask(w.db, w.alice.id, rec.id).archivedAt).not.toBeNull();
   });
 });

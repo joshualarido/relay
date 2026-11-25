@@ -18,6 +18,7 @@ import { InlineText } from "./projects/inline-text";
 import { DEFAULT_TASK_TYPE_MINUTES } from "@/lib/capacity";
 import { DurationField } from "./duration-field";
 import { RecurrencePicker } from "./recurrence-picker";
+import { useRecurrenceScopeDialog } from "./confirm-dialog";
 import { useWorkspace } from "./workspace-store";
 
 function relativeTime(iso: string): string {
@@ -37,7 +38,9 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
   const [localTask, setLocalTask] = useState(task);
   const [open, setOpen] = useState(true);
   const [pending, setPending] = useState(false);
+  const [prompting, setPrompting] = useState(false);
   const [error, setError] = useState("");
+  const { askScope, scopeDialog } = useRecurrenceScopeDialog();
 
   const current = localTask;
 
@@ -78,6 +81,49 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
 
   async function archive() {
     if (!current) return;
+    if (current.recurrenceRule) {
+      setPrompting(true);
+      const choice = await askScope({
+        title: "Archive recurring task",
+        description: "Skip only this occurrence or archive the whole series?",
+        singleLabel: "This occurrence",
+        seriesLabel: "Whole series",
+      });
+      setPrompting(false);
+      if (!choice) return;
+      if (choice === "single") {
+        setPending(true);
+        setError("");
+        try {
+          const response = await fetch(`/api/tasks/${current.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              expectedRevision: current.revision,
+              scope: "single",
+              skipOccurrence: true,
+              mutationId: crypto.randomUUID(),
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Could not skip occurrence.");
+          const updated = result as Task;
+          workspace?.setTasks((all) =>
+            updated.archivedAt ? all.filter((t) => t.id !== current.id) : all.map((t) => (t.id === current.id ? updated : t)),
+          );
+          close();
+          notifyMutation(response, () => router.refresh(), {
+            message: updated.archivedAt ? "Task archived." : "Occurrence skipped.",
+          });
+          router.refresh();
+        } catch (failure) {
+          setError(failure instanceof Error ? failure.message : "Could not skip occurrence.");
+        } finally {
+          setPending(false);
+        }
+        return;
+      }
+    }
     workspace?.setTasks((all) => all.filter((t) => t.id !== current.id));
     close();
     try {
@@ -87,7 +133,9 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
         body: JSON.stringify({ expectedRevision: current.revision, archived: true, mutationId: crypto.randomUUID() }),
       });
       if (response.ok) {
-        notifyMutation(response, () => router.refresh(), { message: "Task archived." });
+        notifyMutation(response, () => router.refresh(), {
+          message: current.recurrenceRule ? "Task series archived." : "Task archived.",
+        });
         router.refresh();
       }
     } catch {}
@@ -97,7 +145,8 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
   const dateValue = current?.executionDate ?? "";
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !pending) close(); }}>
+    <>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next && !pending && !prompting) close(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="sheet-overlay" />
         <Dialog.Content
@@ -346,5 +395,7 @@ export function TaskPanel({ task, projects }: { task: Task | null; projects: Pro
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+    {scopeDialog}
+    </>
   );
 }

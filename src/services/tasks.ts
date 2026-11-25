@@ -74,6 +74,10 @@ export const archiveTaskSchema = z.object({
   mutationId: mutationIdSchema,
 }).strict();
 
+export const skipTaskOccurrenceSchema = z.object({
+  mutationId: mutationIdSchema,
+}).strict();
+
 export const completeTaskSchema = z.object({
   completed: z.boolean().default(true),
   mutationId: mutationIdSchema,
@@ -439,6 +443,46 @@ export function archiveTask(db: AppDatabase, ownerId: string, id: string, expect
   }, { behavior: "immediate" });
 }
 
+export function skipTaskOccurrence(
+  db: AppDatabase,
+  ownerId: string,
+  id: string,
+  expectedRevision: number,
+  input: unknown,
+): Task {
+  const { mutationId } = skipTaskOccurrenceSchema.parse(input);
+  z.number().int().positive().parse(expectedRevision);
+  const hash = requestHash("task-skip-occurrence", id, { expectedRevision });
+  return db.transaction((tx) => {
+    const previous = replayMutation(tx, ownerId, mutationId, hash);
+    if (previous) return previous.result as Task;
+    const before = getTask(tx, ownerId, id);
+    if (before.revision !== expectedRevision) throw new AppError(409, "Task changed. Reload and try again.");
+    if (!before.recurrenceRule) throw new AppError(400, "This task does not repeat.");
+    const now = new Date().toISOString();
+    const tz = getPreferences(tx, ownerId).timezone;
+    const anchor = before.executionDate ?? dateInTimezone(now, tz);
+    const nextDate = nextOccurrenceDate(before.recurrenceRule, anchor);
+    const result = tx.update(task).set(
+      nextDate
+        ? { executionDate: nextDate, revision: before.revision + 1, updatedAt: now }
+        : { archivedAt: now, revision: before.revision + 1, updatedAt: now },
+    ).where(and(eq(task.id, id), eq(task.ownerId, ownerId))).returning().get()!;
+    recordOperation(tx, {
+      ownerId,
+      mutationId,
+      requestHash: hash,
+      action: "skip-occurrence",
+      entityType: "task",
+      entityId: id,
+      beforeState: [{ entityType: "task", record: before }],
+      afterState: [{ entityType: "task", record: result }],
+      result,
+    });
+    return result;
+  }, { behavior: "immediate" });
+}
+
 export function reorderTasks(db: AppDatabase, ownerId: string, input: unknown): Task[] {
   const data = reorderTasksSchema.parse(input);
   const hash = requestHash("task-reorder", data.id, data);
@@ -446,7 +490,7 @@ export function reorderTasks(db: AppDatabase, ownerId: string, input: unknown): 
     const previous = replayMutation(tx, ownerId, data.mutationId, hash);
     if (previous) return previous.result as Task[];
     if (data.projectId) getProject(tx, ownerId, data.projectId);
-    const all = listTasks(tx, ownerId, true);
+    const all = listTasks(tx, ownerId, false);
     getTask(tx, ownerId, data.id);
     const affected = all.filter((t) => t.id === data.id || (t.projectId === data.projectId && t.status === data.status));
     const ids = new Set(data.orderedIds);

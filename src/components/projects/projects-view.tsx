@@ -15,7 +15,7 @@ import { dateInTimezone } from "@/lib/dates";
 import { NO_PROJECT, groupProjects, planProjectMove, planTaskMove, summarize, tasksByProject, upcomingEvents, type Summary } from "@/lib/project-board";
 import { notifyMutation } from "../mutation-notice";
 import { useProjectCompletion } from "../project-completion";
-import { useConfirmation } from "../confirm-dialog";
+import { useConfirmation, useRecurrenceScopeDialog } from "../confirm-dialog";
 import { ProjectList } from "./project-list";
 import { TaskBoard } from "./board";
 import { DetailSheet } from "./detail-sheet";
@@ -68,6 +68,7 @@ function useBoardState({ projects: serverProjects, tasks: allServerTasks, events
   const [projectSheet, setProjectSheet] = useState(false);
   const { reviewCompletion, confirmation: completionDialog } = useProjectCompletion();
   const { confirm, confirmation: confirmDialog } = useConfirmation();
+  const { askScope, scopeDialog } = useRecurrenceScopeDialog();
   // Saves run one at a time, each planned from the latest state (with the revisions the previous save returned).
   const latest = useRef({ projects: serverProjects, tasks: serverTasks });
   const server = useRef({ projects: serverProjects, tasks: serverTasks });
@@ -205,10 +206,39 @@ function useBoardState({ projects: serverProjects, tasks: allServerTasks, events
   });
   const archiveTask = (task: Task) => enqueue(async () => {
     const current = latest.current.tasks.find((t) => t.id === task.id) ?? task;
+    if (current.recurrenceRule) {
+      const choice = await askScope({
+        title: "Archive recurring task",
+        description: "Skip only this occurrence or archive the whole series?",
+        singleLabel: "This occurrence",
+        seriesLabel: "Whole series",
+      });
+      if (!choice) return;
+      if (choice === "single") {
+        if (params.get("task") === task.id) closeSheet();
+        setInstant(false);
+        await send<Task>(
+          `/api/tasks/${task.id}`,
+          "PATCH",
+          { expectedRevision: current.revision, scope: "single", skipOccurrence: true },
+          "Occurrence skipped.",
+          (saved) => {
+            if (saved.archivedAt) setTasks((all) => all.filter((t) => t.id !== task.id));
+            else merge(setTasks, saved);
+          },
+        );
+        return;
+      }
+    }
     if (params.get("task") === task.id) closeSheet();
     setInstant(false);
     setTasks((all) => all.filter((t) => t.id !== task.id));
-    await send<Task>(`/api/tasks/${task.id}`, "PATCH", { expectedRevision: current.revision, archived: true }, "Task archived.");
+    await send<Task>(
+      `/api/tasks/${task.id}`,
+      "PATCH",
+      { expectedRevision: current.revision, archived: true },
+      current.recurrenceRule ? "Task series archived." : "Task archived.",
+    );
   });
   const remove = (entityType: "task" | "project", id: string, name: string) => enqueue(() => removeNow(entityType, id, name));
   async function removeNow(entityType: "task" | "project", id: string, name: string) {
@@ -243,7 +273,7 @@ function useBoardState({ projects: serverProjects, tasks: allServerTasks, events
     scheduleTask: (taskId: string) => router.push(`/calendar?schedule=1&task=${taskId}`),
     archiveTask,
     deleteTask: (t: Task) => remove("task", t.id, t.title), deleteProject: (p: Project) => remove("project", p.id, p.name),
-    dialogs: <>{completionDialog}{confirmDialog}</>,
+    dialogs: <>{completionDialog}{confirmDialog}{scopeDialog}</>,
   };
 }
 
