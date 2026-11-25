@@ -35,6 +35,19 @@ export function summarize(project: Pick<Project, "deadline" | "status"> | null, 
   return { done, total: tasks.length, next: dates[0] ?? null };
 }
 
+/** True when a live Active project has zero open ("To do") tasks. */
+export function isEmptyActiveProject(
+  project: Pick<Project, "status" | "archivedAt" | "deletedAt"> | null | undefined,
+  summaryOrTasks: Summary | readonly Pick<Task, "status" | "archivedAt" | "deletedAt">[],
+): boolean {
+  if (!project || project.status !== "Active" || project.archivedAt || project.deletedAt) return false;
+  if (Array.isArray(summaryOrTasks)) {
+    return !summaryOrTasks.some((t) => !t.archivedAt && !t.deletedAt && t.status !== "Done");
+  }
+  const summary = summaryOrTasks as Summary;
+  return summary.total - summary.done === 0;
+}
+
 /** Tasks grouped by project key ("none" for loose tasks), each list in board order. */
 export function tasksByProject(tasks: Task[]) {
   const groups = new Map<string, Task[]>();

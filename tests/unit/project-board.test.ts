@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Event, Project, Task } from "../../src/lib/db/schema";
-import { groupProjects, planProjectMove, planTaskMove, summarize, tasksByProject, upcomingEvents } from "../../src/lib/project-board";
+import { groupProjects, isEmptyActiveProject, planProjectMove, planTaskMove, summarize, tasksByProject, upcomingEvents } from "../../src/lib/project-board";
 
 const t = (id: string, over: Partial<Task> = {}): Task => ({
   id, ownerId: "u", projectId: "p1", title: id, description: "", status: "To do", important: null, urgent: null,
@@ -32,6 +32,32 @@ describe("summarize", () => {
   it("has no next deadline for a Done project or an empty one", () => {
     expect(summarize(p("p1", { status: "Done", deadline: "2026-12-01" }), [t("a", { dueDate: "2026-11-01" })]).next).toBeNull();
     expect(summarize(null, [])).toEqual({ done: 0, total: 0, next: null });
+  });
+});
+
+describe("isEmptyActiveProject", () => {
+  it("flags live Active projects with zero open tasks and clears once an active task is added", () => {
+    const active = p("p1", { status: "Active" });
+    expect(isEmptyActiveProject(active, summarize(active, []))).toBe(true);
+    expect(isEmptyActiveProject(active, [])).toBe(true);
+    // Completed tasks do not count as active tasks.
+    const doneOnly = [t("d1", { status: "Done" })];
+    expect(isEmptyActiveProject(active, summarize(active, doneOnly))).toBe(true);
+    expect(isEmptyActiveProject(active, doneOnly)).toBe(true);
+    // Adding an open task clears the highlight.
+    const withOpen = [...doneOnly, t("o1", { status: "To do" })];
+    expect(isEmptyActiveProject(active, summarize(active, withOpen))).toBe(false);
+    expect(isEmptyActiveProject(active, withOpen)).toBe(false);
+  });
+
+  it("ignores non-Active, archived, deleted, and No project entries", () => {
+    for (const status of ["Planned", "Paused", "Done"] as const) {
+      const proj = p(`p-${status}`, { status });
+      expect(isEmptyActiveProject(proj, summarize(proj, []))).toBe(false);
+    }
+    expect(isEmptyActiveProject(p("arch", { status: "Active", archivedAt: "2026-01-01T00:00:00Z" }), [])).toBe(false);
+    expect(isEmptyActiveProject(p("del", { status: "Active", deletedAt: "2026-01-01T00:00:00Z" }), [])).toBe(false);
+    expect(isEmptyActiveProject(null, [])).toBe(false);
   });
 });
 

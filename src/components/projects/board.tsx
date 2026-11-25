@@ -8,9 +8,9 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { SORT_TRANSITION, withFade } from "../drag-feel";
 import { CSS } from "@dnd-kit/utilities";
 import { Temporal } from "temporal-polyfill";
-import { Archive, ArrowDown, ArrowUp, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, CircleDot, Clock, FolderInput, GripVertical, PanelRight, RotateCcw, Star } from "lucide-react";
+import { AlertCircle, Archive, ArrowDown, ArrowUp, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, CircleDot, Clock, FolderInput, GripVertical, PanelRight, RotateCcw, Star } from "lucide-react";
 import type { Event, Project, Task } from "@/lib/db/schema";
-import { NO_PROJECT, taskColumns, taskDeadline } from "@/lib/project-board";
+import { NO_PROJECT, isEmptyActiveProject, taskColumns, taskDeadline } from "@/lib/project-board";
 import { dateInTimezone } from "@/lib/dates";
 import { useBoard, type BoardApi } from "./projects-view";
 import { MoreMenu, RightClickMenu, type MenuEntry } from "./item-menu";
@@ -180,7 +180,8 @@ export function TaskBoard({ dragging, reduce }: { dragging: string | null; reduc
   const project = board.selected;
   const tasks = board.byProject.get(board.selectedKey) ?? [];
   const summary = board.summaries.get(board.selectedKey)!;
-  return <section className="board-pane" aria-label={project?.name ?? "No project"}
+  const emptyActive = isEmptyActiveProject(project, summary);
+  return <section className="board-pane" aria-label={project?.name ?? "No project"} data-empty-active={emptyActive ? "true" : undefined}
     // Narrow screens: swipe right outside a task card to return to the project list.
     onTouchStart={(e) => {
       if ((e.target as HTMLElement | null)?.closest("[data-swipe-row]")) { touch.current = null; return; }
@@ -207,6 +208,7 @@ export function TaskBoard({ dragging, reduce }: { dragging: string | null; reduc
         <div className="board-meta-row">
           <DeadlineField key={project.id} project={project} />
           <span className="board-meta">{project.archivedAt ? "Archived" : project.status}</span>
+          {emptyActive && <span className="board-meta is-empty-active"><AlertCircle size={13} aria-hidden="true" />No active tasks</span>}
         </div>
       </>}
     </header>
