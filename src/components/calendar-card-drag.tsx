@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { useReducedMotion } from "motion/react";
+import { CalendarOff } from "lucide-react";
 import { DragMomentum } from "./drag-momentum";
 import { DRAG_EASE } from "./drag-feel";
 
@@ -14,6 +15,14 @@ export type CardDrop = {
   toDate: string;
   /** For tasks: the target day's open tasks in their new order (source included). */
   orderedTaskIds: string[] | null;
+  occurrenceDate?: string | null;
+};
+
+export type CardUnschedule = {
+  kind: Kind;
+  id: string;
+  fromDate: string;
+  occurrenceDate?: string | null;
 };
 
 type Ghost = {
@@ -24,6 +33,7 @@ type Ghost = {
   x: number;
   y: number;
   landing: boolean;
+  unscheduling: boolean;
 };
 
 type GhostStore = {
@@ -49,22 +59,45 @@ function createGhostStore(): GhostStore {
   };
 }
 
-function GhostLayer({ store }: { store: GhostStore }) {
+function GhostLayer({
+  store,
+  zoneRef,
+  showUnscheduleZone,
+}: {
+  store: GhostStore;
+  zoneRef: RefObject<HTMLDivElement | null>;
+  showUnscheduleZone: boolean;
+}) {
   const ghost = useSyncExternalStore(store.subscribe, store.get, () => null);
   if (!ghost) return null;
   return (
-    <div
-      className={`calendar-drag-ghost-wrap${ghost.landing ? " is-landing" : ""}`}
-      style={{ left: `${ghost.x}px`, top: `${ghost.y}px`, width: `${ghost.width}px` }}
-      aria-hidden="true"
-    >
-      <DragMomentum>
-        <div className="calendar-drag-ghost" style={{ "--record-color": ghost.color } as React.CSSProperties}>
-          <span className="calendar-drag-ghost-title">{ghost.title}</span>
-          {ghost.tag && <span className="calendar-drag-ghost-tag">{ghost.tag}</span>}
+    <>
+      {showUnscheduleZone && !ghost.landing && (
+        <div
+          ref={zoneRef}
+          className="calendar-unschedule-zone"
+          data-unschedule-zone="true"
+          data-active={ghost.unscheduling ? "true" : undefined}
+          role="region"
+          aria-label="Drop here to unschedule"
+        >
+          <CalendarOff size={16} aria-hidden="true" />
+          <span>{ghost.unscheduling ? "Release to unschedule" : "Drop here to unschedule"}</span>
         </div>
-      </DragMomentum>
-    </div>
+      )}
+      <div
+        className={`calendar-drag-ghost-wrap${ghost.landing ? " is-landing" : ""}${ghost.unscheduling ? " is-unscheduling" : ""}`}
+        style={{ left: `${ghost.x}px`, top: `${ghost.y}px`, width: `${ghost.width}px` }}
+        aria-hidden="true"
+      >
+        <DragMomentum>
+          <div className="calendar-drag-ghost" style={{ "--record-color": ghost.color } as React.CSSProperties}>
+            <span className="calendar-drag-ghost-title">{ghost.title}</span>
+            {ghost.tag && <span className="calendar-drag-ghost-tag">{ghost.tag}</span>}
+          </div>
+        </DragMomentum>
+      </div>
+    </>
   );
 }
 
@@ -75,29 +108,39 @@ const SHIFT = `transform 260ms ${DRAG_EASE}`;
 /** Read the card's identity and its date from the data-* attributes on `.calendar-record`. */
 function cardInfo(el: HTMLElement) {
   const [kind, id] = (el.dataset.calendarRecord ?? "").split(":") as [Kind, string];
-  return { kind, id, date: el.dataset.date ?? "", open: el.dataset.open === "true" };
+  return {
+    kind,
+    id,
+    date: el.dataset.date ?? "",
+    open: el.dataset.open === "true",
+    occurrenceDate: el.dataset.occurrenceDate ?? null,
+  };
 }
 
 /**
  * Pointer dragging for calendar cards in Agenda, Week and Month. Tasks can be placed at any
  * position in any day (reordering the day's queue); events and deadlines move between days.
- * Neighbours ease aside to make room, the card's own slot becomes a faded silhouette that
- * glides to where it will land, and a trailing ghost follows the cursor with momentum.
+ * Dragging onto the unschedule drop zone clears the item's date. Neighbours ease aside to make
+ * room, the card's own slot becomes a faded silhouette that glides to where it will land, and a
+ * trailing ghost follows the cursor with momentum.
  */
 export function useCalendarCardDrag({
   frameRef,
   view,
   disabled,
   onDrop,
+  onUnschedule,
 }: {
   frameRef: RefObject<HTMLDivElement | null>;
   view: "Agenda" | "Week" | "Month";
   disabled: boolean;
   onDrop: (drop: CardDrop) => void;
+  onUnschedule?: (card: CardUnschedule) => void;
 }) {
   const reduce = useReducedMotion();
   const [store] = useState(createGhostStore);
   const setGhost = store.set;
+  const zoneRef = useRef<HTMLDivElement | null>(null);
   const suppressClick = useRef(false);
   const cleanup = useRef<(() => void) | null>(null);
 
@@ -120,7 +163,17 @@ export function useCalendarCardDrag({
       let bases: Base[] = [];
       let src: Base | null = null;
       let target: { date: string; index: number; slot: { top: number; left: number } } | null = null;
+      let overUnschedule = false;
       const grab = { x: 0, y: 0 };
+
+      const isOverUnscheduleZone = (x: number, y: number) => {
+        if (!onUnschedule) return false;
+        const zone = zoneRef.current;
+        if (!zone) return false;
+        const r = zone.getBoundingClientRect();
+        const pad = 10;
+        return x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad;
+      };
 
       const page = () => ({ sx: window.scrollX, sy: window.scrollY });
       const measure = () => {
@@ -248,9 +301,26 @@ export function useCalendarCardDrag({
             x: ev.clientX - grab.x,
             y: ev.clientY - grab.y,
             landing: false,
+            unscheduling: false,
           });
         }
-        setGhost((g) => (g ? { ...g, x: ev.clientX - grab.x, y: ev.clientY - grab.y } : g));
+        const nextUnschedule = isOverUnscheduleZone(ev.clientX, ev.clientY);
+        setGhost((g) => (g ? { ...g, x: ev.clientX - grab.x, y: ev.clientY - grab.y, unscheduling: nextUnschedule } : g));
+        if (nextUnschedule) {
+          if (!overUnschedule) {
+            overUnschedule = true;
+            target = null;
+            for (const el of touched) {
+              if (el === card) {
+                setShift(card, 0, 0);
+              } else {
+                setShift(el, 0, 0);
+              }
+            }
+          }
+          return;
+        }
+        overUnschedule = false;
         const next = findTarget(ev.clientX, ev.clientY);
         if (next && (next.date !== target?.date || next.index !== target?.index)) {
           target = next;
@@ -269,6 +339,24 @@ export function useCalendarCardDrag({
         window.setTimeout(() => (suppressClick.current = false), 0);
         document.body.classList.remove("is-card-dragging");
 
+        if (commit && overUnschedule && onUnschedule) {
+          resetShifts();
+          setGhost((g) => (g ? { ...g, landing: true, unscheduling: true } : g));
+          window.setTimeout(
+            () => {
+              onUnschedule({
+                kind: source.kind,
+                id: source.id,
+                fromDate: source.date,
+                occurrenceDate: source.occurrenceDate,
+              });
+              setGhost(null);
+            },
+            reduce ? 0 : 180,
+          );
+          return;
+        }
+
         const srcOrder = tasksOn(source.date).concat([src]).sort((a, b) => a.top - b.top);
         const unchanged =
           !target ||
@@ -277,7 +365,7 @@ export function useCalendarCardDrag({
         const drop = commit && target && !unchanged ? target : null;
         const { sx, sy } = page();
         const land = drop ? drop.slot : { top: src.top, left: src.left };
-        setGhost((g) => (g ? { ...g, x: land.left - sx, y: land.top - sy, landing: true } : g));
+        setGhost((g) => (g ? { ...g, x: land.left - sx, y: land.top - sy, landing: true, unscheduling: false } : g));
         if (!drop) resetShifts();
         window.setTimeout(
           () => {
@@ -290,7 +378,14 @@ export function useCalendarCardDrag({
                       return ids;
                     })()
                   : null;
-              onDrop({ kind: source.kind, id: source.id, fromDate: source.date, toDate: drop.date, orderedTaskIds: ordered });
+              onDrop({
+                kind: source.kind,
+                id: source.id,
+                fromDate: source.date,
+                toDate: drop.date,
+                orderedTaskIds: ordered,
+                occurrenceDate: source.occurrenceDate,
+              });
               requestAnimationFrame(resetShifts);
             }
             setGhost(null);
@@ -313,7 +408,7 @@ export function useCalendarCardDrag({
       window.addEventListener("keydown", onKey, true);
       cleanup.current = () => finish(false);
     },
-    [disabled, frameRef, onDrop, reduce, setGhost, view],
+    [disabled, frameRef, onDrop, onUnschedule, reduce, setGhost, view],
   );
 
   /** FullCalendar starts its drag on mousedown; stop that for cards we drag ourselves. */
@@ -332,7 +427,7 @@ export function useCalendarCardDrag({
     e.stopPropagation();
   }, []);
 
-  const ghostNode = <GhostLayer store={store} />;
+  const ghostNode = <GhostLayer store={store} zoneRef={zoneRef} showUnscheduleZone={Boolean(onUnschedule)} />;
 
   return { onPointerDown, onMouseDownCapture, onClickCapture, ghostNode };
 }

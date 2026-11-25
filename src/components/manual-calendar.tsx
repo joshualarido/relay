@@ -48,7 +48,7 @@ import { notifyMutation } from "./mutation-notice";
 import { SchedulePanel, type ScheduleItem } from "./schedule-panel";
 import { useWorkspace } from "./workspace-store";
 import { DragMomentum } from "./drag-momentum";
-import { useCalendarCardDrag, type CardDrop } from "./calendar-card-drag";
+import { useCalendarCardDrag, type CardDrop, type CardUnschedule } from "./calendar-card-drag";
 
 type Kind = "project" | "task" | "event";
 const labels: Record<Kind, string> = { project: "Project deadline", task: "Task deadline", event: "Event" };
@@ -540,6 +540,81 @@ export function ManualCalendar({
     [enqueueRecord, router, setEvents, setProjects, setTasks, timezone],
   );
 
+  // Toss a calendar card onto the unschedule drop zone: clear its date via the existing clear-schedule path.
+  const unscheduleCard = useCallback(
+    async (card: CardUnschedule) => {
+      const { kind, id } = card;
+      setError("");
+      const before = latestRef.current;
+      const put = <T extends { id: string }>(list: T[], next: T) => list.map((r) => (r.id === next.id ? next : r));
+      const commit = (next: Partial<typeof before>) => {
+        latestRef.current = { ...latestRef.current, ...next };
+        if (next.tasks) setTasks(next.tasks);
+        if (next.events) setEvents(next.events);
+        if (next.projects) setProjects(next.projects);
+      };
+      setBusyCount((c) => c + 1);
+      try {
+        await enqueueRecord(`${kind}:${id}`, async () => {
+          let endpoint: string;
+          let input: Record<string, unknown>;
+          let revision: number;
+          let message: string;
+          if (kind === "task") {
+            const task = latestRef.current.tasks.find((t) => t.id === id);
+            if (!task) return;
+            revision = task.revision;
+            input = { executionDate: null };
+            endpoint = `/api/tasks/${id}`;
+            message = "Task unscheduled.";
+            commit({ tasks: put(latestRef.current.tasks, { ...task, executionDate: null }) });
+            setDismissedTaskIds((prev) => {
+              if (!prev.has(id)) return prev;
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+          } else if (kind === "event") {
+            const ev = latestRef.current.events.find((e) => e.id === id);
+            if (!ev) return;
+            revision = ev.revision;
+            input = { start: "", end: "" };
+            endpoint = `/api/events/${id}`;
+            message = "Event unscheduled.";
+            commit({ events: put(latestRef.current.events, { ...ev, start: "", end: "" }) });
+          } else {
+            const p = latestRef.current.projects.find((x) => x.id === id);
+            if (!p) return;
+            revision = p.revision;
+            input = { deadline: null, deadlineAt: null, deadlineTimezone: null };
+            endpoint = `/api/projects/${id}`;
+            message = "Project deadline cleared.";
+            commit({ projects: put(latestRef.current.projects, { ...p, deadline: null, deadlineAt: null, deadlineTimezone: null }) });
+          }
+          const response = await fetch(endpoint, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...input, expectedRevision: revision, mutationId: crypto.randomUUID() }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Could not unschedule item.");
+          if (kind === "task") commit({ tasks: put(latestRef.current.tasks, result as Task) });
+          else if (kind === "event") commit({ events: put(latestRef.current.events, result as Event) });
+          else commit({ projects: put(latestRef.current.projects, result as Project) });
+          setScheduleAnnouncement(message);
+          notifyMutation(response, () => router.refresh(), { message });
+          router.refresh();
+        });
+      } catch (failure) {
+        commit(before);
+        setError(failure instanceof Error ? failure.message : "Could not unschedule. The original schedule was restored.");
+      } finally {
+        setBusyCount((c) => Math.max(0, c - 1));
+      }
+    },
+    [enqueueRecord, router, setEvents, setProjects, setTasks],
+  );
+
   // Event-only edge resize
   async function handleEventResize(info: EventResizeDoneInfo) {
     const [kind, id] = info.event.id.split(":") as [Kind, string];
@@ -1014,9 +1089,10 @@ export function ManualCalendar({
     view,
     disabled: Boolean(scheduleOpen && pickedItem),
     onDrop: (drop) => void moveCard(drop),
+    onUnschedule: (card) => void unscheduleCard(card),
   });
 
-  // Keyboard: Alt+Up/Down reorders a focused task within its day; Alt+Left/Right moves any card a day.
+  // Keyboard: Alt+Up/Down reorders a focused task within its day; Alt+Left/Right moves any card a day; Alt+Backspace unschedules.
   function onCardKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const card = (e.target as HTMLElement).closest<HTMLElement>('.calendar-record[data-drag="true"]');
@@ -1024,6 +1100,11 @@ export function ManualCalendar({
     const [kind, id] = (card.dataset.calendarRecord ?? "").split(":") as [Kind, string];
     const date = card.dataset.date ?? "";
     if (!kind || !id || !date) return;
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      void unscheduleCard({ kind, id, fromDate: date, occurrenceDate: card.dataset.occurrenceDate ?? null });
+      return;
+    }
     const dayIds = (d: string) =>
       [...latestRef.current.tasks]
         .filter((t) => t.executionDate === d && t.status !== "Done")
