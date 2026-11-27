@@ -763,7 +763,7 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .group-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
 .project-rows, .task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .project-rows { gap: 6px; min-height: 8px; }
-.project-row { position: relative; display: flex; align-items: flex-start; border-radius: 10px; border: 1px solid var(--border); background: var(--card); touch-action: manipulation; transition: border-color .15s ease-out, background-color .15s ease-out; }
+.project-row { position: relative; display: flex; align-items: flex-start; border-radius: 10px; border: 1px solid var(--border); background: var(--card); touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: border-color .15s ease-out, background-color .15s ease-out; }
 .project-row:hover { border-color: var(--control-border); background: var(--secondary); }
 .project-row[data-selected=true] { border-color: var(--control-border); background: var(--secondary); }
 .project-row[data-selected=true]::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 2px; background: var(--primary); }
@@ -852,7 +852,7 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
 .task-column[data-over=true] { background: var(--secondary); }
 .task-column > h2 { display: flex; align-items: center; gap: 8px; font-size: .8125rem; padding: 2px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .task-list { gap: 6px; }
-.task-card { display: flex; align-items: flex-start; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 6px 4px 6px 6px; min-width: 0; touch-action: manipulation; transition: border-color .15s ease-out; }
+.task-card { display: flex; align-items: flex-start; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 6px 4px 6px 6px; min-width: 0; touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: border-color .15s ease-out; }
 .task-card:hover { border-color: var(--control-border); }
 .task-card.is-overlay, .project-row.is-overlay { box-shadow: var(--shadow-float); cursor: grabbing; padding: 8px 12px; background: var(--card); border: 1px solid var(--primary); border-radius: 10px; }
 .task-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 6px; padding-bottom: 4px; }
@@ -1115,6 +1115,16 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
   margin-left: auto;
   flex-shrink: 0;
 }
+.today-queue .queue-row {
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.today-queue .task-title {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
 .queue-drag-handle {
   display: inline-flex;
   align-items: center;
@@ -1126,6 +1136,7 @@ a.glance-next:hover, a.glance-next:focus-visible { border-color: var(--primary);
   color: var(--muted-foreground);
   opacity: 0.35;
   cursor: grab;
+  touch-action: pan-y;
   border-radius: 6px;
   flex-shrink: 0;
 }
@@ -1295,7 +1306,15 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .calendar-record[data-drag="true"] { cursor: grab; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 .calendar-record.is-touch-holding { transform: scale(.98); transition: transform 180ms ease-out; }
 body.is-card-dragging, body.is-card-dragging * { cursor: grabbing !important; user-select: none; }
-body.is-touch-card-dragging, body.is-touch-card-dragging .calendar-frame { touch-action: none; }
+body.is-touch-card-dragging,
+body.is-touch-card-dragging .calendar-frame,
+body.is-touch-card-dragging .today-queue,
+body.is-touch-card-dragging .swipe-row-content,
+body.is-touch-card-dragging .today-queue .queue-row,
+body.is-touch-card-dragging .list-pane,
+body.is-touch-card-dragging .board-pane,
+body.is-touch-card-dragging .task-card,
+body.is-touch-card-dragging .project-row { touch-action: none; }
 .calendar-record.is-drag-source {
   opacity: .35 !important; outline: 1px dashed var(--control-border); outline-offset: -1px;
   box-shadow: none; position: relative; z-index: 3;
@@ -1305,6 +1324,13 @@ body.is-touch-card-dragging, body.is-touch-card-dragging .calendar-frame { touch
   box-shadow: var(--shadow-float);
   animation: touch-pickup 160ms cubic-bezier(0.16, 1, 0.3, 1);
   transform: scale(1.04);
+}
+.today-row.is-overlay.is-touch-picked,
+.task-card.is-overlay.is-touch-picked,
+.project-row.is-overlay.is-touch-picked {
+  box-shadow: var(--shadow-float);
+  animation: touch-pickup 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1.03);
 }
 @keyframes touch-pickup { from { transform: scale(.97); } to { transform: scale(1.04); } }
 .calendar-drag-ghost-wrap.is-landing {
@@ -1342,7 +1368,11 @@ body.is-touch-card-dragging, body.is-touch-card-dragging .calendar-frame { touch
   opacity: 0; transform: scale(.86);
 }
 @media (prefers-reduced-motion: reduce) {
-  .calendar-drag-ghost-wrap.is-landing, .calendar-unschedule-zone { transition: none; animation: none; }
+  .calendar-drag-ghost-wrap.is-landing,
+  .calendar-unschedule-zone,
+  .today-row.is-overlay.is-touch-picked,
+  .task-card.is-overlay.is-touch-picked,
+  .project-row.is-overlay.is-touch-picked { transition: none; animation: none; transform: none; }
 }
 
 
