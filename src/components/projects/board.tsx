@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { SORT_TRANSITION, withFade } from "../drag-feel";
+import { DRAG_TOUCH_HOLD_MS, SORT_TRANSITION, splitDragListeners, withFade } from "../drag-feel";
 import { CSS } from "@dnd-kit/utilities";
 import { Temporal } from "temporal-polyfill";
 import { AlertCircle, Archive, ArrowDown, ArrowUp, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, CircleDot, Clock, FolderInput, GripVertical, PanelRight, RotateCcw, Star } from "lucide-react";
@@ -60,10 +60,10 @@ function dayLabel(date: string, today: string) {
   return diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday" : shortDate(date);
 }
 
-function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
+function TaskCard({ task, dragging, reduce }: { task: Task; dragging: string | null; reduce: boolean }) {
   const board = useBoard();
   const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: `task:${task.id}`, data: { type: "task", task }, transition: SORT_TRANSITION });
-  const { onKeyDown, ...pointer } = listeners ?? {};
+  const { pointerListeners, keyboardListeners } = splitDragListeners(listeners);
   const done = task.status === "Done" || board.completing === task.id;
   const due = taskDeadline(task);
   const scheduled = board.scheduledTaskIds.has(task.id);
@@ -82,12 +82,13 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
       <SwipeableTaskRow
         className="task-card-swipe"
         taskId={task.id}
-        disabled={isDragging}
+        isDragActive={isDragging || dragging !== null}
+        dragHoldMs={DRAG_TOUCH_HOLD_MS}
         canComplete={task.status !== "Done"}
         onComplete={() => board.completeTask(task, reduce)}
         onTomorrow={pushToTomorrow}
       >
-        <article ref={setNodeRef} {...pointer} className="task-card" data-task-card={task.id} data-done={done} data-dragging={isDragging}
+        <article ref={setNodeRef} {...pointerListeners} className="task-card" data-task-card={task.id} data-done={done} data-dragging={isDragging}
           style={{ transform: CSS.Translate.toString(transform), transition: withFade(transition) }}>
           <CheckButton task={task} done={done} reduce={reduce} />
           <div className="task-card-body">
@@ -111,7 +112,7 @@ function TaskCard({ task, reduce }: { task: Task; reduce: boolean }) {
             </span>
           </div>
           <span className="row-tools">
-            <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} onKeyDown={onKeyDown as React.KeyboardEventHandler}
+            <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} {...keyboardListeners}
               aria-label={`Move ${task.title}`} title="Drag, or press Enter to move with the arrow keys"><GripVertical size={15} aria-hidden="true" /></button>
             <MoreMenu label={`Actions for ${task.title}`} entries={entries} />
           </span>
@@ -147,7 +148,7 @@ function Column({ status, tasks, dragging, reduce }: { status: Task["status"]; t
   return <section ref={setNodeRef} className="task-column" aria-labelledby={id} data-over={dragging === "task" && isOver}>
     <h2 id={id}>{status}<Count n={tasks.length} /></h2>
     <SortableContext items={tasks.map((t) => `task:${t.id}`)} strategy={verticalListSortingStrategy}>
-      <ul className="task-list">{tasks.map((t) => <TaskCard key={t.id} task={t} reduce={reduce} />)}</ul>
+      <ul className="task-list">{tasks.map((t) => <TaskCard key={t.id} task={t} dragging={dragging} reduce={reduce} />)}</ul>
     </SortableContext>
     <AddTask status={status} />
   </section>;

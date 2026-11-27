@@ -21,7 +21,18 @@ import { TaskBoard } from "./board";
 import { DetailSheet } from "./detail-sheet";
 import { useWorkspace } from "../workspace-store";
 import { DragMomentum } from "../drag-momentum";
-import { DROP_ANIMATION } from "../drag-feel";
+import {
+  DROP_ANIMATION,
+  MOUSE_SENSOR_OPTIONS,
+  POST_DRAG_CLICK_SUPPRESS_MOUSE_MS,
+  POST_DRAG_CLICK_SUPPRESS_TOUCH_MS,
+  TOUCH_SENSOR_OPTIONS,
+  isTouchActivatorEvent,
+  resolveDragOriginElement,
+  setTouchDragBodyLock,
+  suppressPostDragClick,
+  triggerDragHaptic,
+} from "../drag-feel";
 
 type TaskTarget = { projectId: string | null; status: Task["status"]; index?: number };
 type DragData =
@@ -284,12 +295,23 @@ export function ProjectsView(props: Props) {
   const board = useBoardState(props);
   const reduce = useReducedMotion();
   const [active, setActive] = useState<DragData | null>(null);
+  const [touchDrag, setTouchDrag] = useState(false);
   const [creating, setCreating] = useState(false);
+  const dragOriginRef = useRef<Element | null>(null);
+  const dragWasTouchRef = useRef(false);
+  const cleanupSuppressRef = useRef<(() => void) | null>(null);
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
+    useSensor(MouseSensor, MOUSE_SENSOR_OPTIONS),
+    useSensor(TouchSensor, TOUCH_SENSOR_OPTIONS),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  useEffect(() => {
+    return () => {
+      setTouchDragBodyLock(false);
+      cleanupSuppressRef.current?.();
+    };
+  }, []);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -332,8 +354,35 @@ export function ProjectsView(props: Props) {
     return args.pointerCoordinates ? [] : closestCorners(scoped);
   };
 
-  function onDragEnd({ active: a, over }: DragEndEvent) {
+  function onDragStart({ active: a, activatorEvent }: DragStartEvent) {
+    const isTouch = isTouchActivatorEvent(activatorEvent);
+    dragOriginRef.current = resolveDragOriginElement(activatorEvent);
+    dragWasTouchRef.current = isTouch;
+    setActive(a.data.current as DragData);
+    setTouchDrag(isTouch);
+    if (isTouch) {
+      setTouchDragBodyLock(true);
+      triggerDragHaptic();
+    }
+  }
+
+  function finishDragSession() {
+    const isTouch = dragWasTouchRef.current;
+    const origin = dragOriginRef.current;
+    dragWasTouchRef.current = false;
+    dragOriginRef.current = null;
     setActive(null);
+    setTouchDrag(false);
+    setTouchDragBodyLock(false);
+    cleanupSuppressRef.current?.();
+    cleanupSuppressRef.current = suppressPostDragClick(
+      origin,
+      isTouch ? POST_DRAG_CLICK_SUPPRESS_TOUCH_MS : POST_DRAG_CLICK_SUPPRESS_MOUSE_MS,
+    );
+  }
+
+  function onDragEnd({ active: a, over }: DragEndEvent) {
+    finishDragSession();
     const from = a.data.current as DragData, to = over?.data.current as DragData | undefined;
     if (!to) return;
     if (from.type === "task") {
@@ -366,16 +415,35 @@ export function ProjectsView(props: Props) {
   }
 
   return <BoardContext.Provider value={board}>
-    <DndContext id="projects" sensors={sensors} collisionDetection={collision} onDragStart={({ active: a }: DragStartEvent) => setActive(a.data.current as DragData)}
-      onDragCancel={() => setActive(null)} onDragEnd={onDragEnd}
+    <DndContext id="projects" sensors={sensors} collisionDetection={collision} onDragStart={onDragStart}
+      onDragCancel={finishDragSession} onDragEnd={onDragEnd}
       accessibility={{ screenReaderInstructions: { draggable: "To pick up, press Space or Enter. Use the arrow keys to move, Enter to drop, Escape to cancel." } }}>
       <div className="projects-split" data-level={board.level} data-dragging={active?.type ?? undefined}>
         <ProjectList creating={creating} setCreating={setCreating} dragging={active?.type ?? null} />
         <TaskBoard dragging={active?.type ?? null} reduce={Boolean(reduce)} />
       </div>
       <DragOverlay dropAnimation={reduce ? null : DROP_ANIMATION}>
-        {active?.type === "task" ? <DragMomentum><div className="task-card is-overlay"><span className="task-card-title">{active.task.title}</span></div></DragMomentum>
-          : active?.type === "project" ? <DragMomentum><div className="project-row is-overlay"><span className="project-row-name">{active.project.name}</span></div></DragMomentum> : null}
+        {active?.type === "task" ? (
+          <DragMomentum>
+            <div
+              className={`task-card is-overlay${touchDrag ? " is-touch-picked" : ""}`}
+              data-drag-ghost="true"
+              data-touch-picked={touchDrag ? "true" : undefined}
+            >
+              <span className="task-card-title">{active.task.title}</span>
+            </div>
+          </DragMomentum>
+        ) : active?.type === "project" ? (
+          <DragMomentum>
+            <div
+              className={`project-row is-overlay${touchDrag ? " is-touch-picked" : ""}`}
+              data-drag-ghost="true"
+              data-touch-picked={touchDrag ? "true" : undefined}
+            >
+              <span className="project-row-name">{active.project.name}</span>
+            </div>
+          </DragMomentum>
+        ) : null}
       </DragOverlay>
     </DndContext>
     <DetailSheet />

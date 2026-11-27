@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { SORT_TRANSITION, withFade } from "../drag-feel";
+import { SORT_TRANSITION, splitDragListeners, withFade } from "../drag-feel";
 import { CSS } from "@dnd-kit/utilities";
 import { AlertCircle, Archive, ArchiveRestore, ArrowDown, ArrowUp, CalendarDays, Check, ChevronRight, CircleDot, Folder, GripVertical, Inbox, PanelRight, Pause, Play, Plus, Trash2 } from "lucide-react";
 import type { Project } from "@/lib/db/schema";
@@ -91,18 +91,18 @@ function ProjectRow({ project, dragging }: { project: Project; dragging: string 
   const archived = Boolean(project.archivedAt);
   const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: `project:${project.id}`, data: { type: "project", project }, disabled: archived, transition: SORT_TRANSITION });
   const { setNodeRef: setTargetRef, isOver } = useDroppable({ id: `target:${project.id}`, data: { type: "target", key: project.id }, disabled: archived });
-  const { onKeyDown, ...pointer } = listeners ?? {};
+  const { pointerListeners, keyboardListeners } = splitDragListeners(listeners);
   const entries = projectMenu(board, project);
   const summary = board.summaries.get(project.id)!;
   const emptyActive = isEmptyActiveProject(project, summary);
   return <RightClickMenu entries={entries}>
-    <li ref={(el) => { setNodeRef(el); setTargetRef(el); }} className="project-row" {...(archived ? {} : pointer)}
+    <li ref={(el) => { setNodeRef(el); setTargetRef(el); }} className="project-row" {...(archived ? {} : pointerListeners)}
       data-selected={board.selectedKey === project.id} data-over={dragging === "task" && isOver} data-dragging={isDragging}
       data-empty-active={emptyActive ? "true" : undefined}
       style={{ transform: CSS.Translate.toString(transform), transition: withFade(transition) }}>
       <RowBody id={project.id} name={project.name} summary={summary} emptyActive={emptyActive} icon={<Folder size={15} aria-hidden="true" className="project-row-icon" />} />
       <span className="row-tools">
-        {!archived && <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} onKeyDown={onKeyDown as React.KeyboardEventHandler}
+        {!archived && <button type="button" className="icon-button grip" ref={setActivatorNodeRef} {...attributes} {...keyboardListeners}
           aria-label={`Move ${project.name}`} title="Drag, or press Enter to move with the arrow keys"><GripVertical size={15} aria-hidden="true" /></button>}
         <MoreMenu label={`Actions for ${project.name}`} entries={entries} />
       </span>
