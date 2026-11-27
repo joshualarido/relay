@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { useReducedMotion } from "motion/react";
 import {
@@ -31,24 +33,42 @@ import { SwipeableTaskRow } from "./swipeable-task-row";
 import { TaskComplete } from "./task-complete";
 import { pushTaskTomorrow, toggleTaskDone } from "./today-due-list";
 import { DragMomentum } from "./drag-momentum";
-import { DROP_ANIMATION, SORT_TRANSITION, withFade } from "./drag-feel";
+import {
+  DRAG_TOUCH_HOLD_MS,
+  DROP_ANIMATION,
+  MOUSE_SENSOR_OPTIONS,
+  POST_DRAG_CLICK_SUPPRESS_MOUSE_MS,
+  POST_DRAG_CLICK_SUPPRESS_TOUCH_MS,
+  SORT_TRANSITION,
+  TOUCH_SENSOR_OPTIONS,
+  isTouchActivatorEvent,
+  resolveDragOriginElement,
+  setTouchDragBodyLock,
+  splitDragListeners,
+  suppressPostDragClick,
+  triggerDragHaptic,
+  withFade,
+} from "./drag-feel";
 
 function SortableQueueRow({
   task,
   projectName,
   minutes,
   timezone,
+  isDragActive,
 }: {
   task: Task;
   projectName?: string;
   minutes: number;
   timezone: string;
+  isDragActive: boolean;
 }) {
   const router = useRouter();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     transition: SORT_TRANSITION,
   });
+  const { touchListeners, mouseListeners, keyboardListeners } = splitDragListeners(listeners);
   const style = {
     transform: CSS.Translate.toString(transform),
     transition: withFade(transition),
@@ -64,17 +84,21 @@ function SortableQueueRow({
     >
       <SwipeableTaskRow
         taskId={task.id}
+        isDragActive={isDragActive || isDragging}
+        dragHoldMs={DRAG_TOUCH_HOLD_MS}
         canComplete={task.status !== "Done"}
         onComplete={() => toggleTaskDone(task, () => router.refresh())}
         onTomorrow={() => pushTaskTomorrow(task, timezone, () => router.refresh())}
       >
-        <div className="today-row queue-row">
+        <div className="today-row queue-row" {...touchListeners}>
           <button
             type="button"
             className="queue-drag-handle"
             aria-label={`Reorder ${task.title}`}
+            ref={setActivatorNodeRef}
             {...attributes}
-            {...listeners}
+            {...mouseListeners}
+            {...keyboardListeners}
           >
             <GripVertical size={14} aria-hidden="true" />
           </button>
@@ -86,6 +110,7 @@ function SortableQueueRow({
               href={`/?task=${task.id}`}
               title="Edit task (E)"
               scroll={false}
+              draggable={false}
             >
               {task.title}
             </Link>
@@ -126,8 +151,19 @@ export function TodayQueue({
   const [syncedTasks, setSyncedTasks] = useState(tasks);
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [touchDrag, setTouchDrag] = useState(false);
+  const dragOriginRef = useRef<Element | null>(null);
+  const dragWasTouchRef = useRef(false);
+  const cleanupSuppressRef = useRef<(() => void) | null>(null);
   const reduce = useReducedMotion();
   const activeTask = activeId ? openTasks.find((t) => t.id === activeId) : undefined;
+
+  useEffect(() => {
+    return () => {
+      setTouchDragBodyLock(false);
+      cleanupSuppressRef.current?.();
+    };
+  }, []);
 
   if (syncedTasks !== tasks) {
     setSyncedTasks(tasks);
@@ -135,12 +171,40 @@ export function TodayQueue({
   }
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, MOUSE_SENSOR_OPTIONS),
+    useSensor(TouchSensor, TOUCH_SENSOR_OPTIONS),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  async function onDragEnd(event: DragEndEvent) {
+  function onDragStart(event: DragStartEvent) {
+    const isTouch = isTouchActivatorEvent(event.activatorEvent);
+    dragOriginRef.current = resolveDragOriginElement(event.activatorEvent);
+    dragWasTouchRef.current = isTouch;
+    setActiveId(String(event.active.id));
+    setTouchDrag(isTouch);
+    if (isTouch) {
+      setTouchDragBodyLock(true);
+      triggerDragHaptic();
+    }
+  }
+
+  function finishDragSession() {
+    const isTouch = dragWasTouchRef.current;
+    const origin = dragOriginRef.current;
+    dragWasTouchRef.current = false;
+    dragOriginRef.current = null;
     setActiveId(null);
+    setTouchDrag(false);
+    setTouchDragBodyLock(false);
+    cleanupSuppressRef.current?.();
+    cleanupSuppressRef.current = suppressPostDragClick(
+      origin,
+      isTouch ? POST_DRAG_CLICK_SUPPRESS_TOUCH_MS : POST_DRAG_CLICK_SUPPRESS_MOUSE_MS,
+    );
+  }
+
+  async function onDragEnd(event: DragEndEvent) {
+    finishDragSession();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = openTasks.findIndex((t) => t.id === active.id);
@@ -198,8 +262,8 @@ export function TodayQueue({
           id="today-queue"
           sensors={sensors}
           collisionDetection={closestCenter}
-          onDragStart={({ active }) => setActiveId(String(active.id))}
-          onDragCancel={() => setActiveId(null)}
+          onDragStart={onDragStart}
+          onDragCancel={finishDragSession}
           onDragEnd={onDragEnd}
         >
           <SortableContext items={openTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
@@ -211,6 +275,7 @@ export function TodayQueue({
                   projectName={task.projectId ? projectNames[task.projectId] : undefined}
                   minutes={taskMinutes(task, taskTypeMinutes)}
                   timezone={timezone}
+                  isDragActive={activeId !== null}
                 />
               ))}
             </ol>
@@ -218,7 +283,11 @@ export function TodayQueue({
           <DragOverlay dropAnimation={reduce ? null : DROP_ANIMATION}>
             {activeTask ? (
               <DragMomentum>
-                <div className="today-row queue-row is-overlay">
+                <div
+                  className={`today-row queue-row is-overlay${touchDrag ? " is-touch-picked" : ""}`}
+                  data-drag-ghost="true"
+                  data-touch-picked={touchDrag ? "true" : undefined}
+                >
                   <GripVertical size={14} aria-hidden="true" className="queue-overlay-grip" />
                   <div className="today-row-body">
                     <span className="task-title">{activeTask.title}</span>
