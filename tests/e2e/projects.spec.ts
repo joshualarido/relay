@@ -3,7 +3,7 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 type Task = { id: string; title: string; status: string; projectId: string | null };
 type Event = { id: string; title: string; projectId: string | null; taskId: string | null };
 
-test.beforeEach(({}, info) => { test.skip(info.project.name === "mobile", "Desktop spec; narrow screens are checked by hand."); });
+
 
 const column = (page: Page, status: string) => page.locator(".board-pane").getByRole("region", { name: new RegExp(`^${status}`) });
 const card = (page: Page, title: string) => page.locator("article.task-card").filter({ has: page.getByRole("button", { name: title, exact: true }) });
@@ -17,6 +17,8 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
+test.describe("desktop projects", () => {
+test.beforeEach(({}, info) => { test.skip(info.project.name === "mobile", "Desktop spec"); });
 test("acceptance 1: create a project, add 5 tasks, drag by mouse and keyboard, drag the project to Active, Undo, refresh", async ({ page }) => {
   const stamp = crypto.randomUUID().slice(0, 6), name = `Launch ${stamp}`;
   const titles = [1, 2, 3, 4, 5].map((n) => `Step ${n} ${stamp}`);
@@ -180,4 +182,150 @@ test("screenshots", async ({ page, request, baseURL }) => {
   await page.getByRole("button", { name: /^Garden blog/ }).click();
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${dir}/projects-390-board.png`, fullPage: true });
+});
+});
+
+test("mobile Projects: whole-card long-press drag reorders project rows and board task cards while tap still opens", async ({
+  page,
+  request,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name !== "mobile", "Mobile touch drag test");
+  const headers = { origin: baseURL! };
+  const stamp = crypto.randomUUID().slice(0, 6);
+
+  const projA = (await (
+    await request.post("/api/projects", {
+      headers,
+      data: { name: `Mobile Alpha ${stamp}`, status: "Active", position: 0, mutationId: crypto.randomUUID() },
+    })
+  ).json()) as { id: string; name: string };
+  const projB = (await (
+    await request.post("/api/projects", {
+      headers,
+      data: { name: `Mobile Beta ${stamp}`, status: "Active", position: 1, mutationId: crypto.randomUUID() },
+    })
+  ).json()) as { id: string; name: string };
+
+  const task1 = (await (
+    await request.post("/api/tasks", {
+      headers,
+      data: { title: `Card One ${stamp}`, projectId: projA.id, status: "To do", position: 0, mutationId: crypto.randomUUID() },
+    })
+  ).json()) as { id: string; title: string };
+  const task2 = (await (
+    await request.post("/api/tasks", {
+      headers,
+      data: { title: `Card Two ${stamp}`, projectId: projA.id, status: "To do", position: 1, mutationId: crypto.randomUUID() },
+    })
+  ).json()) as { id: string; title: string };
+
+  const cdp = await page.context().newCDPSession(page);
+
+  async function longPressDrag(from: Locator, to: Locator) {
+    await from.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await to.scrollIntoViewIfNeeded();
+    const a = (await from.boundingBox())!;
+    const b = (await to.boundingBox())!;
+    const startPt = { x: Math.round(a.x + a.width / 2), y: Math.round(a.y + a.height / 2) };
+    const endPt = { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height * 0.75) };
+
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: startPt.x, y: startPt.y, id: 1 }],
+    });
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('[data-drag-ghost="true"][data-touch-picked="true"]')).toBeVisible();
+    expect(await page.evaluate(() => document.body.classList.contains("is-touch-card-dragging"))).toBe(true);
+
+    const steps = 12;
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: Math.round(startPt.x + ((endPt.x - startPt.x) * i) / steps),
+            y: Math.round(startPt.y + ((endPt.y - startPt.y) * i) / steps),
+            id: 1,
+          },
+        ],
+      });
+      await page.waitForTimeout(16);
+    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    expect(await page.evaluate(() => document.body.classList.contains("is-touch-card-dragging"))).toBe(false);
+  }
+
+  // 1) Project list: long-press drag on row body reorders without opening the board.
+  await page.goto("/projects");
+  const projARow = page.locator(`[data-project-row="${projA.id}"]`);
+  const projBRow = page.locator(`[data-project-row="${projB.id}"]`);
+  await expect(projARow).toBeVisible();
+  await expect(projBRow).toBeVisible();
+
+  const readProjectOrder = async () =>
+    page.locator("li.project-row [data-project-row]").evaluateAll(
+      (els, ids) => els.map((el) => el.getAttribute("data-project-row") ?? "").filter((id) => ids.includes(id)),
+      [projA.id, projB.id],
+    );
+  const initialProjectOrder = await readProjectOrder();
+  expect(initialProjectOrder).toHaveLength(2);
+  const [firstProjId, secondProjId] = initialProjectOrder;
+
+  const projectReorder = page.waitForResponse(
+    (res) => res.url().includes("/api/projects/reorder") && res.request().method() === "POST",
+  );
+  await longPressDrag(
+    page.locator(`[data-project-row="${firstProjId}"]`),
+    page.locator(`[data-project-row="${secondProjId}"]`),
+  );
+  expect((await projectReorder).ok()).toBe(true);
+  await expect(page.locator(".projects-split")).toHaveAttribute("data-level", "list");
+  await expect.poll(readProjectOrder).toEqual([secondProjId, firstProjId]);
+
+  await page.reload();
+  await expect(projARow).toBeVisible();
+  expect(await readProjectOrder()).toEqual([secondProjId, firstProjId]);
+
+  // 2) Tap opens the project board; long-press drag on a task card title reorders without opening details.
+  await projARow.scrollIntoViewIfNeeded();
+  const projABox = (await projARow.boundingBox())!;
+  await page.touchscreen.tap(projABox.x + projABox.width / 2, projABox.y + projABox.height / 2);
+  await expect(page.locator(".projects-split")).toHaveAttribute("data-level", "board");
+  await expect(page.locator(".board-title")).toHaveText(projA.name);
+
+  const readTaskOrder = async () =>
+    column(page, "To do").locator("article.task-card").evaluateAll(
+      (els, ids) => els.map((el) => el.getAttribute("data-task-card") ?? "").filter((id) => ids.includes(id)),
+      [task1.id, task2.id],
+    );
+  expect(await readTaskOrder()).toEqual([task1.id, task2.id]);
+
+  const taskReorder = page.waitForResponse(
+    (res) => res.url().includes("/api/tasks/reorder") && res.request().method() === "POST",
+  );
+  await longPressDrag(
+    page.locator(`[data-task-link="${task1.id}"]`),
+    page.locator(`[data-task-card="${task2.id}"]`),
+  );
+  expect((await taskReorder).ok()).toBe(true);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect.poll(readTaskOrder).toEqual([task2.id, task1.id]);
+
+  await page.reload();
+  await expect(page.locator(`[data-task-card="${task1.id}"]`)).toBeVisible();
+  expect(await readTaskOrder()).toEqual([task2.id, task1.id]);
+
+  // 3) Quick tap on a task card still opens its details sheet.
+  const cardLink = page.locator(`[data-task-link="${task1.id}"]`);
+  await cardLink.scrollIntoViewIfNeeded();
+  const cardBox = (await cardLink.boundingBox())!;
+  await page.touchscreen.tap(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+  await expect(page.getByRole("dialog", { name: task1.title })).toBeVisible();
+
+  await cdp.detach();
 });
